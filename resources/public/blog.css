@@ -1,0 +1,100 @@
+html, body {
+    margin: 0;
+    padding: 0;
+    font-family: Georgia, "Times New Roman", Times, serif;
+    font-size: 16px;
+    background-image: -moz-linear-gradient(#515151, #9f9f9f);
+    background-image: -webkit-gradient(linear, 0% 0%, 0% 100%,
+        from(#515151), to(#9f9f9f));
+    background-image: -webkit-linear-gradient(#515151, #9f9f9f); 
+    background-image: -o-linear-gradient(#515151, #9f9f9f);
+
+}
+
+header {
+    width: 730px;
+    height: 356px;
+    overflow: hidden;
+    background-image: url("/static/sacre-coeur-header-image.jpg");
+    background-repeat: no-repeat;
+    border-bottom: 3px dotted #484848;
+    padding: 5px 0 0 15px;
+    margin-bottom: 4px;
+}
+
+header h1 {
+    font-size: 45px;
+    color: #000;
+    text-shadow: -1px 0 #fff, 0 1px #fff, 1px 0 #fff, 0 -1px #fff;
+}
+
+#logo {
+    float: left;
+}
+
+#blog-title {
+    float: right;
+    margin-right: 30px;
+    text-align: right;
+}
+
+#menu {
+    margin: 0;
+    padding: 0;
+    padding-left: 25px;
+    list-style: none;
+}
+
+#menu li {
+    display-inline;
+}
+
+#menu li:before {
+    content: "\00BB  ";
+}
+
+#wrapper {
+    width: 745px;
+    margin: 0 auto;
+    min-height: 100%;
+    background-color: #fff;
+    border-left: 1px solid #511a8b;
+    border-right: 1px solid #511a8b;
+}
+
+#main-page {
+    padding-left: 35px;
+    padding-right: 60px;
+}
+
+article .published-at {
+    margin-bottom: 10px;
+    color: #511a8b;
+    font-weight: bold;
+}
+
+article h3 a {
+    color: #000;
+    font-size: 30px;
+    text-decoration: none;
+}
+
+article h3 a:hover {
+    color: #511a8b;
+    font-size: 30px;
+    text-decoration: none;
+}
+
+article.single {
+    padding: 5px 5px 5px 15px;
+}
+
+footer {
+    margin-top: 100px;
+    padding-bottom: 30px;
+    width: 100%;
+    text-align: center;
+    font-size: 12px;
+}
+
+

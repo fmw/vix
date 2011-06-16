@@ -1,0 +1,117 @@
+body {
+    margin: 0;
+    padding: 0;
+    font-family: Helvetica, Arial, sans-serif;
+}
+
+header {
+    height: 60px;
+    padding: 5px 5px 5px 10px;
+    background-color: #000;
+    border-bottom: 3px solid grey;
+    color: #dfdfdf;
+}
+
+#logo {
+    font-family: Georgia;
+    margin: 5px 0 0 0;
+    padding: 0;
+    font-size: 42px;
+    float: left;
+}
+
+#menu {
+    float: right;
+}
+
+header ul {
+    list-style: none;
+}
+
+header li {
+    display: inline;
+}
+
+header a {
+    color: #dfdfdf;
+}
+
+header a:hover {
+    color: grey;
+}
+
+#login-form label {
+    display: block;
+    float: left;
+    width: 100px;
+}
+
+#document-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+#document-list li:before {
+    content: "\00BB  ";
+}
+
+#main-page {
+    margin: 20px 20px 0 20px;
+}
+
+#document-form {
+    width: 580px;
+}
+
+.document-fields-row {
+    font-size: 20px;
+    margin-bottom: 15px;
+}
+
+.document-fields-row label:first-of-type {
+    display: block;
+    float: left;
+    width: 50px;
+}
+
+.document-fields-row .checkbox-field {
+}
+
+.document-fields-row .input-field {
+    position: relative;
+    top: -3px;
+    font-size: 20px;
+    margin-left: 10px;
+    margin-right: 10px;
+    width: 370px;
+}
+
+.document-fields-row .disabled {
+    color: #c1c1c1;
+}
+
+button {
+    margin-top: 20px;
+    padding: 5px 10px;
+    font-size: 20px;
+}
+
+#status-message {
+    display: none;
+    color: green;
+    width: 555px;
+    border: 1px solid #ddd;
+    background: #eee;
+    padding: 5px;
+    margin: 20px 5px 5px 20px;
+}
+
+.error {
+    color: darkred !important;
+}
+
+footer {
+    margin: 20px 20px 0 20px;
+    font-size: 12px;
+}
