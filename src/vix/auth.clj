@@ -55,7 +55,6 @@
                      "views"
                      "by_username"
                      {:include_docs true
-                      :reduce false
                       :key username})]
       (:doc (first (:rows document))))
     ; Create views if they don't exist yet.

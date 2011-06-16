@@ -24,13 +24,13 @@
 (def db-server "http://localhost:5984/")
 (def db-name "vix")
 
-(def views {:by_feed  {:map (slurp (str "/Users/fmw/clj/vix/src/"
+(def views {:by_feed  {:map (slurp (str "/home/fmw/clj/vix/src/"
                                         "database-views/"
                                         "map_document_by_feed.js"))}
-            :by_slug  {:map (slurp (str "/Users/fmw/clj/vix/src/"
+            :by_slug  {:map (slurp (str "/home/fmw/clj/vix/src/"
                                         "database-views/"
                                         "map_document_by_slug.js"))}
-            :by_username  {:map (slurp (str "/Users/fmw/clj/vix/src/"
+            :by_username  {:map (slurp (str "/home/fmw/clj/vix/src/"
                                         "database-views/"
                                         "map_user_by_username.js"))}})
 
@@ -66,7 +66,6 @@
                      "views"
                      "by_slug"
                      {:include_docs true
-                      :reduce false
                       :key slug})]
       (:doc (first (:rows document))))
     ; Create views if they don't exist yet.
@@ -95,9 +94,13 @@
 (defn get-feed [db-server db-name feed]
   (kit/with-handler
     (map #(:doc %) (:rows
-      (couchdb/view-get db-server db-name "views" "by_feed" {:descending true
-                                                            :include_docs true
-                                                            :reduce false})))
+                    (couchdb/view-get
+                     db-server
+                     db-name
+                     "views"
+                     "by_feed"
+                     {:descending true
+                      :include_docs true})))
     ; Create views if they don't exist yet.
     (kit/handle couchdb/DocumentNotFound []
       (do
