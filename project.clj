@@ -9,5 +9,6 @@
                  [clj-time "0.3.0"]
                  [clojure-couchdb "0.4.5"]]
   :dev-dependencies [[lein-ring "0.4.0"]
-                     [org.clojars.autre/lein-vimclojure "1.0.0"]]
+                     [org.clojars.autre/lein-vimclojure "1.0.0"]
+                     [swank-clojure "1.2.1"]]
   :ring {:handler vix.routes/app})
