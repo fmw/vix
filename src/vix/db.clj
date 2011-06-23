@@ -17,10 +17,9 @@
 (ns vix.db
   (:use vix.core)
   (:require [clojure.contrib [error-kit :as kit]]
-            [clojure.contrib.logging]
             [couchdb [client :as couchdb]]
             [clj-http.client :as http]
-            [clojure.contrib.json :as json]
+            [clojure.data.json :as json]
             [clj-time.core]
             [clj-time.format])
   (:import [java.net URLEncoder]))
@@ -41,11 +40,6 @@
 (defn #^{:rebind true} view-sync
   [server db design-doc view-name view-functions]
   "Reimplementation of clojure-couchdb's view-add function."
-
-  ; suppress annoying INFO log messages
-  (try
-    (clojure.contrib.logging/log-capture! *ns*)
-    (catch java.lang.ClassCastException e nil))
   
   (let [doc-path (str "_design/" design-doc)]
     (kit/with-handler
@@ -61,8 +55,7 @@
             db
             doc-path
             {:language "javascript"
-             :views {(keyword view-name) view-functions}}))))
-  (clojure.contrib.logging/log-uncapture!))
+             :views {(keyword view-name) view-functions}})))))
 
 (defn view-get [server db design-doc view-name & [view-options]]
   (json/read-json (:body (http/get

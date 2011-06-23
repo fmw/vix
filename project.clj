@@ -2,6 +2,7 @@
   :description "FIXME: write"
   :dependencies [[org.clojure/clojure "1.2.0"]
                  [org.clojure/clojure-contrib "1.2.0"]
+                 [org.clojure/data.json "0.1.0"]
                  [org.mindrot/jbcrypt "0.3m"]
                  [compojure "0.6.3"]
                  [ring/ring-core "0.3.8"]
