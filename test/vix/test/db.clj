@@ -30,7 +30,8 @@
 (def +test-server+ "http://localhost:5984/")
 
 (defn database-fixture [f]
-  (couchdb/database-create +test-server+ +test-db+)
+  (couchdb/database-create
+   +test-server+ +test-db+)
   (f)
   (couchdb/database-delete +test-server+ +test-db+))
 
@@ -100,7 +101,7 @@
     (is (= (:map (:by_feed (:views view-doc)))
            (str "function(doc) {\n"
                 "    if(doc.type === \"document\") {\n"
-                "        emit(doc.feed, doc);\n"
+                "        emit([doc.feed, doc.published], doc);\n"
                 "    }\n"
                 "}\n")))
 
@@ -132,7 +133,7 @@
         (is (re-matches #"^1-[a-z0-9]{32}$" (:_rev document)))
         (is (re-matches
               #"^[\d]{4}-[\d]{2}-[\d]{2}T[\d]{2}:[\d]{2}:[\d]{2}\.[\d]{1,4}Z"
-              (:created-at document)))
+              (:published document)))
         (is (= (:feed document) "blog"))
         (is (= (:title document) "foo"))
         (is (= (:slug document) (str "/blog/foo")))
@@ -180,7 +181,7 @@
       (is (re-matches #"^1-[a-z0-9]{32}$" (:_rev document)))
       (is (re-matches
             #"^[\d]{4}-[\d]{2}-[\d]{2}T[\d]{2}:[\d]{2}:[\d]{2}\.[\d]{1,4}Z"
-            (:created-at document)))
+            (:published document)))
       (is (= (:type document) "document"))
       (is (= (:feed document) "blog"))
       (is (= (:title document) "foo"))
@@ -203,7 +204,7 @@
         (is (re-matches #"^1-[a-z0-9]{32}$" (:_rev document)))
         (is (re-matches
               #"^[\d]{4}-[\d]{2}-[\d]{2}T[\d]{2}:[\d]{2}:[\d]{2}\.[\d]{1,4}Z"
-              (:created-at document)))
+              (:published document)))
         (is (= (:feed document) "blog"))
         (is (= (:title document) "foo"))
         (is (= (:slug document) (str "/blog/foo-" (+ n 2))))

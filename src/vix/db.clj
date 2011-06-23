@@ -17,9 +17,13 @@
 (ns vix.db
   (:use vix.core)
   (:require [clojure.contrib [error-kit :as kit]]
+            [clojure.contrib.logging]
             [couchdb [client :as couchdb]]
+            [clj-http.client :as http]
+            [clojure.contrib.json :as json]
             [clj-time.core]
-            [clj-time.format]))
+            [clj-time.format])
+  (:import [java.net URLEncoder]))
 
 (def db-server "http://localhost:5984/")
 (def db-name "vix")
@@ -37,6 +41,12 @@
 (defn #^{:rebind true} view-sync
   [server db design-doc view-name view-functions]
   "Reimplementation of clojure-couchdb's view-add function."
+
+  ; suppress annoying INFO log messages
+  (try
+    (clojure.contrib.logging/log-capture! *ns*)
+    (catch java.lang.ClassCastException e nil))
+  
   (let [doc-path (str "_design/" design-doc)]
     (kit/with-handler
       (let [document (couchdb/document-get server db doc-path)]
@@ -51,7 +61,19 @@
             db
             doc-path
             {:language "javascript"
-            :views {(keyword view-name) view-functions}})))))
+             :views {(keyword view-name) view-functions}}))))
+  (clojure.contrib.logging/log-uncapture!))
+
+(defn view-get [server db design-doc view-name & [view-options]]
+  (json/read-json (:body (http/get
+                          (str server
+                               db
+                               "/_design/"
+                               design-doc
+                               "/_view/"
+                               view-name
+                               "?"
+                               (couchdb/url-encode view-options))))))
 
 (defn create-views [db-server db-name design-doc views]
   (doseq [view views]
@@ -89,23 +111,24 @@
            :type "document"
            :feed feed
            :slug (get-unique-slug db-server db-name (:slug document))
-           :created-at (now-rfc3339))))
+           :published (now-rfc3339))))
 
 (defn get-feed [db-server db-name feed]
-  (kit/with-handler
-    (map #(:doc %) (:rows
-                    (couchdb/view-get
-                     db-server
-                     db-name
-                     "views"
-                     "by_feed"
-                     {:descending true
-                      :include_docs true})))
+  (if-let [entries
+    (:rows
+     (view-get
+      db-server
+      db-name
+      "views"
+      "by_feed"
+      {:endkey (str "[\"" feed "\"]")
+       :startkey (str "[\"" feed "\", \"2999\"]")
+       :descending "true"}))]
+    (map #(:value %) entries)
     ; Create views if they don't exist yet.
-    (kit/handle couchdb/DocumentNotFound []
-      (do
-        (create-views db-server db-name "views" views)
-        (get-feed db-server db-name feed)))))
+    (do
+      (create-views db-server db-name "views" views)
+      (get-feed db-server db-name feed))))
 
 
 (defn update-document [db-server db-name slug new-document]

@@ -35,7 +35,7 @@
   [:div#status-message] (html/content (:message ctxt)))
 
 (html/defsnippet article-model "templates/blog.html" *article-sel*
-  [{:keys [slug title content created-at]} published]
+  [{:keys [slug title content published-]} published]
   [:h3 :a] (html/do->
              (html/content title) (html/set-attr :href slug))
   [:.month] (html/content (str (clj-time.core/month published)))
@@ -48,10 +48,10 @@
 (html/deftemplate blog-frontpage-template "templates/blog.html"
   [documents]
   [:#main-page] (html/content
-                  (map #(article-model % (parse-date (:created-at %)))
+                  (map #(article-model % (parse-date (:published %)))
                        documents)))
 
 (html/deftemplate blog-article-template "templates/blog.html"
   [document]
   [:#main-page] (html/content (article-model
-                                document (parse-date (:created-at document)))))
+                                document (parse-date (:published document)))))
