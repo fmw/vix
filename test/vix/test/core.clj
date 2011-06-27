@@ -32,3 +32,39 @@
   (is (re-matches
         #"^[\d]{4}-[\d]{2}-[\d]{2}T[\d]{2}:[\d]{2}:[\d]{2}\.[\d]{1,4}Z"
         (now-rfc3339))))
+
+(deftest test-log-stream
+  (is (= (class (log-stream)) java.io.PrintStream)))
+
+(deftest test-log-hide!
+  ; System/err and System/out seem to be namespace-specific,
+  ; so do a dry run first (which should set the System/err
+  ; and System/out in this namespace to the values found in
+  ; the vix.core namespace where the functions are run).
+  (log-hide!)
+  (log-restore!)
+  
+  (let [orig-err System/err
+        orig-out System/out]
+    (log-hide!)
+    (is (not (= orig-err System/err)))
+    (is (not (= orig-out System/out)))))
+
+(deftest test-log-restore!
+  ; System/err and System/out seem to be namespace-specific,
+  ; so do a dry run first (which should set the System/err
+  ; and System/out in this namespace to the values found in
+  ; the vix.core namespace where the functions are run).
+  (log-hide!)
+  (log-restore!)
+  
+  (let [orig-err System/err
+        orig-out System/out]
+
+    (log-hide!)
+    (is (not (= orig-err System/err)))
+    (is (not (= orig-out System/out)))
+    
+    (log-restore!)
+    (is (= orig-err System/err))
+    (is (= orig-out System/out))))

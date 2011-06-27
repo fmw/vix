@@ -40,7 +40,7 @@
 (defn #^{:rebind true} view-sync
   [server db design-doc view-name view-functions]
   "Reimplementation of clojure-couchdb's view-add function."
-  
+  (log-hide!)
   (let [doc-path (str "_design/" design-doc)]
     (kit/with-handler
       (let [document (couchdb/document-get server db doc-path)]
@@ -55,7 +55,8 @@
             db
             doc-path
             {:language "javascript"
-             :views {(keyword view-name) view-functions}})))))
+             :views {(keyword view-name) view-functions}}))))
+  (log-restore!))
 
 (defn view-get [server db design-doc view-name & [view-options]]
   (json/read-json (:body (http/get

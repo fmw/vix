@@ -33,3 +33,27 @@
   (clj-time.format/unparse
     (clj-time.format/formatters :date-time)
     (clj-time.core/now)))
+
+(defn log-stream []
+  (java.io.PrintStream. (java.io.ByteArrayOutputStream.) false))
+
+(let [orig (atom nil)
+      monitor (Object.)]
+  
+  (defn log-hide! []
+    "Adapted from clojure.tools.logging/log-capture! (this version
+     works around issues when switching namespaces)."
+    (locking monitor
+      (compare-and-set! orig nil [System/out System/err])
+      (System/setErr (log-stream))
+      (System/setOut (log-stream))))
+
+    (defn log-restore!
+    "Restores System.out and System.err to their original values.
+     Copied from clojure.tools.logging/log-uncapture!"
+    []
+    (locking monitor
+      (when-let [[out err :as v] @orig]
+        (swap! orig (constantly nil))
+        (System/setOut out)
+        (System/setErr err)))))

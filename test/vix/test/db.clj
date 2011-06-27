@@ -21,7 +21,7 @@
             [clj-http.client :as http]))
 
 (defn random-lower-case-string [length]
-  ; to include uppercase:
+  ; to include uppercase
   ; (let [ascii-codes (concat (range 48 58) (range 66 91) (range 97 123))]
   (let [ascii-codes (concat (range 48 58) (range 97 123))]
     (apply str (repeatedly length #(char (rand-nth ascii-codes))))))
