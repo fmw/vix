@@ -73,10 +73,8 @@
   (GET "/" [] (response (blog-frontpage-template
                         (get-feed db-server db-name "blog"))))
   (GET "/admin/:feed" {session :session {feed "feed"} :params}
-       (do
-         (print session)
-         (when (authorize session :* :DELETE)
-         (response (new-document-template {})))))
+       (when (authorize session :* :DELETE)
+         (response (new-document-template {}))))
   (GET "/login" [] (response (login-page-template "")))
   (POST "/login"
       {session :session {username "username" password "password"} :form-params}

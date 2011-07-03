@@ -79,11 +79,11 @@
 
 (defn unauthorized-request
   ([method resource my-routes]
-   (request method resource "" my-routes))
+   (unauthorized-request method resource "" my-routes))
   ([method resource body my-routes & params]
    (app (assoc (request-map method resource body params)
                      :session
-                     {:username "someone"
+                     {:username "nemo"
                       :permissions {:* ["GET" "POST" "PUT"]
                                     :blog []}}))))
 
