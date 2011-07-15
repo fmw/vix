@@ -2,17 +2,18 @@ var editor;
 var createSlug;
 var incrementSlug;
 var validateSlug;
+var getFeed;
 var Vix;
 
 Vix = {
     Views: {},
-    Controllers: {},
+    Routes: null,
     Collections: {},
 
     init: function() {
         $(document).ready(function() {
-            new Vix.Controllers.Documents();
-            Backbone.history.start();
+            Vix.Routes = new Vix.Routes();
+            Backbone.history.start({pushState: true});
         });
     }
 };
@@ -49,6 +50,10 @@ createSlug = function(input) {
     } else {
         return "";
     }
+}
+
+getFeed = function(href) {
+    return href.split("/")[4];
 }
 
 $(document).ready(function() {

@@ -1,7 +1,8 @@
 var documentOverviewTemplate = '<h3>Documents:</h3>' +
     '<ul id="document-list">' +
     '<% _.each(documents, function(doc) { %>' +
-        '<li><a rel="section" href="#edit' +
+        '<li><a rel="section" class="edit-link" href="/admin/' + 
+        '<%= getFeed(location.href) %>/edit' +
         '<%= doc.slug %>"><%= doc.title %></a> ' +
         '(<a rel="section" href="#" id="<%= doc.slug %>" ' +
         'class="delete-document">delete</a>)</li>' +
@@ -11,25 +12,37 @@ var documentOverviewTemplate = '<h3>Documents:</h3>' +
 
 $(document).ready(function(){
     Vix.Views.Index = Backbone.View.extend({
-        el: $("#documents-overview"),
+        el: $("#main-page"),
         
-        events: {
-            "click .delete-document": "deleteDocument",
-            "click #add-document": "openNewEditor"
+        events: {        
+            "click #add-document": "openNewEditor",
+            "click .edit-link": "editDocument",
+            "click .delete-document": "deleteDocument"
         },
-
 
         initialize: function() {
             this.render();
         },
 
         openNewEditor: function() {
-            window.location.hash = "#new";
+            Vix.Routes.navigate("admin/blog/new", true);
         },
 
-        deleteDocument: function(ev) {
-            var el = $(ev.target);
+        editDocument: function(event) {
+            event.preventDefault();
+
+            if(event.target.pathname.substring(0, 1) === "/") {
+                Vix.Routes.navigate(event.target.pathname.substring(1), true);
+            } else {
+                Vix.Routes.navigate(event.target.pathname, true);
+            }
+        },
+
+        deleteDocument: function(event) {
+            var el = $(event.target);
             var doc = new Document({id: el.attr("id")});
+
+            event.preventDefault();
 
             doc.destroy({
                 success: function(model, response) {

@@ -10,5 +10,5 @@ Document = Backbone.Model.extend({
                 return "/json/document/" + this.id;
             }
         }
-    }
+    },
 });

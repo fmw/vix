@@ -1,5 +1,8 @@
 var documentFormTemplate = '<p>' +
-        '<a href="#">Back to overview</a>' +
+        '<a href="/admin/<%= getFeed(location.href) %>" ' +
+                 'onclick="navigateBackToOverview(); return false;">' +
+             'Back to overview' +
+        '</a>' +
     '</p>' +
 
     '<div class="document-fields-row">' +
@@ -34,10 +37,14 @@ var documentFormTemplate = '<p>' +
         'id="content"><%= model.get("content") %></textarea>' +
     '<button id="save">Save</button>';
 
-$(document).ready(function(){
-    Vix.Views.Edit = Backbone.View.extend({
+var navigateBackToOverview = function() {
+    Vix.Routes.navigate("admin/" + getFeed(location.href), true);
+}
 
-        el: $("#document-form"),
+$(document).ready(function(){
+     Vix.Views.Edit = Backbone.View.extend({
+
+        el: $("#main-page"),
 
         events: {
             "change input#title": "updateSlug",
@@ -47,13 +54,14 @@ $(document).ready(function(){
         },
 
         initialize: function() {
-            _.bindAll(this, "render");
+            //_.bindAll(this, "render");
 
             //this.model.bind("change", this.render);
             this.render();
         },
 
         save: function() {
+            console.log("saving");
             var msg = this.model.isNew() ? "Successfully created!" : "Saved!";
 
             this.model.save({
@@ -64,7 +72,10 @@ $(document).ready(function(){
             }, {
                 success: function(model, resp) {
                     new Vix.Views.Notice({message: msg});
-                    window.location.hash = "#edit" + model.get("slug");
+                    Vix.Routes.navigate("admin/" +
+                                        getFeed(location.href) +
+                                        "/edit" +
+                                        model.get("slug"));
                 },
                 error: function() {
                     new Vix.Views.Error();

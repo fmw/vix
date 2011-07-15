@@ -138,5 +138,10 @@
              :draft (:draft new-document)))))
 
 (defn delete-document [db-server db-name slug]
-  (if-let [document (get-document db-server db-name slug)]
-    (couchdb/document-delete db-server db-name (:_id document))))
+  (kit/with-handler
+    (if-let [document (get-document db-server db-name slug)]
+      (couchdb/document-delete db-server db-name (:_id document)))
+  (kit/handle couchdb/DocumentNotFound []
+              nil)
+  (kit/handle couchdb/ResourceConflict []
+              nil)))

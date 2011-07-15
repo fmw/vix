@@ -262,6 +262,10 @@
 
   (do
     (delete-document +test-server+ +test-db+ "/blog/bar"))
+  
+  (is (nil? (delete-document +test-server+ +test-db+ "/blog/bar"))
+      "Expect nil value if document is deleted twice.")
 
   (is (nil? (get-document +test-server+ +test-db+ "/blog/bar"))
       "Assure the document is truly removed."))
+
