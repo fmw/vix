@@ -25,14 +25,14 @@ customer of Net Collective.
 Technology
 ==========
 
-Vix is written in `Clojure`_, a Lisp implementation that runs on the Java
-Virtual Machine (JVM). This means that Vix embraces the existing Java
-infrastructure and (legacy) Java libraries used by enterprise customers, while
-using a language that allows for rapid development. Vix uses `Enlive`_ as a
-templating solution and the `Compojure`_ framework. On the front-end, we're
-using the `jQuery`_, `underscore.js` and `Backbone.js`_ Javascript frameworks.
-Vix exposes all functionality through a RESTful API, allowing for easy
-integration with external applications.
+Vix is written in `Clojure`_, a Lisp implementation that runs on the
+Java Virtual Machine (JVM). This means that Vix embraces the existing
+Java infrastructure and (legacy) Java libraries used by enterprise
+customers, while using a language that allows for rapid
+development. Vix uses `Enlive`_ templating and the `Compojure`_
+framework. The client-side code is written in `ClojureScript`_ using
+the `Google Closure`_ tools. Vix exposes all functionality through a
+RESTful API, allowing for easy integration with external applications.
 
 Installation
 ============
@@ -54,7 +54,6 @@ yourself thusly:
 .. _`Clojure`: http://clojure.org/
 .. _`Enlive`: https://github.com/cgrand/enlive
 .. _`Compojure`: https://github.com/weavejester/compojure
-.. _`jQuery`: http://jquery.com/
-.. _`underscore.js`: http://documentcloud.github.com/underscore/
-.. _`Backbone.js`: http://documentcloud.github.com/backbone/
+.. _`ClojureScript`: https://github.com/clojure/clojurescript
+.. _`Google Closure`: http://code.google.com/closure/
 .. _`Leiningen`: https://github.com/technomancy/leiningen
