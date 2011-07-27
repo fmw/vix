@@ -1,77 +1,81 @@
-<!doctype html> 
-<html lang=en> 
-    <head> 
-        <meta charset="UTF-8" /> 
-        <title>New Document | vix.io</title> 
-        <link rel="stylesheet" href="/static/style.css" type="text/css" /> 
-        <link rel="stylesheet" type="text/css"
-            href="http://yui.yahooapis.com/2.9.0/build/assets/skins/sam/skin.css">
-        <script
-            src="http://yui.yahooapis.com/2.9.0/build/yahoo-dom-event/yahoo-dom-event.js"></script> 
-        <script
-            src="http://yui.yahooapis.com/2.9.0/build/element/element-min.js"></script> 
-        <script
-            src="http://yui.yahooapis.com/2.9.0/build/container/container_core-min.js"></script>
-        <script
-            src="http://yui.yahooapis.com/2.9.0/build/menu/menu-min.js"></script>
-        <script
-            src="http://yui.yahooapis.com/2.9.0/build/button/button-min.js"></script>
-        
-        <script
-            src="http://yui.yahooapis.com/2.9.0/build/editor/editor-min.js"></script>
-        <script
-            type="text/javascript"
-            src="http://ajax.googleapis.com/ajax/libs/jquery/1.6.1/jquery.min.js"></script>
-        <script type="text/javascript"
-            src="/static/js/jquery.ba-dotimeout.min.js"></script>
-        <script type="text/javascript"
-            src="/static/js/json2.js"></script>
-        <script type="text/javascript"
-            src="/static/js/underscore-min.js"></script>
-        <script type="text/javascript"
-            src="/static/js/backbone-min.js"></script>
+<!doctype html>
+<!--[if lt IE 7 ]> <html lang="en" class="no-js ie6"> <![endif]-->
+<!--[if IE 7 ]>    <html lang="en" class="no-js ie7"> <![endif]-->
+<!--[if IE 8 ]>    <html lang="en" class="no-js ie8"> <![endif]-->
+<!--[if IE 9 ]>    <html lang="en" class="no-js ie9"> <![endif]-->
+<!--[if (gt IE 9)|!(IE)]><!--> <html lang="en" class="no-js"> <!--<![endif]-->
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
 
-        <script type="text/javascript"
-            src="/static/js/vix.js"></script> 
+  <title>Vix Editor</title>
 
-        <script type="text/javascript"
-            src="/static/js/models/document.js"></script> 
-        <script type="text/javascript"
-            src="/static/js/collections/documents.js"></script> 
-        <script type="text/javascript"
-            src="/static/js/routes.js"></script> 
-        <script type="text/javascript"
-            src="/static/js/views/edit.js"></script> 
-        <script type="text/javascript"
-            src="/static/js/views/index.js"></script> 
-        <script type="text/javascript"
-            src="/static/js/views/notice.js"></script> 
-        <!--[if lt IE 9]>
-        <script
-            src="http://html5shim.googlecode.com/svn/trunk/html5.js"></script>
-        <![endif]-->
-</head> 
-<body class="yui-skin-sam">
-    <div id="wrapper"> 
-        <header id="header"> 
-            <h1 id="logo">vix</h1>
-            <nav> 
-                <ul id="menu"> 
-                    <!--
-                        <li><a href="/new" title="New Document">New</a></li> 
-                    !-->
-                </ul> 
-            </nav> 
-        </header> 
-        <div id="status-message"></div>
-        <div id="main-page">
-            <div id="documents-overview"></div>
-            <div id="document-form">
-            </div>
-        </div>
-    </div> 
-    <footer id="footer">
-        Powered by <a href="http://vix.io">Vix.io</a>.
-    </footer> 
-</body> 
+  <link rel="stylesheet" href="/static/css/style.css">
+
+  <link rel="stylesheet" href="/static/css/button.css" />
+  <link rel="stylesheet" href="/static/css/dialog.css" />
+  <link rel="stylesheet" href="/static/css/linkbutton.css" />
+  <link rel="stylesheet" href="/static/css/menu.css">
+  <link rel="stylesheet" href="/static/css/menuitem.css">
+  <link rel="stylesheet" href="/static/css/menuseparator.css">
+  <link rel="stylesheet" href="/static/css/tab.css" />
+  <link rel="stylesheet" href="/static/css/tabbar.css" />
+  <link rel="stylesheet" href="/static/css/toolbar.css" />
+  <link rel="stylesheet" href="/static/css/colormenubutton.css" />
+  <link rel="stylesheet" href="/static/css/palette.css" />
+  <link rel="stylesheet" href="/static/css/colorpalette.css" />
+
+  <link rel="stylesheet" href="/static/css/editor/bubble.css" />
+  <link rel="stylesheet" href="/static/css/editor/dialog.css" />
+  <link rel="stylesheet" href="/static/css/editor/linkdialog.css" />
+  <link rel="stylesheet" href="/static/css/editortoolbar.css" />
+
+  <!--[if lt IE 9]>
+      <script src="http://html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+  <![endif]--> 
+</head>
+
+<body>
+  <div id="wrapper"> 
+    <header id="header"> 
+      <h1 id="logo">vix</h1> 
+      <nav>
+        <ul id="menu"> 
+        </ul> 
+      </nav> 
+    </header>
+
+    <div id="main-page">
+    <div id="status-message"></div>
+
+    <div class="document-fields-row">
+      <label for="title">Title:</label>
+      <input type="text" id="title" name="title" class="input-field" />
+      <input type="checkbox" id="draft" name="draft" class="checkbox-field" />
+      <label for="draft">Draft</label>
+    </div>
+
+    <div class="document-fields-row">
+      <label for="slug" id="slug-label" class="disabled">Slug:</label>
+      <input type="text" id="slug" name="slug" class="input-field disabled"
+             disabled="disabled" />
+      <input type="checkbox" id="custom-slug" name="custom-slug"
+             class="checkbox-field" />
+      <label for="custom-slug" id="custom-slug-label">Custom</label>
+    </div>
+
+    <div id="toolbar"></div>
+    <div id="content"></div>
+
+    </div>
+
+    <!-- In unoptimized mode, additional script tags are required -->
+    <script type="text/javascript" src="/static/js/goog/base.js"></script>
+    <script type="text/javascript" src="/static/js/vix/vix.js"></script>
+    <script type="text/javascript">
+      goog.require('vix.editor');
+    </script>
+
+  </div>
+</body>
 </html>

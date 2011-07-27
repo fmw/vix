@@ -1,0 +1,69 @@
+(ns vix.editor
+  (:require [goog.editor.Field :as Field]
+            [goog.editor.plugins.BasicTextFormatter :as BasicTextFormatter]
+            [goog.editor.plugins.RemoveFormatting :as RemoveFormatting]
+            [goog.editor.plugins.UndoRedo :as UndoRedo]
+            [goog.editor.plugins.ListTabHandler :as ListTabHandler]
+            [goog.editor.plugins.SpacesTabHandler :as SpacesTabHandler]
+            [goog.editor.plugins.EnterHandler :as EnterHandler]
+            [goog.editor.plugins.HeaderFormatter :as HeaderFormatter]
+            [goog.editor.plugins.LoremIpsum :as LoremIpsum]
+            [goog.editor.plugins.LinkDialogPlugin :as LinkDialogPlugin]
+            [goog.editor.plugins.LinkBubble :as LinkBubble]
+            [goog.editor.Command :as buttons]
+            [goog.ui.editor.DefaultToolbar :as DefaultToolbar]
+            [goog.ui.editor.ToolbarController :as ToolbarController]
+            [goog.dom :as dom]))
+
+(defn create-editor-field [element-id]
+  (goog.editor.Field. element-id))
+
+(defn register-editor-plugins [editor]
+  (doto editor
+    (.registerPlugin (goog.editor.plugins.BasicTextFormatter.))
+    (.registerPlugin (goog.editor.plugins.RemoveFormatting.))
+    (.registerPlugin (goog.editor.plugins.UndoRedo.))
+    (.registerPlugin (goog.editor.plugins.ListTabHandler.))
+    (.registerPlugin (goog.editor.plugins.SpacesTabHandler.))
+    (.registerPlugin (goog.editor.plugins.EnterHandler.))
+    (.registerPlugin (goog.editor.plugins.HeaderFormatter.))
+    (.registerPlugin (goog.editor.plugins.LoremIpsum. "Click here to edit."))
+    (.registerPlugin (goog.editor.plugins.LinkDialogPlugin.))
+    (.registerPlugin (goog.editor.plugins.LinkBubble.))))
+
+(defn create-editor-toolbar [element-id]
+  (let [buttons (to-array
+                 [buttons/BOLD
+                 buttons/ITALIC
+                 buttons/UNDERLINE
+                 buttons/FONT_COLOR
+                 buttons/BACKGROUND_COLOR
+                 buttons/FONT_FACE
+                 buttons/FONT_SIZE
+                 buttons/LINK
+                 buttons/UNDO
+                 buttons/REDO
+                 buttons/UNORDERED_LIST
+                 buttons/ORDERED_LIST
+                 buttons/INDENT
+                 buttons/OUTDENT
+                 buttons/JUSTIFY_LEFT
+                 buttons/JUSTIFY_CENTER
+                 buttons/JUSTIFY_RIGHT
+                 buttons/SUBSCRIPT
+                 buttons/SUPERSCRIPT
+                 buttons/STRIKE_THROUGH
+                 buttons/REMOVE_FORMAT])]
+    (DefaultToolbar/makeToolbar buttons (dom/getElement element-id))))
+
+
+(defn enable-editor []
+  (let [editor (create-editor-field "content")
+        toolbar (create-editor-toolbar "toolbar")]
+    (do
+      (register-editor-plugins editor)
+      (goog.ui.editor.ToolbarController. editor toolbar)
+      (.makeEditable editor editor)))
+  nil)
+
+(enable-editor)

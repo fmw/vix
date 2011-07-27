@@ -91,6 +91,17 @@ header a:hover {
     color: #c1c1c1;
 }
 
+#toolbar {
+    with: 602px;
+}
+
+#content {
+    width: 600px;
+    height: 300px;
+    background-color: #fff;
+    border: 1px solid grey;
+}
+
 button {
     margin-top: 20px;
     padding: 5px 10px;
@@ -114,4 +125,31 @@ button {
 footer {
     margin: 20px 20px 0 20px;
     font-size: 12px;
+}
+
+#toolbar {
+    width: 602px;
+}
+
+/* Google Closure */
+.goog-inline-block {
+    position: relative;
+    display: -moz-inline-box; /* Ignored by FF3 and later */
+    display: inline-block;
+}
+
+/*
+ * Pre-IE7 hack. On IE, "display: inline-block" only gives the element
+ * layout, but doesn't give it inline behaviour. Subsequently setting display
+ * to inline does the trick.
+ */
+* html .goog-inline-block {
+    display: inline;
+}
+
+/*
+ * IE7-only hack. See previous.
+ */
+*:first-child+html .goog-inline-block {
+    display: inline;
 }

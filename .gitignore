@@ -1,5 +1,7 @@
 pom.xml
-*jar
+*.jar
+*.war
 lib
 classes
 *.swp
+\#*
