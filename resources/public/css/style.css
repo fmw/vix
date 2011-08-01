@@ -87,10 +87,6 @@ header a:hover {
     width: 370px;
 }
 
-.document-fields-row .disabled {
-    color: #c1c1c1;
-}
-
 #toolbar {
     with: 602px;
 }
@@ -109,17 +105,28 @@ button {
 }
 
 #status-message {
-    display: none;
-    color: green;
-    width: 555px;
-    border: 1px solid #ddd;
-    background: #eee;
-    padding: 5px;
-    margin: 20px 5px 5px 20px;
+    padding: 5px 5px 5px 0;
+    margin: 20px 5px 5px 0;
+}
+
+.status-ok {
+    color: green !important;
+}
+
+.status-error {
+    color: red !important;
 }
 
 .error {
-    color: darkred !important;
+    color: red !important;
+}
+
+.hide {
+    visibility: hidden !important;
+}
+
+.show {
+    visibility: visible !important;
 }
 
 footer {

@@ -25,7 +25,7 @@
     (str "/" slug)))
 
 (defn increment-slug [slug]
-  (if-let [slug-matches (re-matches #"(.*?)-([\d]{1,})$" slug)]
+  (if-let [slug-matches (re-matches #"(.*?)-([\d]+)$" slug)]
     (str (nth slug-matches 1) "-" (inc (Integer/parseInt (last slug-matches))))
     (str slug "-2")))
 

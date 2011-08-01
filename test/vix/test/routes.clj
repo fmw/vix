@@ -197,7 +197,7 @@
            200))
     (is (= (get-document +test-server+ +test-db+ "/blog/bar") nil))
                         
-    (is (= (:status (request :get "/static/style.css" main-routes)) 200))
+    (is (= (:status (request :get "/static/css/style.css" main-routes)) 200))
     (is (= (:status (request :get "/static/none" main-routes)) 404))
     (is (= (:body (request :get "/static/none" main-routes))
            "<h1>Page not found</h1>"))
