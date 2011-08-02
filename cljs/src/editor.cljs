@@ -1,5 +1,6 @@
 (ns vix.editor
-  (:require [clojure.string :as string]
+  (:require [vix.document :as document]
+            [clojure.string :as string]
             [goog.editor.Field :as Field]
             [goog.editor.plugins.BasicTextFormatter :as BasicTextFormatter]
             [goog.editor.plugins.RemoveFormatting :as RemoveFormatting]
@@ -39,58 +40,11 @@
 (defn blank? [string]
   (if (= 0 (count string)) true false))
 
-; FIXME: move to vix.document
-(defn get-document [callback]
-  (let [slug (add-initial-slash (.value (dom/getElement "slug")))]
-    (xhr/send (str "/json/document" slug) callback)))
-
 (defn get-feed-from-uri []
   (let [parts (re-find #"[^/]+/admin/([^/]+)/(.*?)" (js* "location.href"))]
     ;; TODO: throw error if feed isn't found
     (when (= 3 (count parts))
       (nth parts 1))))
-
-(comment
-  ; TODO: implement a nice animation for displaying status messages
-
-  ;imports:
-  ; [goog.fx.dom :as fx-dom]
-  ; [goog.fx.Animation :as Animation]
-  ; [goog.fx.Animation.EventType :as transition-event]
-  ; [goog.Timer :as timer]
-  (defn fx!
-    ([fx-obj element duration]
-       (fx! fx-obj element duration {:begin nil :end nil}))
-    ([fx-obj element duration event-handlers]
-       (let [begin-fn (:begin event-handlers)
-             end-fn (:end event-handlers)
-             animation (fx-obj. element duration)]
-
-         (when (fn? begin-fn)
-           (events/listen animation transition-event/BEGIN begin-fn))
-       
-         (when (fn? end-fn)
-           (events/listen animation
-                          transition-event/END
-                          #((do (end-fn)
-                                (.destroy animation animation)))))
-         (.play animation animation))))
-
-  (def fade-in! (partial fx! fx-dom/FadeInAndShow true))
-  (def fade-out! (partial fx! fx-dom/FadeOutAndHide true))
-
-  (defn remove-slug-error [status-el slug-el]
-    (let [end-fn (fn []
-                   ; make sure we don't remove new errors that
-                   ; popped up after the start of the animation
-                   (when (classes/has slug-el "error")
-                     (swap! fade-out-animation-active false)
-                     (classes/remove status-el "status-error")
-                     (classes/remove status-el "error")
-                     (dom/setTextContent status-el " ")))]
-      (when (classes/has slug-el "error")
-        (fade-out! status-el 1000 {:begin-fn nil :end-fn end-fn})
-        (classes/remove slug-el "error")))))
 
 (defn create-editor-field [element-id]
   (goog.editor.Field. element-id))
@@ -137,18 +91,13 @@
     (str (nth slug-matches 1) "-" (inc (js/parseInt (last slug-matches))))
     (str slug "-2")))
 
-(defn add-initial-slash [slug]
-  (if (= (first slug) "/")
-    slug
-    (str "/" slug)))
-
 (defn handle-duplicate-slug-callback [e]
   (let [status (.getStatus (.target e) e)
         slug-el (dom/getElement "slug")]
     (when (= status 200) 
       (set! (.value slug-el)
-            (increment-slug (add-initial-slash (.value slug-el))))
-      (get-document handle-duplicate-slug-callback))))
+            (increment-slug (document/add-initial-slash (.value slug-el))))
+      (document/get-doc (.value slug-el) handle-duplicate-slug-callback))))
 
 (defn handle-duplicate-custom-slug-callback [e]
   (let [status (.getStatus (.target e) e)
@@ -170,11 +119,12 @@
        (string/join "-" (filter #(not (blank? %)) (.split title #"[^a-zA-Z0-9]")))))
 
 (defn sync-slug-with-title []
-  (if-not (.checked (dom/getElement "custom-slug"))
-    (when-let [title (.value (dom/getElement "title"))]
-      (set! (.value (dom/getElement "slug"))
+  (when-not (.checked (dom/getElement "custom-slug"))
+    (let [title (.value (dom/getElement "title"))
+          slug-el (dom/getElement "slug")]
+      (set! (.value slug-el)
             (create-slug (str "/" (get-feed-from-uri) "/") title))
-      (get-document handle-duplicate-slug-callback))))
+      (document/get-doc (.value slug-el) handle-duplicate-slug-callback))))
 
 (defn toggle-custom-slug []
   (let [slug-el (dom/getElement "slug")]
@@ -217,7 +167,7 @@
        (slug-has-consecutive-dashes-or-slashes? slug) (err dash-slash-err)
        :else (remove-slug-error status-el slug-el))
       (do
-        (get-document handle-duplicate-custom-slug-callback)))))
+        (document/get-doc (.value slug-el) handle-duplicate-custom-slug-callback)))))
 
 (defn enable-editor []
   (let [editor (create-editor-field "content")
