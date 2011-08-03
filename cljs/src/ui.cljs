@@ -1,8 +1,22 @@
 (ns vix.ui
-  (:require [goog.fx.dom :as fx-dom]
+  (:require [goog.dom.classes :as classes]
+            [goog.dom :as dom]
+            [goog.fx.dom :as fx-dom]
             [goog.fx.Animation :as Animation]
             [goog.fx.Animation.EventType :as transition-event]
             [goog.Timer :as timer]))
+
+(defn display-error [status-el message]
+  (do
+    (dom/setTextContent status-el message)
+    (classes/remove status-el "status-ok")
+    (classes/add status-el "status-error")))
+
+(defn remove-error [status-el slug-el]
+  (do
+    (classes/remove status-el "status-error")
+    (classes/remove status-el "error")
+    (dom/setTextContent status-el " ")))
 
 (defn fx!
   ([fx-obj element duration]

@@ -1,0 +1,60 @@
+{namespace vix.templates}
+
+/**
+ * Displays the Vix Editor.
+ *
+ * @param status
+ * @param title
+ * @param slug
+ * @param draft
+ */
+{template .editor}
+  <h3 id="caption">
+    {if $status == 'new'}
+      Add Document
+    {else}
+      Edit Document
+    {/if}
+  </h3>
+
+  <div id="status-message">&nbsp;</div>
+
+  <div class="document-fields-row">
+    <label for="title">Title:</label>
+    <input type="text" id="title" name="title" class="input-field"
+           value="{$title}" />
+    <input type="checkbox" id="draft" name="draft" class="checkbox-field"
+           {if $draft}
+             checked="checked"
+           {/if} />
+    <label for="draft">Draft</label>
+  </div>
+
+  <div class="document-fields-row">
+    <label for="slug" id="slug-label"
+           {if $status == 'edit'}
+             class="disabled"
+           {/if}>Slug:</label>
+    <input type="text" id="slug" name="slug" class="input-field disabled"
+           disabled="disabled" value="{$slug}" />
+    <input type="checkbox" id="custom-slug" name="custom-slug"
+           {if $status == 'edit'}
+             disabled="disabled"
+           {/if}
+           class="checkbox-field" />
+    <label for="custom-slug" id="custom-slug-label"
+           {if $status == 'edit'}
+             class="disabled"
+           {/if}>Custom</label>
+  </div>
+
+  <div id="toolbar"></div>
+  <div id="content"></div>
+{/template}
+
+/***/
+{template .document_not_found}
+  <h3>
+    Document not found. Are you sure it hasn't been deleted?
+  </h3>
+{/template}

@@ -1,5 +1,5 @@
 (ns vix.document
-  (:require [goog.net.XhrIo :as xhr]))
+  (:require [goog.net.XhrIo :as xhrio]))
 
 (defn add-initial-slash [slug]
   (if (= (first slug) "/")
@@ -8,4 +8,4 @@
 
 (defn get-doc [slug callback]
   (let [slug (add-initial-slash slug)]
-    (xhr/send (str "/json/document" slug) callback)))
+    (xhrio/send (str "/json/document" slug) callback)))

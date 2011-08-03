@@ -87,6 +87,10 @@ header a:hover {
     width: 370px;
 }
 
+.disabled {
+    color: grey;
+}
+
 #toolbar {
     with: 602px;
 }

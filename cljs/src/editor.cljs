@@ -1,5 +1,9 @@
 (ns vix.editor
   (:require [vix.document :as document]
+            [vix.ui :as ui]
+            [vix.util :as util]
+            [vix.templates :as tpl]
+            [soy :as soy]
             [clojure.string :as string]
             [goog.editor.Field :as Field]
             [goog.editor.plugins.BasicTextFormatter :as BasicTextFormatter]
@@ -15,7 +19,6 @@
             [goog.editor.Command :as buttons]
             [goog.ui.editor.DefaultToolbar :as DefaultToolbar]
             [goog.ui.editor.ToolbarController :as ToolbarController]
-            [goog.net.XhrIo :as xhr]
             [goog.events :as events]
             [goog.events.EventType :as event-type]
             [goog.dom :as dom]
@@ -36,12 +39,8 @@
 (def slug-not-unique-err
   "This slug is not unique (document already exists).")
 
-; FIXME: replace with string/blank? once implemented
-(defn blank? [string]
-  (if (= 0 (count string)) true false))
-
 (defn get-feed-from-uri []
-  (let [parts (re-find #"[^/]+/admin/([^/]+)/(.*?)" (js* "location.href"))]
+  (let [parts (re-find #"/admin/([^/]+)/(.*?)" (js* "location.pathname"))]
     ;; TODO: throw error if feed isn't found
     (when (= 3 (count parts))
       (nth parts 1))))
@@ -116,7 +115,8 @@
 
 (defn create-slug [prefix title]
   (str prefix
-       (string/join "-" (filter #(not (blank? %)) (.split title #"[^a-zA-Z0-9]")))))
+       (string/join "-" (filter #(not (string/blank? %))
+                                (.split title #"[^a-zA-Z0-9]")))))
 
 (defn sync-slug-with-title []
   (when-not (.checked (dom/getElement "custom-slug"))
@@ -141,17 +141,13 @@
 
 (defn display-slug-error [status-el slug-el message]
   (do
-    (dom/setTextContent status-el message)
-    (classes/remove status-el "status-ok")
     (classes/add slug-el "error")
-    (classes/add status-el "status-error")))
+    (ui/display-error status-el message)))
 
 (defn remove-slug-error [status-el slug-el]
   (when (classes/has slug-el "error")
-    (classes/remove status-el "status-error")
-    (classes/remove status-el "error")
-    (dom/setTextContent status-el " ")
-    (classes/remove slug-el "error")))
+    (classes/remove slug-el "error")
+    (ui/remove-error status-el)))
 
 (defn validate-slug []
   (if (.checked (dom/getElement "custom-slug"))
@@ -161,7 +157,7 @@
           err (partial display-slug-error status-el slug-el)
           dash-slash-err slug-has-consecutive-dashes-or-slashes-err]
       (cond
-       (blank? slug) (err slug-required-err)
+       (string/blank? slug) (err slug-required-err)
        (not (= (first slug) "/")) (err slug-initial-slash-required-err)
        (slug-has-invalid-chars? slug) (err slug-has-invalid-chars-err)
        (slug-has-consecutive-dashes-or-slashes? slug) (err dash-slash-err)
@@ -169,25 +165,57 @@
       (do
         (document/get-doc (.value slug-el) handle-duplicate-custom-slug-callback)))))
 
-(defn enable-editor []
-  (let [editor (create-editor-field "content")
-        toolbar (create-editor-toolbar "toolbar")]
-    (do
-      (register-editor-plugins editor)
-      (goog.ui.editor.ToolbarController. editor toolbar)
-      (.makeEditable editor editor)))
-  
-    ;; these events should only exist for new docs (existing slugs are immutable)
-    (when (re-matches #"(.*?)/admin/[a-z]+/new" (js* "location.href"))
-      (events/listen (dom/getElement "title")
-                     event-type/INPUT
-                     sync-slug-with-title)
-      (events/listen (dom/getElement "slug")
-                     event-type/INPUT
-                     validate-slug)
-      (events/listen (dom/getElement "custom-slug")
-                     event-type/CHANGE
-                     toggle-custom-slug))
-    nil)
+(defn render-editor-template [data]
+  (soy/renderElement (dom/getElement "main-page") tpl/editor (util/map-to-obj data)))
 
-(enable-editor)
+(defn render-document-not-found-template []
+  (soy/renderElement (dom/getElement "main-page") tpl/document-not-found))
+
+(defn render-editor
+  ([tpl-map] (render-editor tpl-map nil))
+  ([tpl-map content]
+     (if (= "new" (:status tpl-map))
+       (do
+         (render-editor-template tpl-map)
+         (events/listen (dom/getElement "title")
+                        event-type/INPUT
+                        sync-slug-with-title)
+         (events/listen (dom/getElement "slug")
+                        event-type/INPUT
+                        validate-slug)
+         (events/listen (dom/getElement "custom-slug")
+                        event-type/CHANGE
+                        toggle-custom-slug))
+       (render-editor-template tpl-map))
+
+     (let [editor (create-editor-field "content")
+           toolbar (create-editor-toolbar "toolbar")]
+       (when content
+         (.setHtml editor false content true false))
+     
+       (do
+         (register-editor-plugins editor)
+         (goog.ui.editor.ToolbarController. editor toolbar)
+         (.makeEditable editor editor)))
+     nil))
+
+(defn start [status uri]
+  (if (= :new status)
+    (render-editor {:status "new"
+                    :title ""
+                    :slug ""
+                    :draft false})
+    (document/get-doc (str "/" (last (re-find #"^/admin/[^/]+/edit/(.*?)$" uri)))
+                      (fn [e]
+                        (let [xhr (.target e)
+                              status (.getStatus xhr e)]
+                          (if (= status 200)
+                            (let [json (js->clj (.getResponseJson xhr e))]
+                              (render-editor {:status "edit"
+                                              :title ("title" json)
+                                              :slug ("slug" json)
+                                              :draft ("draft" json)}
+                                             ("content" json)))
+                            (render-document-not-found-template)))
+                        nil)))
+  nil)
