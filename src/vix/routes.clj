@@ -86,6 +86,7 @@
            (get-feed db-server db-name (:feed (:params request))))))
   (POST "/json/:feed/new" request
         (when (authorize (:session request) (:feed (:params request)) :POST)
+          (print "body: " (:body request))
           (json-response (create-document
                            db-server
                            db-name

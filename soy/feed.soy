@@ -1,0 +1,37 @@
+{namespace vix.templates.feed}
+
+/**
+ * Displays all the documents for the given feed.
+ *
+ * @param json
+ *
+ */
+{template .list_documents}
+  <h3 id="caption">
+    Document overview
+  </h3>
+
+  <ul id="document-list">
+    {foreach $doc in $json}
+      <li>
+        <a href="/admin/{$doc.feed}/edit{$doc.slug}"
+           class="edit-link">{$doc.title}</a>
+        &nbsp;
+        (<a href="#"
+            id="delete_link_{$doc.slug}"
+            class="delete-document">delete</a>)
+      </li>
+    {/foreach}
+  </ul>
+
+  <button id="add-document">New</button>
+
+  <div id="status-message">&nbsp;</div>
+{/template}
+
+/***/
+{template .list_documents_error}
+  <h3>
+        Unable to find any documents for this feed. Are you sure it exists?
+  </h3>
+{/template}

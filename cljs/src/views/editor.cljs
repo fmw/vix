@@ -1,8 +1,9 @@
-(ns vix.editor
-  (:require [vix.document :as document]
+(ns vix.views.editor
+  (:require [vix.core :as core]
+            [vix.document :as document]
             [vix.ui :as ui]
             [vix.util :as util]
-            [vix.templates :as tpl]
+            [vix.templates.editor :as tpl]
             [soy :as soy]
             [clojure.string :as string]
             [goog.editor.Field :as Field]
@@ -38,6 +39,12 @@
 
 (def slug-not-unique-err
   "This slug is not unique (document already exists).")
+
+(def could-not-create-document-err
+  "Something when wrong while creating the document.")
+
+(def could-not-save-document-err
+  "Something went wrong while saving the document.")
 
 (defn get-feed-from-uri []
   (let [parts (re-find #"/admin/([^/]+)/(.*?)" (js* "location.pathname"))]
@@ -162,11 +169,48 @@
        (slug-has-invalid-chars? slug) (err slug-has-invalid-chars-err)
        (slug-has-consecutive-dashes-or-slashes? slug) (err dash-slash-err)
        :else (remove-slug-error status-el slug-el))
-      (do
+
+      (when (and (not (string/blank? slug)) (= (first slug) "/"))
         (document/get-doc (.value slug-el) handle-duplicate-custom-slug-callback)))))
 
+(def editor-field (atom nil))
+
+(defn get-document-value-map! []
+  {:feed (get-feed-from-uri)
+   :title (.value (dom/getElement "title"))
+   :slug (.value (dom/getElement "slug"))
+   :draft (.checked (dom/getElement "draft"))
+   :content (.getCleanContents @editor-field @editor-field)})
+
+(defn save-new-document-xhr-callback [e]
+  (let [xhr (.target e)]
+    (if (= (.getStatus xhr e) 201)
+      (let [json (js->clj (.getResponseJson xhr e))]
+        (core/navigate-replace-state (str ("feed" json) "/edit" ("slug" json))
+                                     (str "Edit \"" ("title" json) "\"")))
+      (ui/display-error (dom/getElement "status-message")
+                        could-not-create-document-err))))
+
+(defn save-new-document-click-callback [e]
+  (document/create-doc save-new-document-xhr-callback (get-document-value-map!)))
+
+(defn save-existing-document-xhr-callback [e]
+  (let [xhr (.target e)]
+    (if (= (.getStatus xhr e) 200)
+      nil ; TODO: display status message
+      (ui/display-error (dom/getElement "status-message")
+                        could-not-save-document-err))))
+
+(defn save-existing-document-click-callback [e]
+  (document/update-doc (.value (dom/getElement "slug"))
+                       save-existing-document-xhr-callback
+                       (get-document-value-map!)))
+
 (defn render-editor-template [data]
-  (soy/renderElement (dom/getElement "main-page") tpl/editor (util/map-to-obj data)))
+  (do
+    (soy/renderElement
+     (dom/getElement "main-page") tpl/editor (util/map-to-obj data))
+    (core/xhrify-internal-links! (core/get-internal-links!))))
 
 (defn render-document-not-found-template []
   (soy/renderElement (dom/getElement "main-page") tpl/document-not-found))
@@ -185,14 +229,22 @@
                         validate-slug)
          (events/listen (dom/getElement "custom-slug")
                         event-type/CHANGE
-                        toggle-custom-slug))
-       (render-editor-template tpl-map))
+                        toggle-custom-slug)
+         (events/listen (dom/getElement "save-document")
+                        "click"
+                        save-new-document-click-callback))
+       (do
+         (render-editor-template tpl-map)
+         (events/listen (dom/getElement "save-document")
+                        "click"
+                        save-existing-document-click-callback)))
 
      (let [editor (create-editor-field "content")
            toolbar (create-editor-toolbar "toolbar")]
+       (reset! editor-field editor)
        (when content
          (.setHtml editor false content true false))
-     
+
        (do
          (register-editor-plugins editor)
          (goog.ui.editor.ToolbarController. editor toolbar)
@@ -201,17 +253,23 @@
 
 (defn start [status uri]
   (if (= :new status)
-    (render-editor {:status "new"
-                    :title ""
-                    :slug ""
-                    :draft false})
+    (do
+      (util/set-page-title! "New document")
+      (render-editor {:status "new"
+                      :feed (get-feed-from-uri)
+                      :title ""
+                      :slug ""
+                      :draft false}))
     (document/get-doc (str "/" (last (re-find #"^/admin/[^/]+/edit/(.*?)$" uri)))
                       (fn [e]
                         (let [xhr (.target e)
                               status (.getStatus xhr e)]
                           (if (= status 200)
                             (let [json (js->clj (.getResponseJson xhr e))]
+                              (util/set-page-title!
+                               (str "Edit \"" ("title" json) "\""))
                               (render-editor {:status "edit"
+                                              :feed ("feed" json)
                                               :title ("title" json)
                                               :slug ("slug" json)
                                               :draft ("draft" json)}

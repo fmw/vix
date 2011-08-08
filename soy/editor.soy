@@ -1,23 +1,26 @@
-{namespace vix.templates}
+{namespace vix.templates.editor}
 
 /**
  * Displays the Vix Editor.
  *
  * @param status
+ * @param feed
  * @param title
  * @param slug
  * @param draft
  */
 {template .editor}
+  <p><a href="/admin/{$feed}/overview">Back to overview</a></p>
+
+  <div id="status-message">&nbsp;</div>
+
   <h3 id="caption">
     {if $status == 'new'}
       Add Document
     {else}
-      Edit Document
+    Edit Document
     {/if}
   </h3>
-
-  <div id="status-message">&nbsp;</div>
 
   <div class="document-fields-row">
     <label for="title">Title:</label>
@@ -50,6 +53,9 @@
 
   <div id="toolbar"></div>
   <div id="content"></div>
+
+  <p><button id="save-document">Save</button></p>
+
 {/template}
 
 /***/

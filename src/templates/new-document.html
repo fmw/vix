@@ -46,27 +46,6 @@
     </header>
 
     <div id="main-page">
-    <div id="status-message">&nbsp;</div>
-
-    <div class="document-fields-row">
-      <label for="title">Title:</label>
-      <input type="text" id="title" name="title" class="input-field" />
-      <input type="checkbox" id="draft" name="draft" class="checkbox-field" />
-      <label for="draft">Draft</label>
-    </div>
-
-    <div class="document-fields-row">
-      <label for="slug" id="slug-label" class="disabled">Slug:</label>
-      <input type="text" id="slug" name="slug" class="input-field disabled"
-             disabled="disabled" />
-      <input type="checkbox" id="custom-slug" name="custom-slug"
-             class="checkbox-field" />
-      <label for="custom-slug" id="custom-slug-label">Custom</label>
-    </div>
-
-    <div id="toolbar"></div>
-    <div id="content"></div>
-    
     </div>
 
     <!-- In unoptimized mode, additional script tags are required -->
@@ -74,6 +53,9 @@
     <script type="text/javascript" src="/static/js/vix/vix.js"></script>
     <script type="text/javascript">
       goog.require('vix.core');
+    </script>
+    <script type="text/javascript">
+      vix.core.start_app(location.pathname);
     </script>
 
   </div>
