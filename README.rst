@@ -141,7 +141,7 @@ access privileges::
 Only the lines starting with "user=>" and "vix.auth=>" need to be
 entered, because the other lines are REPL output.
 
-Install the Soy compiler::
+Download the Soy compiler::
 
     wget http://closure-templates.googlecode.com/files/closure-templates-for-javascript-latest.zip
     unzip closure-templates-for-javascript-latest.zip 
