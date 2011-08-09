@@ -99,7 +99,7 @@ utility you downloaded earlier::
         soy/feed.soy
 
 Now start the repl in the clojurescript/script directory and compile
-the client-side code (remember to change the pathname from
+the client-side code (remember to change the path name from
 "/home/fmw/clj/vix" to wherever you stored the vix directory)::
 
     cd ~/clj/clojurescript
@@ -112,8 +112,8 @@ leiningen-ring plugin::
 
     lein ring server
 
-Use the browser lauched by this process to navigate to /admin to see
-the administration backend.
+Use the browser that was launched by this process to navigate to
+/admin to see the administration backend.
 
 In the near future we will be providing a .war file that you can
 easily deploy on your existing Java infrastructure. For now, you can
@@ -124,6 +124,11 @@ compile it thusly::
 Questions and feedback
 ======================
 
+We eagerly solicit your questions and feedback, because user feedback
+is essential when it comes to deciding out what to improve and what
+functionality to prioritize. Please don't hesitate to contact Net
+Collective. In fact, you can get in touch with the main developer
+directly. You can reach F.M. de Waard (Filip) by email at fmw@vix.io.
 
 
 .. _`Content Management System`: http://en.wikipedia.org/wiki/Content_management_system
