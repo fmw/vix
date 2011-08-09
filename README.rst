@@ -122,7 +122,8 @@ Start the REPL::
 
     lein repl
 
-Execute the (add-user) function::
+Execute the (add-user) function in order to add a user with full
+access privileges::
 
     REPL started; server listening on localhost:35140.
     user=> (load "vix/auth")
