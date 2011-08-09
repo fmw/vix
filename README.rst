@@ -129,7 +129,7 @@ Execute the (add-user) function::
     nil
     user=> (in-ns 'vix.auth)
     #<Namespace vix.auth>
-    vix.auth=> (add-user "http://localhost:5984/" "vix" "my-username" "my-password" {:* [:GET :PUT :DELETE :POST]
+    vix.auth=> (add-user "http://localhost:5984/" "vix" "my-username" "my-password" {:* [:GET :PUT :DELETE :POST]})
     {:_rev "1-971bd05654d83183728c9d9ff08543b5",
     :_id "64e54e12dbed10a67e49af009d020776",
     :type "user",
