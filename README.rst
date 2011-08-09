@@ -42,12 +42,14 @@ feature-complete and not recommended for general production use (we're
 currently in the process of rolling it out on a small number of
 production sites for testing). That being said, there is a working
 prototype that you can try if you feel experimental. This installation
-procedure is targeted at developers. If you are a non-technical user
-Net Collective is always happy to set up a free beta account for you
-in return for your feedback (use the contact information below to get
-in touch with the author).
+procedure is targeted at developers and describes the installation of
+the source version. In the future we will provide a pre-compiled
+package as well. If you are a non-technical user Net Collective is
+always happy to set up a free beta account for you in return for your
+feedback (use the contact information below and get in touch with
+Filip).
 
-Start by installing the dependencies: `Leiningen`_, `ClojureScript`_
+Vix has the following dependencies: `Leiningen`_, `ClojureScript`_
 and `CouchDB`_. The compiler for the Soy templates is a separate
 download that you can find here: `download Soy`_. For production use
 you also need a web server like `Lighttpd`_ or `Apache`_ and an
@@ -58,62 +60,120 @@ distribution (the package name on Ubuntu is "sun-java6-jdk"), so
 GNU/Linux users are encouraged to install that as most distributions
 provide the OpenJDK by default.
 
-After satisfying these dependencies you can check out this repository
-and fetch the other dependencies using Leiningen::
+This is the sequence of commands used to install Vix on a clean Ubuntu
+11.04 installation (if you already installed some of the dependencies
+you can skip those commands). They are meant to be entered in the
+order listed. If you're using a different operating system and need
+help installing the application you can contact the author for support
+(see below for contact information). Note that the Microsoft Windows
+operating system is not officially supported, but stubborn Windows
+users might have some success using Cygwin.
 
-    mkdir ~/clj ; choose a different directory at your leisure
+Install and configure the Sun JDK (instead of the OpenJDK, which doesn't work
+as well with ClojureScript at the moment)::
+
+    sudo add-apt-repository "deb http://archive.canonical.com/ natty partner"
+    sudo apt-get update
+    sudo apt-get install sun-java6-jdk
+    sudo update-alternatives --config java
+
+Install Curl::
+
+    sudo apt-get install curl
+
+Install CouchDB and create the database::
+
+    sudo apt-get install couchdb
+    sudo /etc/init.d/couchdb start
+    curl -X PUT http://127.0.0.1:5984/vix
+
+Install Leiningen::
+
+    wget https://github.com/technomancy/leiningen/raw/stable/bin/lein
+    sudo mv lein /usr/local/bin/
+    sudo chmod +x /usr/local/bin/lein 
+
+Install git::
+
+    sudo apt-get install git
+
+Install ClojureScript::
+
+    mkdir ~/clj
     cd ~/clj
-    git clone git://github.com/fmw/vix.git
+    git clone git://github.com/clojure/clojurescript.git
+    cd clojurescript/
+    script/bootstrap
+
+Install Vix::
+
+    cd ~/clj
+    git clone  git://github.com/fmw/vix.git
+    cd vix/
     lein deps
 
-At this point you need to create a CouchDB database. By default the
-application looks for a database called "vix", but you can change that
-in src/vix/db.clj. After you have created a database you can add an
-admin user like this::
+Start the REPL::
 
-    cd ~/clj/vix ; or wherever you stored the project directory
     lein repl
+
+Execute the (add-user) function::
+
     REPL started; server listening on localhost:35140.
     user=> (load "vix/auth")
     nil
     user=> (in-ns 'vix.auth)
     #<Namespace vix.auth>
-    vix.auth=> (add-user "http://localhost:5984/" "vix" "my-username" "my-password" {:* [:GET :PUT :DELETE :POST]})
-   {:_rev "1-971bd05654d83183728c9d9ff08543b5",
-   :_id "64e54e12dbed10a67e49af009d020776",
-   :type "user",
-   :username "my-username",
-   :password "$2a$12$qrni2.vyScJEGc0ZfRXadeKw9Imp8SWvrHzatoF0cCPh.O8cNGIfMwC",
-   :permissions {:* [:GET :PUT :DELETE :POST]}}
+    vix.auth=> (add-user "http://localhost:5984/" "vix" "my-username" "my-password" {:* [:GET :PUT :DELETE :POST]
+    {:_rev "1-971bd05654d83183728c9d9ff08543b5",
+    :_id "64e54e12dbed10a67e49af009d020776",
+    :type "user",
+    :username "my-username",
+    :password "$2a$12$qrni2.vyScJEGc0ZfRXadeKw9Imp8SWvrHzatoF0cCPh.O8cNGIfMwC",
+    :permissions {:* [:GET :PUT :DELETE :POST]}}
 
-Note that after "lein repl" only the lines starting with "user=>" and
-"vix.auth=>" need to be entered; the other lines are REPL output.
+Only the lines starting with "user=>" and "vix.auth=>" need to be
+entered, because the other lines are REPL output.
 
-Now compile the client-side templates using the SoyToJsSrcCompiler.jar
-utility you downloaded earlier::
+Install the Soy compiler::
 
-    java -jar SoyToJsSrcCompiler.jar --shouldProvideRequireSoyNamespaces \
-        --shouldGenerateJsdoc \
-        --outputPathFormat resources/public/js/soy/{INPUT_FILE_NAME_NO_EXT}.soy.js \
-        soy/editor.soy \
-        soy/feed.soy
+    wget http://closure-templates.googlecode.com/files/closure-templates-for-javascript-latest.zip
+    unzip closure-templates-for-javascript-latest.zip 
 
-Now start the repl in the clojurescript/script directory and compile
-the client-side code (remember to change the path name from
-"/home/fmw/clj/vix" to wherever you stored the vix directory)::
+Compile the templates::
 
-    cd ~/clj/clojurescript
+    java -jar SoyToJsSrcCompiler.jar \
+         --shouldProvideRequireSoyNamespaces \
+         --shouldGenerateJsdoc  \
+         --outputPathFormat resources/public/js/soy/{INPUT_FILE_NAME_NO_EXT}.soy.js \
+          soy/editor.soy \
+          soy/feed.soy
+
+Create the output directory for the compiled JavaScript::
+
+    mkdir ~/clj/vix/resources/public/js/vix
+
+Start the ClojureScript REPL to compile the client-side code::
+
+    cd ~/clj/clojurescript/
     script/repl
+
+Execute this code to compile the ClojureScript, but change the
+directory ("/home/fmw/clj/vix") to reflect the right path on your
+system::
+
     user=> (use 'cljs.closure) (defn b [] (build "/home/fmw/clj/vix/cljs/src" {:pretty-print true :output-to "/home/fmw/clj/vix/resources/public/js/vix/vix.js" :output-dir "/home/fmw/clj/vix/resources/public/js/out" :libs ["/home/fmw/clj/vix/resources/public/js/soy/"]}))
     user=> (b)
 
-And finally you can start the development server using the
-leiningen-ring plugin::
+You can ignore any undeclared Var errors; just run (b) again to
+recompile in that case.
 
+Start the server::
+
+    cd ~/clj/vix/
     lein ring server
 
-Use the browser that was launched by this process to navigate to
-/admin to see the administration backend.
+Now you can open the admin backend at http://localhost:3000/admin
+(assuming everything was installed successfully).
 
 In the near future we will be providing a .war file that you can
 easily deploy on your existing Java infrastructure. For now, you can
@@ -125,7 +185,7 @@ Questions and feedback
 ======================
 
 We eagerly solicit your questions and feedback, because user feedback
-is essential when it comes to deciding out what to improve and what
+is essential when it comes to deciding what to improve and what
 functionality to prioritize. Please don't hesitate to contact Net
 Collective. In fact, you can get in touch with the main developer
 directly. You can reach F.M. de Waard (Filip) by email at fmw@vix.io.

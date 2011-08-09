@@ -10,7 +10,7 @@
                  [clj-time "0.3.0"]
                  [clj-http "0.1.3"]
                  [org.clojars.pieterbreed/clojure-couchdb "0.4.7"]]
-  :dev-dependencies [[lein-ring "0.4.0"]
+  :dev-dependencies [[lein-ring "0.4.5"]
                      [org.clojars.autre/lein-vimclojure "1.0.0"]
                      [swank-clojure "1.2.1"]]
   :ring {:handler vix.routes/app})
