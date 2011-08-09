@@ -61,12 +61,13 @@ header a:hover {
 }
 
 #document-form {
-    width: 580px;
+    width: 600px;
 }
 
 .document-fields-row {
     font-size: 20px;
     margin-bottom: 15px;
+    width: 600px;
 }
 
 .document-fields-row label:first-of-type {
@@ -84,7 +85,7 @@ header a:hover {
     font-size: 20px;
     margin-left: 10px;
     margin-right: 10px;
-    width: 370px;
+    width: 430px;
 }
 
 .disabled {
