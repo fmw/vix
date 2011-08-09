@@ -112,6 +112,9 @@ Install Vix::
     cd vix/
     lein deps
 
+If you chose a different database name earlier you should change the
+src/vix/db.clj script to reflect this.
+
 Start the REPL::
 
     lein repl
