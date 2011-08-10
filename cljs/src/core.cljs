@@ -10,12 +10,12 @@
 (def h (atom nil))
 
 (defn get-path [uri]
-  (let [uri-obj (new goog.Uri uri false)]
-    (.getPath uri-obj uri-obj)))
+  (. (new goog.Uri uri false) (getPath)))
 
 (defn get-internal-links! []
   (filter #(= (.substr (get-path (.href %)) 0 7) "/admin/")
-          (cljs.core.Vector/fromArray (.getElementsByTagName (js* "document") "a"))))
+          (cljs.core.Vector/fromArray
+           (. (js* "document") (getElementsByTagName "a")))))
 
 ; FIXME: figure out while only nested calls (e.g. in create-document-list-events
 ; and render-editor-template) work and replace with a centralized call
@@ -24,8 +24,7 @@
     (events/listen element
                    "click"
                    (fn [e]
-                     ; FIXME: ugly (js*) call
-                     (js* "e.preventDefault()")
+                     (. e (preventDefault))
                      (navigate (.substr (get-path (.href (.target e))) 7)
                                (.title (.target e)))))))
 
@@ -48,10 +47,10 @@
   nil)
 
 (defn navigate [token title]
-  (.setToken @h token title))
+  (. @h (setToken token title)))
 
 (defn navigate-replace-state [token title]
-  (.replaceToken @h token title))
+  (. @h (replaceToken token title)))
 
 (defn start-app [uri-path]
   (start-history!) ; in Chrome this triggers an event, leading to a (routes) call

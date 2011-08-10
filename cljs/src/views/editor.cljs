@@ -98,7 +98,7 @@
     (str slug "-2")))
 
 (defn handle-duplicate-slug-callback [e]
-  (let [status (.getStatus (.target e) e)
+  (let [status (. (.target e) (getStatus))
         slug-el (dom/getElement "slug")]
     (when (= status 200) 
       (set! (.value slug-el)
@@ -106,12 +106,12 @@
       (document/get-doc (.value slug-el) handle-duplicate-slug-callback))))
 
 (defn handle-duplicate-custom-slug-callback [e]
-  (let [status (.getStatus (.target e) e)
+  (let [status (. (.target e) (getStatus))
         slug-el (dom/getElement "slug")
         status-el (dom/getElement "status-message")]
     (cond
      (= status 200) (display-slug-error status-el slug-el slug-not-unique-err)
-     :else (when (= (.getTextContent status-el) slug-not-unique-err)
+     :else (when (= (. status-el textContent) slug-not-unique-err)
              remove-slug-error status-el slug-el))))
 
 (defn slug-has-invalid-chars? [slug]
@@ -196,7 +196,7 @@
 
 (defn save-existing-document-xhr-callback [e]
   (let [xhr (.target e)]
-    (if (= (.getStatus xhr e) 200)
+    (if (= (. xhr (getStatus)) 200)
       nil ; TODO: display status message
       (ui/display-error (dom/getElement "status-message")
                         could-not-save-document-err))))
@@ -243,13 +243,12 @@
            toolbar (create-editor-toolbar "toolbar")]
        (reset! editor-field editor)
        (when content
-         (.setHtml editor false content true false))
+         (. editor (setHtml false content true false)))
 
        (do
          (register-editor-plugins editor)
          (goog.ui.editor.ToolbarController. editor toolbar)
-         (.makeEditable editor editor)))
-     nil))
+         (. editor (makeEditable))))))
 
 (defn start [status uri]
   (if (= :new status)
@@ -263,9 +262,9 @@
     (document/get-doc (str "/" (last (re-find #"^/admin/[^/]+/edit/(.*?)$" uri)))
                       (fn [e]
                         (let [xhr (.target e)
-                              status (.getStatus xhr e)]
+                              status (. xhr (getStatus))]
                           (if (= status 200)
-                            (let [json (js->clj (.getResponseJson xhr e))]
+                            (let [json (js->clj (. xhr (getResponseJson)))]
                               (util/set-page-title!
                                (str "Edit \"" ("title" json) "\""))
                               (render-editor {:status "edit"
@@ -274,6 +273,4 @@
                                               :slug ("slug" json)
                                               :draft ("draft" json)}
                                              ("content" json)))
-                            (render-document-not-found-template)))
-                        nil)))
-  nil)
+                            (render-document-not-found-template)))))))

@@ -17,11 +17,12 @@
                   (goog.json/serialize (util/map-to-obj content))
                   content)]
     (events/listen req goog.net.EventType/COMPLETE callback)
-    (.send req
-           uri
-           method
-           content
-           (new goog.structs.Map "Content-Type" "application/json;charset=utf-8"))))
+    (. req (send
+            uri
+            method
+            content
+            (new goog.structs.Map "Content-Type"
+                                  "application/json;charset=utf-8")))))
 
 (defn request-doc-with-slug [slug callback method content]
   (let [slug (str "/json/document" slug)]

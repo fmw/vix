@@ -9,11 +9,11 @@
             [goog.Uri :as Uri]
             [goog.string :as string]))
 
-(defn display-document-list [main-el xhr e]
+(defn display-document-list [main-el xhr]
   (soy/renderElement main-el
                      tpl/list-documents
                      (util/map-to-obj
-                      {:json (.getResponseJson xhr e)})))
+                      {:json (. xhr (getResponseJson))})))
 
 (defn delete-doc-callback [e]
   (list-documents (js* "document.location.pathname")))
@@ -24,12 +24,14 @@
                  "click"
                  (fn [e]
                    (core/navigate (str feed "/new") "New Document")))
+  
+  ; converting to vector to avoid issues with doseq and arrays
   (doseq [delete-link (cljs.core.Vector/fromArray
                        (dom/getElementsByTagNameAndClass "a" "delete-document"))]
     (events/listen delete-link
                    "click"
                    (fn [e]
-                     (js* "e.preventDefault()")
+                     (. e (preventDefault))
                      (document/delete-doc (.substr (.id (.target e)) 12)
                                           delete-doc-callback)))))
 
@@ -41,9 +43,9 @@
      (fn [e]
        (let [main-el (dom/getElement "main-page")
              xhr (.target e)
-             status (.getStatus xhr e)]
+             status (. xhr (getStatus))]
          (if (= status 200)
            (do
-             (display-document-list main-el xhr e)
+             (display-document-list main-el xhr)
              (create-document-list-events feed))
            (soy/renderElement main-el tpl/list-documents-error)))))))

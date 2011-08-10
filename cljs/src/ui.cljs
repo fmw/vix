@@ -18,6 +18,7 @@
     (classes/remove status-el "error")
     (dom/setTextContent status-el " ")))
 
+; TODO: this function is still a work-in-progress
 (defn fx!
   ([fx-obj element duration]
      (fx! fx-obj element duration {:begin nil :end nil}))
@@ -33,8 +34,8 @@
          (events/listen animation
                         transition-event/END
                         #((do (end-fn)
-                              (.destroy animation animation)))))
-       (.play animation animation))))
+                              (. animation (destroy))))))
+       (. animation (play)))))
 
 (def fade-in! (partial fx! fx-dom/FadeInAndShow true))
 (def fade-out! (partial fx! fx-dom/FadeOutAndHide true))
