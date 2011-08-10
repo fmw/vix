@@ -4,6 +4,7 @@
             [vix.util :as util]
             [soy :as soy]
             [vix.templates.feed :as tpl]
+            [goog.global :as global]
             [goog.events :as events]
             [goog.dom :as dom]
             [goog.Uri :as Uri]
@@ -16,7 +17,7 @@
                       {:json (. xhr (getResponseJson))})))
 
 (defn delete-doc-callback [e]
-  (list-documents (js* "document.location.pathname")))
+  (list-documents global/document.location.pathname))
 
 (defn create-document-list-events [feed]
   (core/xhrify-internal-links! (core/get-internal-links!))

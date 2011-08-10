@@ -1,6 +1,7 @@
 (ns vix.core
   (:require [vix.views.editor :as editor]
             [vix.views.feed :as feed]
+            [goog.global :as global]
             [goog.events :as events]
             [goog.history.EventType :as event-type]
             [goog.history.Html5History :as Html5History]
@@ -15,7 +16,7 @@
 (defn get-internal-links! []
   (filter #(= (.substr (get-path (.href %)) 0 7) "/admin/")
           (cljs.core.Vector/fromArray
-           (. (js* "document") (getElementsByTagName "a")))))
+           (. global/document (getElementsByTagName "a")))))
 
 ; FIXME: figure out while only nested calls (e.g. in create-document-list-events
 ; and render-editor-template) work and replace with a centralized call
@@ -36,7 +37,7 @@
   (events/listen @h
                  event-type/NAVIGATE
                  (fn [e]
-                   (routes (js* "document.location.pathname")))))
+                   (routes global/document.location.pathname))))
 
 (defn routes [uri-path]
   (cond
@@ -52,6 +53,6 @@
 (defn navigate-replace-state [token title]
   (. @h (replaceToken token title)))
 
-(defn start-app [uri-path]
+(defn ^:export start-app [uri-path]
   (start-history!) ; in Chrome this triggers an event, leading to a (routes) call
   (routes uri-path))

@@ -1,5 +1,6 @@
 (ns vix.util
-  (:require [clojure.string :as string]))
+  (:require [goog.global :as global]
+            [clojure.string :as string]))
 
 (defn map-to-obj [m]
   (let [o (js-obj)]
@@ -7,4 +8,4 @@
     (doall (map #(aset o (second (string/split (first %) #"'")) (second %)) m)) o))
 
 (defn set-page-title! [title]
-  (set! (.title (js* "document")) title))
+  (set! global/document.title title))

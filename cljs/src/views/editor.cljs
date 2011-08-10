@@ -6,6 +6,7 @@
             [vix.templates.editor :as tpl]
             [soy :as soy]
             [clojure.string :as string]
+            [goog.global :as global]
             [goog.editor.Field :as Field]
             [goog.editor.plugins.BasicTextFormatter :as BasicTextFormatter]
             [goog.editor.plugins.RemoveFormatting :as RemoveFormatting]
@@ -47,7 +48,7 @@
   "Something went wrong while saving the document.")
 
 (defn get-feed-from-uri []
-  (let [parts (re-find #"/admin/([^/]+)/(.*?)" (js* "location.pathname"))]
+  (let [parts (re-find #"/admin/([^/]+)/(.*?)" global/document.location.pathname)]
     ;; TODO: throw error if feed isn't found
     (when (= 3 (count parts))
       (nth parts 1))))
