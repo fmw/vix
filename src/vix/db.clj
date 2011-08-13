@@ -132,7 +132,7 @@
       db-name
       (:_id document)
       (assoc document
-             :updated-at (now-rfc3339)
+             :updated (now-rfc3339)
              :title (:title new-document)
              :content (:content new-document)
              :draft (:draft new-document)))))

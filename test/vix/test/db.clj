@@ -20,6 +20,8 @@
   (:require [couchdb [client :as couchdb]]
             [clj-http.client :as http]))
 
+(def date-re #"^[\d]{4}-[\d]{2}-[\d]{2}T[\d]{2}:[\d]{2}:[\d]{2}\.[\d]{1,4}Z")
+
 (defn random-lower-case-string [length]
   ; to include uppercase
   ; (let [ascii-codes (concat (range 48 58) (range 66 91) (range 97 123))]
@@ -131,9 +133,7 @@
   (let [document (get-document +test-server+ +test-db+ "/blog/foo")]
         (is (re-matches #"^[a-z0-9]{32}$" (:_id document)))
         (is (re-matches #"^1-[a-z0-9]{32}$" (:_rev document)))
-        (is (re-matches
-              #"^[\d]{4}-[\d]{2}-[\d]{2}T[\d]{2}:[\d]{2}:[\d]{2}\.[\d]{1,4}Z"
-              (:published document)))
+        (is (re-matches date-re (:published document)))
         (is (= (:feed document) "blog"))
         (is (= (:title document) "foo"))
         (is (= (:slug document) (str "/blog/foo")))
@@ -179,9 +179,7 @@
 
       (is (re-matches #"^[a-z0-9]{32}$" (:_id document)))
       (is (re-matches #"^1-[a-z0-9]{32}$" (:_rev document)))
-      (is (re-matches
-            #"^[\d]{4}-[\d]{2}-[\d]{2}T[\d]{2}:[\d]{2}:[\d]{2}\.[\d]{1,4}Z"
-            (:published document)))
+      (is (re-matches date-re (:published document)))
       (is (= (:type document) "document"))
       (is (= (:feed document) "blog"))
       (is (= (:title document) "foo"))
@@ -202,9 +200,7 @@
 
         (is (re-matches #"^[a-z0-9]{32}$" (:_id document)))
         (is (re-matches #"^1-[a-z0-9]{32}$" (:_rev document)))
-        (is (re-matches
-              #"^[\d]{4}-[\d]{2}-[\d]{2}T[\d]{2}:[\d]{2}:[\d]{2}\.[\d]{1,4}Z"
-              (:published document)))
+        (is (re-matches date-re (:published document)))
         (is (= (:feed document) "blog"))
         (is (= (:title document) "foo"))
         (is (= (:slug document) (str "/blog/foo-" (+ n 2))))
@@ -244,6 +240,8 @@
                       (assoc new-doc :title "hic sunt dracones"))]
     (is (= (get-document +test-server+ +test-db+ "/blog/bar") updated-doc))
     (is (re-matches #"^2-[a-z0-9]{32}$" (:_rev updated-doc)))
+    (is (re-matches date-re (:updated updated-doc)))
+    (is (= (:published new-doc) (:published updated-doc)))
     (is (= (:title updated-doc) "hic sunt dracones"))))
 
 (deftest test-delete-document
