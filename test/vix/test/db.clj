@@ -20,7 +20,15 @@
   (:require [couchdb [client :as couchdb]]
             [clj-http.client :as http]))
 
-(def date-re #"^[\d]{4}-[\d]{2}-[\d]{2}T[\d]{2}:[\d]{2}:[\d]{2}\.[\d]{1,4}Z")
+(defn couchdb-id? [s]
+  (re-matches #"^[a-z0-9]{32}$" s))
+
+(defn couchdb-rev?
+  ([s] (couchdb-rev? 1 s))
+  ([rev-num s] (re-matches (re-pattern (str "^" rev-num "-[a-z0-9]{32}$")) s)))
+
+(defn iso-date? [s]
+  (re-matches #"^[\d]{4}-[\d]{2}-[\d]{2}T[\d]{2}:[\d]{2}:[\d]{2}\.[\d]{1,4}Z" s))
 
 (defn random-lower-case-string [length]
   ; to include uppercase
@@ -92,6 +100,15 @@
                      (str +test-server+
                           +test-db+
                           "/_design/views"))))]
+
+    (is (= (count (:views view-doc)) 4))
+    
+    (is (= (:map (:feeds (:views view-doc)))
+           (str "function(doc) {\n"
+                "    if(doc.type === \"feed\") {\n"
+                "        emit(doc.name, doc);\n"
+                "    }\n"
+                "}")))
     
     (is (= (:map (:by_slug (:views view-doc)))
            (str "function(doc) {\n"
@@ -107,8 +124,6 @@
                 "    }\n"
                 "}\n")))
 
-
-    
     (is (= (:map (:by_username (:views view-doc)))
            (str "function(doc) {\n"
                 "    if(doc.type === \"user\") {\n"
@@ -116,6 +131,68 @@
                 "    }\n"
                 "}\n")))))
 
+(deftest test-encode-view-options
+  (is (= (encode-view-options {:key "blog" :include_docs true})
+         "key=%22blog%22&include_docs=true"))
+  
+  (is (= (encode-view-options {:endkey ["blog"]
+                               :startkey ["blog" "2999"]
+                               :descending true
+                               :include_docs true})                                  
+         (str "endkey=%5B%22blog%22%5D&startkey=%5B%22blog%22%2C%222999%22%5D"
+              "&descending=true&include_docs=true"))))
+
+(deftest test-view-get
+  (let [doc-1 (create-document +test-server+ +test-db+ "blog" {:title "foo"
+                                                               :slug "/blog/foo"
+                                                               :content "bar"
+                                                               :draft true})
+
+        doc-2 (create-document +test-server+ +test-db+ "blog" {:title "foo"
+                                                               :slug "/blog/foo"
+                                                               :content "bar"
+                                                               :draft true})]
+    
+    (testing "Test if view-get is working and if views are added automatically"
+      (let [entries (:rows (view-get
+                            +test-server+
+                            +test-db+
+                            "views"
+                            "by_feed"
+                            {:endkey ["blog"]
+                             :startkey ["blog" "2999"]
+                             :include_docs true
+                             :descending true}))
+
+            feed (map #(:value %) entries)]
+    
+        (is (= (count feed) 2))
+
+        (is (some #{doc-1} feed))
+        (is (some #{doc-2} feed))))
+
+    (testing "Test if views are re-synced if missing (new?) view is requested"
+      (do
+        (couchdb/document-delete +test-server+ +test-db+ "_design/views")
+        ; add views with :by_feed missing (to simulate upgrading a vix deployment
+        ; to a new version with an extra view)
+        (create-views +test-server+ +test-db+ "views" (dissoc views :by_feed)))
+
+      (let [entries (:rows (view-get
+                            +test-server+
+                            +test-db+
+                            "views"
+                            "by_feed"
+                            {:endkey ["blog"]
+                             :startkey ["blog" "2999"]
+                             :descending true}))
+
+            feed (map #(:value %) entries)]
+    
+        (is (= (count feed) 2))
+
+        (is (some #{doc-1} feed))
+        (is (some #{doc-2} feed))))))
 
 (deftest test-get-document
   (do
@@ -131,14 +208,35 @@
   ; as we didn't create the view manually here, this test also implies
   ; views are created automatically by get-document
   (let [document (get-document +test-server+ +test-db+ "/blog/foo")]
-        (is (re-matches #"^[a-z0-9]{32}$" (:_id document)))
-        (is (re-matches #"^1-[a-z0-9]{32}$" (:_rev document)))
-        (is (re-matches date-re (:published document)))
+        (is (couchdb-id? (:_id document)))
+        (is (couchdb-rev? (:_rev document)))
+        (is (iso-date? (:published document)))
         (is (= (:feed document) "blog"))
         (is (= (:title document) "foo"))
         (is (= (:slug document) (str "/blog/foo")))
         (is (= (:content document) "bar"))
         (is (true? (:draft document)))))
+
+(deftest test-get-feed
+  (do
+    (create-feed +test-server+
+                 +test-db+
+                 {:title "Weblog"
+                  :subtitle "Vix Weblog!"
+                  :name "blog"
+                  :default-slug-format "/{document-title}"
+                  :default-document-type "with-description"}))
+
+  (let [feed (get-feed +test-server+ +test-db+ "blog")]
+    (is (= (:type feed) "feed"))
+    (is (couchdb-id? (:_id feed)))
+    (is (couchdb-rev? (:_rev feed)))
+    (is (iso-date? (:created feed)))
+    (is (= (:title feed) "Weblog"))
+    (is (= (:subtitle feed) "Vix Weblog!"))
+    (is (= (:name feed) "blog"))
+    (is (= (:default-slug-format feed) "/{document-title}"))
+    (is (= (:default-document-type feed) "with-description"))))
 
 (deftest test-get-unique-slug
   (is (= (get-unique-slug +test-server+ +test-db+ "/blog/foo") "/blog/foo"))
@@ -177,9 +275,9 @@
                       :content "bar"
                       :draft false})]
 
-      (is (re-matches #"^[a-z0-9]{32}$" (:_id document)))
-      (is (re-matches #"^1-[a-z0-9]{32}$" (:_rev document)))
-      (is (re-matches date-re (:published document)))
+      (is (couchdb-id? (:_id document)))
+      (is (couchdb-rev? (:_rev document)))
+      (is (iso-date? (:published document)))
       (is (= (:type document) "document"))
       (is (= (:feed document) "blog"))
       (is (= (:title document) "foo"))
@@ -198,31 +296,81 @@
                         :content "bar"
                         :draft true})]
 
-        (is (re-matches #"^[a-z0-9]{32}$" (:_id document)))
-        (is (re-matches #"^1-[a-z0-9]{32}$" (:_rev document)))
-        (is (re-matches date-re (:published document)))
+        (is (couchdb-id? (:_id document)))
+        (is (couchdb-rev? (:_rev document)))
+        (is (iso-date? (:published document)))
         (is (= (:feed document) "blog"))
         (is (= (:title document) "foo"))
         (is (= (:slug document) (str "/blog/foo-" (+ n 2))))
         (is (= (:content document) "bar"))
         (is (true? (:draft document)))))))
 
-(deftest test-get-feed
+(deftest test-create-feed
+  (let [feed (create-feed +test-server+
+                          +test-db+
+                          {:title "Weblog"
+                           :subtitle "Vix Weblog!"
+                           :name "blog"
+                           :default-slug-format "/{document-title}"
+                           :default-document-type "with-description"})]
+    
+    (is (= (:type feed) "feed"))
+    (is (couchdb-id? (:_id feed)))
+    (is (couchdb-rev? (:_rev feed)))
+    (is (iso-date? (:created feed)))
+    (is (= (:title feed) "Weblog"))
+    (is (= (:subtitle feed) "Vix Weblog!"))
+    (is (= (:name feed) "blog"))
+    (is (= (:default-slug-format feed) "/{document-title}"))
+    (is (= (:default-document-type feed) "with-description"))))
+
+(deftest test-get-documents-for-feed
   (let [doc-1 (create-document +test-server+ +test-db+ "blog" {:title "foo"
-                                                              :slug "/blog/foo"
-                                                              :content "bar"
-                                                              :draft true})
+                                                               :slug "/blog/foo"
+                                                               :content "bar"
+                                                               :draft true})
 
         doc-2 (create-document +test-server+ +test-db+ "blog" {:title "foo"
-                                                    :slug "/blog/foo"
-                                                    :content "bar"
-                                                    :draft true})
-        feed (get-feed +test-server+ +test-db+ "blog")]
+                                                               :slug "/blog/foo"
+                                                               :content "bar"
+                                                               :draft true})
+        
+        feed (get-documents-for-feed +test-server+ +test-db+ "blog")]
 
     (is (= (count feed) 2))
 
     (is (some #{doc-1} feed))
     (is (some #{doc-2} feed))))
+
+(deftest test-list-feeds
+  (let [blog-feed (create-feed +test-server+
+                               +test-db+
+                               {:title "Weblog"
+                                :subtitle "Vix Weblog!"
+                                :name "blog"
+                                :default-slug-format "/{feed-name}/{document-title}"
+                                :default-document-type "with-description"})
+        pages-feed (create-feed +test-server+
+                                +test-db+
+                                {:title "Pages"
+                                 :subtitle "Web Pages"
+                                 :name "pages"
+                                 :default-slug-format "/{document-title}"
+                                 :default-document-type "standard"})
+        images-feed (create-feed +test-server+
+                                 +test-db+
+                                 {:title "Images"
+                                  :subtitle "Internal feed with images"
+                                  :name "images"
+                                  :default-slug-format "/media/{document-title}"
+                                  :default-document-type "image"})
+        feeds (list-feeds +test-server+ +test-db+)]
+
+    (is (= (count feeds) 3))
+
+    (is (some #{blog-feed} feeds))
+    (is (some #{pages-feed} feeds))
+    (is (some #{images-feed} feeds))))
 
 (deftest test-update-document
   (let [new-doc (create-document
@@ -239,21 +387,47 @@
                       "/blog/bar"
                       (assoc new-doc :title "hic sunt dracones"))]
     (is (= (get-document +test-server+ +test-db+ "/blog/bar") updated-doc))
-    (is (re-matches #"^2-[a-z0-9]{32}$" (:_rev updated-doc)))
-    (is (re-matches date-re (:updated updated-doc)))
+    (is (couchdb-rev? 2 (:_rev updated-doc)))
+    (is (iso-date? (:updated updated-doc)))
     (is (= (:published new-doc) (:published updated-doc)))
     (is (= (:title updated-doc) "hic sunt dracones"))))
 
+(deftest test-update-feed
+  (let [blog-feed (create-feed +test-server+
+                               +test-db+
+                               {:title "Weblog"
+                                :subtitle "Vix Weblog!"
+                                :name "blog"
+                                :default-slug-format "/{feed-name}/{document-title}"
+                                :default-document-type "with-description"})
+        blog-feed-updated (update-feed +test-server+
+                                       +test-db+
+                                       "blog"
+                                       {:title "Weblog Feed"
+                                        :subtitle "Vix Weblog"
+                                        :name "weblog"
+                                        :default-slug-format "/{document-title}"
+                                        :default-document-type "standard"})]
+       
+    (is (= (get-feed +test-server+ +test-db+ "blog") blog-feed-updated))
+    (is (couchdb-rev? 2 (:_rev blog-feed-updated)))
+    (is (iso-date? (:feed-updated blog-feed-updated)))
+    (is (= (:created blog-feed) (:created blog-feed-updated)))
+    (is (= (:title blog-feed-updated) "Weblog Feed"))
+    (is (= (:subtitle blog-feed-updated) "Vix Weblog"))
+    (is (= (:name blog-feed-updated) "blog")) ; NB: not updated!
+    (is (= (:default-slug-format blog-feed-updated) "/{document-title}"))
+    (is (= (:default-document-type blog-feed-updated) "standard"))))
+
 (deftest test-delete-document
   (do
-    (create-document
-      +test-server+
-      +test-db+
-      "blog"
-      {:title "foo"
-       :slug "/blog/bar"
-       :content "bar"
-       :draft false}))
+    (create-document +test-server+
+                     +test-db+
+                     "blog"
+                     {:title "foo"
+                      :slug "/blog/bar"
+                      :content "bar"
+                      :draft false}))
 
   (is (not (nil? (get-document +test-server+ +test-db+ "/blog/bar")))
       "Assure the document exists before it is deleted.")
@@ -267,3 +441,24 @@
   (is (nil? (get-document +test-server+ +test-db+ "/blog/bar"))
       "Assure the document is truly removed."))
 
+(deftest test-delete-feed
+  (do
+    (create-feed +test-server+
+                 +test-db+
+                 {:title "Weblog"
+                  :subtitle "Vix Weblog!"
+                  :name "blog"
+                  :default-slug-format "/{feed-name}/{document-title}"
+                  :default-document-type "with-description"}))
+  
+  (is (not (nil? (get-feed +test-server+ +test-db+ "blog")))
+      "Assure the feed exists before it is deleted.")
+
+  (do
+    (delete-feed +test-server+ +test-db+ "blog"))
+  
+  (is (nil? (delete-feed +test-server+ +test-db+ "blog"))
+      "Expect nil value if feed is deleted twice.")
+
+  (is (nil? (get-feed +test-server+ +test-db+ "blog"))
+      "Assure the feed is truly removed."))

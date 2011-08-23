@@ -1,22 +1,48 @@
 (ns vix.ui
-  (:require [goog.dom.classes :as classes]
+  (:require [vix.util :as util]
             [goog.dom :as dom]
+            [goog.dom.forms :as forms]
+            [goog.dom.classes :as classes]
             [goog.fx.dom :as fx-dom]
             [goog.fx.Animation :as Animation]
             [goog.fx.Animation.EventType :as transition-event]
             [goog.Timer :as timer]))
 
-(defn display-error [status-el message]
-  (do
-    (dom/setTextContent status-el message)
-    (classes/remove status-el "status-ok")
-    (classes/add status-el "status-error")))
+(defn display-error [status-el message & other-elements]
+  (doseq [el other-elements] (classes/add el "error"))
 
-(defn remove-error [status-el slug-el]
-  (do
-    (classes/remove status-el "status-error")
-    (classes/remove status-el "error")
-    (dom/setTextContent status-el " ")))
+  (doto status-el
+    (classes/remove "status-ok")
+    (classes/add "status-error")
+    (classes/add "error")
+    (dom/setTextContent message))
+
+  ; return false to validation functions
+  false)
+
+(defn remove-error [status-el & other-elements]
+  (doseq [el other-elements] (classes/remove el "error"))
+  
+  (doto status-el
+    (classes/remove "status-error")
+    (classes/remove "error")
+    (dom/setTextContent " ")))
+
+(defn enable-element [el-id-or-obj]
+  (let [el (util/get-element el-id-or-obj)]
+    (doto el
+      (classes/remove "disabled")
+      (.removeAttribute "disabled"))))
+
+(defn disable-element [el-id-or-obj]
+  (let [el (util/get-element el-id-or-obj)]
+    (doto el
+      (classes/add "disabled")
+      (.setAttribute "disabled" "disabled"))))
+
+(defn set-form-value [el-id-or-obj value]
+  (let [el (util/get-element el-id-or-obj)]
+    (forms/setValue el value)))
 
 ; TODO: this function is still a work-in-progress
 (defn fx!

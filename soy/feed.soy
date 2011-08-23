@@ -7,6 +7,8 @@
  *
  */
 {template .list_documents}
+  <div id="status-message">&nbsp;</div>
+
   <h3 id="caption">
     Document overview
   </h3>
@@ -25,8 +27,131 @@
   </ul>
 
   <button id="add-document">New</button>
+{/template}
+
+/**
+ * Displays all feeds.
+ *
+ * @param json
+ *
+ */
+{template .list_feeds}
+  <div id="status-message">&nbsp;</div>
+
+  <h3 id="caption">
+    Feeds
+  </h3>
+
+  <table id="feed-list">
+    {foreach $feed in $json}
+      <tr>
+        <td>
+            <a href="/admin/{$feed.name}/overview" class="feed-overview-link"
+               >{$feed.title}</a>
+        </td>
+        <td>
+            (<a href="/admin/edit-feed/{$feed.name}"
+                class="edit-feed">edit</a>)
+        </td>
+        <td>
+            (<a href="#" id="delete_feed_link_{$feed.name}"
+                         class="delete-feed">delete</a>)
+        </td>
+      </tr>
+    {/foreach}
+  </table>
+
+  <button id="add-feed">New</button>
+
+{/template}
+
+/**
+ * Displays feed add/edit page.
+ *
+ * @param status
+ * @param name
+ * @param title
+ * @param subtitle
+ * @param default_slug_format
+ * @param default_document_type
+ */
+{template .manage_feed}
+  <p><a href="/admin/">Back to overview</a></p>
 
   <div id="status-message">&nbsp;</div>
+
+  <h3 id="caption">
+    {if $status == 'new'}
+      Add Feed
+    {else}
+      Edit Feed
+    {/if}
+  </h3>
+
+  <div class="feed-fields-row">
+    <label for="name" id="name-label">Name:</label>
+    <input type="text" id="name" name="name" class="input-field" value="{$name}" />
+  </div>
+
+<div class="feed-fields-row">
+    <label for="title" id="title-label">Title:</label>
+    <input type="text" id="title" name="title" class="input-field"
+           value="{$title}" />
+</div>
+
+<div class="feed-fields-row">
+    <label for="subtitle" id="subtitle-label">Subtitle:</label>
+    <input type="text" id="subtitle" name="subtitle" class="input-field"
+           value="{$subtitle}" />
+</div>
+
+<div class="feed-fields-row">
+     <label for="default-slug-format-select"
+            id="default-slug-format-select-label">Default slug format:</label>
+     <select id="default-slug-format-select" class="input-field">
+       <option value="/{lb}feed-name{rb}/{lb}document-title{rb}"
+           >/feed-name/document-title</option>
+       <option value="/{lb}document-title{rb}">/document-title</option>
+       <option value="/{lb}year{rb}/{lb}month{rb}/{lb}day{rb}/{lb}document-title{rb}"
+           >/year/month/day/document-title</option>
+       <option value="custom">Custom</option>
+    </select>
+</div>
+<div class="feed-fields-row">
+    <label for="default-slug-format">&nbsp;</label>
+    <input type="text" id="default-slug-format" name="default-slug-format"
+           class="input-field"
+           disabled="disabled"
+           value="{$default_slug_format}" />
+  </div>
+<div class="feed-fields-row">
+    <label for="default-document-type" id="default-document-type-label"
+        >Default document type:</label>
+    <select id="default-document-type"
+            name="default-document-type"
+            value="{$default_document_type}"
+            class="input-field">
+        <option value="standard"
+                {if $default_document_type == 'standard'}
+                selected="selected"{/if}>Standard</option>
+        <option value="with-description"
+                {if $default_document_type == 'with-description'}
+                selected="selected"{/if}>With description</option>
+        <option value="image"
+                {if $default_document_type == 'image'}
+                selected="selected"{/if}>Image file</option>
+        <option value="video"
+                {if $default_document_type == 'video'}
+                selected="selected"{/if}>Video file</option>
+        <option value="file"
+                {if $default_document_type == 'file'}
+                selected="selected"{/if}>Downloadable file</option>
+        <option value="navigation"
+                {if $default_document_type == 'navigation'}
+                selected="selected"{/if}>Navigation menu</option>
+    </select>
+  </div>
+  <p><button id="save-feed">Save</button></p>
 {/template}
 
 /***/
@@ -34,4 +159,14 @@
   <h3>
         Unable to find any documents for this feed. Are you sure it exists?
   </h3>
+{/template}
+
+/***/
+{template .list_feeds_error}
+  <h3>Unable to load feeds.</h3>
+{/template}
+
+/***/
+{template .feed_not_found}
+  <h3>The feed can't be found.</h3>
 {/template}

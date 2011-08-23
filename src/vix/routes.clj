@@ -17,15 +17,18 @@
 (ns vix.routes
   (:use compojure.core
         vix.core
-        vix.db
         vix.views
         vix.auth
         [clojure.contrib.json :only [read-json json-str]]
         [clojure.contrib.duck-streams :only [slurp*]]
         [ring.util.response :only [redirect]])
-  (:require [clojure.contrib [error-kit :as kit]]
+  (:require [vix.db :as db]
+            [clojure.contrib [error-kit :as kit]]
             [compojure.route :as route]
             [compojure.handler :as handler]))
+
+(def db-server "http://localhost:5984/")
+(def database "vix")
 
 ; FIXME: switch to utf-8, but need to fix conversion problems first
 (defn response [body & [status]]
@@ -43,8 +46,8 @@
 
 ; FIXME: add a nice 404 page
 ; FIXME: add authorization
-(defn catch-all [db-server db-name slug]
-  (if-let [document (get-document db-server db-name slug)]
+(defn catch-all [db-server database slug]
+  (if-let [document (db/get-document db-server database slug)]
     (response (blog-article-template document))
     (response "<h1>Page not found</h1>" 404)))
 
@@ -57,13 +60,13 @@
   (kit/with-handler
     (when-let [authenticated-session (authenticate
                                        db-server
-                                       db-name
+                                       database
                                        session
                                        username
                                        password)]
       {:session authenticated-session
        :status 302
-       :headers {"Location" "/admin/blog"}})
+       :headers {"Location" "/admin/"}})
     (kit/handle UserDoesNotExist []
       (redirect "/login"))
     (kit/handle UsernamePasswordMismatch []
@@ -71,7 +74,7 @@
 
 (defroutes main-routes
   (GET "/" [] (response (blog-frontpage-template
-                        (get-feed db-server db-name "blog"))))
+                        (db/get-documents-for-feed db-server database "blog"))))
   (GET "/admin*" {session :session {feed "feed"} :params}
        (when (authorize session :* :DELETE)
          (response (new-document-template {}))))
@@ -80,49 +83,84 @@
       {session :session {username "username" password "password"} :form-params}
         (login session username password))
   (GET "/logout" {session :session} (logout session))
-  (GET "/json/:feed" request
+  (GET "/json/:feed/list-documents" request
        (when (authorize (:session request) (:feed (:params request)) :GET)
          (json-response
-           (get-feed db-server db-name (:feed (:params request))))))
+          (db/get-documents-for-feed db-server
+                                     database
+                                     (:feed (:params request))))))
+  (GET "/json/list-feeds" {session :session {feed "feed"} :params}
+       (when (authorize session :* :GET)
+         (json-response (db/list-feeds db-server database))))
+  (POST "/json/new-feed" request
+        (when (authorize (:session request) :* :POST)
+          (json-response (db/create-feed
+                           db-server
+                           database
+                           (read-json (slurp* (:body request))))
+                         201)))
+  (GET "/json/feed/:name" {{feed-name :name} :params session :session}
+       (if-let [feed (db/get-feed db-server database feed-name)]
+         (when (authorize session feed-name :GET)
+           (json-response feed))
+         (json-response nil)))
+  (PUT "/json/feed/:name" {{feed-name :name} :params body :body session :session}
+       (if-let [feed (db/get-feed db-server database feed-name)]
+         (when (authorize session feed-name :PUT)
+           (json-response 
+            (db/update-feed
+             db-server
+             database
+             feed-name
+             (read-json (slurp* body)))))
+         (json-response nil)))
+  (DELETE "/json/feed/:name" {{feed-name :name} :params session :session}
+          (if-let [feed (db/get-feed db-server database feed-name)]
+            (when (authorize session feed-name :DELETE)
+              (json-response 
+               (db/delete-feed
+                db-server
+                database
+                feed-name)))
+            (json-response nil)))
   (POST "/json/:feed/new" request
         (when (authorize (:session request) (:feed (:params request)) :POST)
-          (print "body: " (:body request))
-          (json-response (create-document
+          (json-response (db/create-document
                            db-server
-                           db-name
+                           database
                            (:feed (:params request))
                            (read-json (slurp* (:body request))))
                          201)))
   (GET "/json/document/*" {{slug :*} :params session :session}
-       (if-let [document (get-document
-                           db-server db-name (force-initial-slash slug))]
+       (if-let [document (db/get-document
+                           db-server database (force-initial-slash slug))]
          (when (authorize session (:feed document) :GET)
            (json-response document))
          (json-response nil)))
   (PUT "/json/document/*" {{slug :*} :params body :body session :session}
        (let [slug (force-initial-slash slug)]
-         (if-let [document (get-document db-server db-name slug)]
+         (if-let [document (db/get-document db-server database slug)]
            (when (authorize session (:feed document) :PUT)
              (json-response 
-               (update-document
+               (db/update-document
                  db-server
-                 db-name
+                 database
                  slug
                  (read-json (slurp* body)))))
            (json-response nil))))
   (DELETE "/json/document/*" {{slug :*} :params session :session}
           (let [slug (force-initial-slash slug)]
-            (if-let [document (get-document db-server db-name slug)]
+            (if-let [document (db/get-document db-server database slug)]
               (when (authorize session (:feed document) :DELETE)
                 (json-response 
-                  (delete-document
+                  (db/delete-document
                     db-server
-                    db-name
+                    database
                     slug)))
               (json-response nil))))
   (route/resources "/static/")
   (GET "/*" {{slug :*} :params}
-       (catch-all db-server db-name (force-initial-slash slug))))
+       (catch-all db-server database (force-initial-slash slug))))
 
 (defn handle-authentication-errors [handler]
   (fn [request]

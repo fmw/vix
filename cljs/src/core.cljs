@@ -8,7 +8,7 @@
             [goog.Uri :as Uri]
             [goog.dom :as dom]))
 
-(def h (atom nil))
+(def *h* (atom nil))
 
 (defn get-path [uri]
   (. (new goog.Uri uri false) (getPath)))
@@ -30,28 +30,33 @@
                                (.title (.target e)))))))
 
 (defn start-history! [uri-path]
-  (compare-and-set! h nil (new goog.history.Html5History))
-  (.setUseFragment @h false)
-  (.setPathPrefix @h "/admin/")
-  (.setEnabled @h true)
-  (events/listen @h
+  (compare-and-set! *h* nil (new goog.history.Html5History))
+  (.setUseFragment @*h* false)
+  (.setPathPrefix @*h* "/admin/")
+  (.setEnabled @*h* true)
+  (events/listen @*h*
                  event-type/NAVIGATE
                  (fn [e]
                    (routes global/document.location.pathname))))
 
+; TODO: make the (routes) fn work like the compojure routes function
 (defn routes [uri-path]
   (cond
+   (re-matches #"^/admin/$" uri-path) (feed/list-feeds)
+   (re-matches #"^/admin/new-feed$" uri-path) (feed/display-new-feed-form)
+   (re-matches #"^/admin/edit-feed/[^/]+$" uri-path) (feed/display-edit-feed-form
+                                                      (. uri-path (substr 17)))
    (re-matches #"^/admin/[^/]+/new$" uri-path) (editor/start :new uri-path)
    (re-matches #"^/admin/[^/]+/edit.+" uri-path) (editor/start :edit uri-path)
    (re-matches #"^/admin/[^/]+/overview$" uri-path) (feed/list-documents uri-path)
-   :else (navigate-replace-state "blog/overview" "Blog overview"))
+   :else (navigate-replace-state "" "Vix overview"))
   nil)
 
 (defn navigate [token title]
-  (. @h (setToken token title)))
+  (. @*h* (setToken token title)))
 
 (defn navigate-replace-state [token title]
-  (. @h (replaceToken token title)))
+  (. @*h* (replaceToken token title)))
 
 (defn ^:export start-app [uri-path]
   (start-history!) ; in Chrome this triggers an event, leading to a (routes) call

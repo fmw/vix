@@ -15,8 +15,8 @@
 ; limitations under the License.
 
 (ns vix.auth
-  (:use [vix.db :only [db-server db-name create-views views]])
-  (:require [ring.util.response :only [redirect]]
+  (:require [vix.db :as db]
+            [ring.util.response :only [redirect]]
             [clojure.contrib [error-kit :as kit]]
             [couchdb [client :as couchdb]])
   (:import (org.mindrot.jbcrypt BCrypt)))
@@ -60,7 +60,7 @@
     ; Create views if they don't exist yet.
     (kit/handle couchdb/DocumentNotFound []
       (do
-        (create-views db-server db-name "views" views)
+        (db/create-views db-server db-name "views" db/views)
         (get-user db-server db-name username)))))
 
 (defn add-user [db-server db-name username plaintext-password permissions-map]

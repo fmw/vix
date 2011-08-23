@@ -6,6 +6,7 @@
             [vix.templates.editor :as tpl]
             [soy :as soy]
             [clojure.string :as string]
+            [goog.date :as date]
             [goog.global :as global]
             [goog.editor.Field :as Field]
             [goog.editor.plugins.BasicTextFormatter :as BasicTextFormatter]
@@ -46,6 +47,9 @@
 
 (def could-not-save-document-err
   "Something went wrong while saving the document.")
+
+(defn slug-has-invalid-chars? [slug]
+  (if (re-matches #"[/\-a-zA-Z0-9]+" slug) false true))
 
 (defn get-feed-from-uri []
   (let [parts (re-find #"/admin/([^/]+)/(.*?)" global/document.location.pathname)]
@@ -102,74 +106,84 @@
   (let [status (. (.target e) (getStatus))
         slug-el (dom/getElement "slug")]
     (when (= status 200) 
-      (set! (.value slug-el)
-            (increment-slug (document/add-initial-slash (.value slug-el))))
+      (ui/set-form-value slug-el
+                         (increment-slug
+                          (document/add-initial-slash (.value slug-el))))
       (document/get-doc (.value slug-el) handle-duplicate-slug-callback))))
 
 (defn handle-duplicate-custom-slug-callback [e]
   (let [status (. (.target e) (getStatus))
         slug-el (dom/getElement "slug")
+        slug-label-el (dom/getElement "slug-label")
         status-el (dom/getElement "status-message")]
     (cond
-     (= status 200) (display-slug-error status-el slug-el slug-not-unique-err)
+     (= status 200) (ui/display-error status-el
+                                      slug-not-unique-err
+                                      slug-el
+                                      slug-label-el)
      :else (when (= (. status-el textContent) slug-not-unique-err)
-             remove-slug-error status-el slug-el))))
+             (ui/remove-error status-el slug-el slug-label-el)))))
 
-(defn slug-has-invalid-chars? [slug]
-  (if (re-matches #"[/\-a-zA-Z0-9]+" slug) false true))
+(def *feed* (atom {:default-slug-format "/{feed-name}/{document-title}"}))
 
-(defn slug-has-consecutive-dashes-or-slashes? [slug]
-  (if (re-find #"[\-/]{2,}" slug) true false))
+(defn fetch-feed-details! [e]
+  (let [xhr (.target e)
+        status (. xhr (getStatus))]
+    (when (= status 200)
+      (let [json (js->clj (. xhr (getResponseJson)))]
+        (swap! *feed* assoc :name ("name" json)
+                            :default-slug-format ("default-slug-format" json))))))
 
-(defn create-slug [prefix title]
-  (str prefix
-       (string/join "-" (filter #(not (string/blank? %))
-                                (.split title #"[^a-zA-Z0-9]")))))
+(defn create-document-title-token [title]
+  (string/join "-" (filter #(not (string/blank? %)) (.split title #"[^a-zA-Z0-9]"))))
+
+(defn create-slug [title]
+  (let [today (util/date-now)]
+    (loop [slug (:default-slug-format @*feed*)
+           substitutions [["{document-title}" (create-document-title-token title)]
+                          ["{feed-name}" (:name @*feed*)]
+                          ["{year}" (:year today)]
+                          ["{month}" (:month today)]
+                          ["{day}" (:day today)]]]
+      (if (pos? (count substitutions))
+        (recur (string/replace slug
+                               (first (first substitutions))
+                               (last (first substitutions)))
+               (rest substitutions))
+        slug))))
 
 (defn sync-slug-with-title []
   (when-not (.checked (dom/getElement "custom-slug"))
     (let [title (.value (dom/getElement "title"))
           slug-el (dom/getElement "slug")]
-      (set! (.value slug-el)
-            (create-slug (str "/" (get-feed-from-uri) "/") title))
+      (ui/set-form-value slug-el (create-slug title))
       (document/get-doc (.value slug-el) handle-duplicate-slug-callback))))
 
 (defn toggle-custom-slug []
   (let [slug-el (dom/getElement "slug")]
     (if (.checked (dom/getElement "custom-slug"))
-      (doto slug-el
-        (classes/remove "disabled")
-        (.removeAttribute "disabled" "-1"))
+      (ui/enable-element slug-el)
       (do
-        (doto slug-el
-          (classes/add "disabled")
-          (.setAttribute "disabled" "disabled"))
-        (remove-slug-error (dom/getElement "status-message") slug-el)
+        (ui/disable-element slug-el)
+        (ui/remove-error (dom/getElement "status-message")
+                           slug-el
+                           (dom/getElement "slug-label"))
         (sync-slug-with-title)))))
-
-(defn display-slug-error [status-el slug-el message]
-  (do
-    (classes/add slug-el "error")
-    (ui/display-error status-el message)))
-
-(defn remove-slug-error [status-el slug-el]
-  (when (classes/has slug-el "error")
-    (classes/remove slug-el "error")
-    (ui/remove-error status-el)))
 
 (defn validate-slug []
   (if (.checked (dom/getElement "custom-slug"))
     (let [status-el (dom/getElement "status-message")
           slug-el (dom/getElement "slug")
+          slug-label-el (dom/getElement "slug-label")
           slug (.value slug-el)
-          err (partial display-slug-error status-el slug-el)
+          err #(ui/display-error status-el % slug-el slug-label-el)
           dash-slash-err slug-has-consecutive-dashes-or-slashes-err]
       (cond
        (string/blank? slug) (err slug-required-err)
        (not (= (first slug) "/")) (err slug-initial-slash-required-err)
        (slug-has-invalid-chars? slug) (err slug-has-invalid-chars-err)
-       (slug-has-consecutive-dashes-or-slashes? slug) (err dash-slash-err)
-       :else (remove-slug-error status-el slug-el))
+       (util/has-consecutive-dashes-or-slashes? slug) (err dash-slash-err)
+       :else (ui/remove-error status-el slug-el slug-label-el))
 
       (when (and (not (string/blank? slug)) (= (first slug) "/"))
         (document/get-doc (.value slug-el) handle-duplicate-custom-slug-callback)))))
@@ -193,7 +207,9 @@
                         could-not-create-document-err))))
 
 (defn save-new-document-click-callback [e]
-  (document/create-doc save-new-document-xhr-callback (get-document-value-map!)))
+  (document/create-doc save-new-document-xhr-callback
+                       (get-feed-from-uri)
+                       (get-document-value-map!)))
 
 (defn save-existing-document-xhr-callback [e]
   (let [xhr (.target e)]
@@ -252,26 +268,29 @@
          (. editor (makeEditable))))))
 
 (defn start [status uri]
-  (if (= :new status)
+  (let [feed-name (get-feed-from-uri)]
     (do
-      (util/set-page-title! "New document")
-      (render-editor {:status "new"
-                      :feed (get-feed-from-uri)
-                      :title ""
-                      :slug ""
-                      :draft false}))
-    (document/get-doc (str "/" (last (re-find #"^/admin/[^/]+/edit/(.*?)$" uri)))
-                      (fn [e]
-                        (let [xhr (.target e)
-                              status (. xhr (getStatus))]
-                          (if (= status 200)
-                            (let [json (js->clj (. xhr (getResponseJson)))]
-                              (util/set-page-title!
-                               (str "Edit \"" ("title" json) "\""))
-                              (render-editor {:status "edit"
-                                              :feed ("feed" json)
-                                              :title ("title" json)
-                                              :slug ("slug" json)
-                                              :draft ("draft" json)}
-                                             ("content" json)))
-                            (render-document-not-found-template)))))))
+      (document/get-feed feed-name fetch-feed-details!)
+      (if (= :new status)
+        (do
+          (util/set-page-title! "New document")
+          (render-editor {:status "new"
+                          :feed feed-name
+                          :title ""
+                          :slug ""
+                          :draft false}))
+        (document/get-doc (str "/" (last (re-find #"^/admin/[^/]+/edit/(.*?)$" uri)))
+                          (fn [e]
+                            (let [xhr (.target e)
+                                  status (. xhr (getStatus))]
+                              (if (= status 200)
+                                (let [json (js->clj (. xhr (getResponseJson)))]
+                                  (util/set-page-title!
+                                   (str "Edit \"" ("title" json) "\""))
+                                  (render-editor {:status "edit"
+                                                  :feed ("feed" json)
+                                                  :title ("title" json)
+                                                  :slug ("slug" json)
+                                                  :draft ("draft" json)}
+                                                 ("content" json)))
+                                (render-document-not-found-template)))))))))

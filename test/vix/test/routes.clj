@@ -15,9 +15,9 @@
 
 (ns vix.test.routes
   (:use [vix.routes] :reload
-        [vix.db :only [create-document get-document db-name]]
+        [vix.db :only [create-document create-feed get-document]]
         [vix.auth :only [add-user]]
-        [clojure.contrib.json :only [json-str]]
+        [clojure.contrib.json :only [json-str read-json]]
         [vix.test.db :only [database-fixture +test-server+ +test-db+]])
   (:use [clojure.test]))
 
@@ -151,12 +151,12 @@
        :content "bar"
        :draft false}))
 
-  (with-redefs [db-name +test-db+]
+  (with-redefs [database +test-db+]
     (is (= (:status (request :get "/" main-routes)) 200))
     (is (= (:status (request :get "/login" main-routes)) 200))
     (is (= (:status (request :get "/logout" main-routes)) 302))
-    (is (= (:status (request :get "/admin/blog" main-routes)) 200))
-    (is (= (:status (request :get "/json/blog" main-routes)) 200))
+    (is (= (:status (request :get "/admin" main-routes)) 200))
+    (is (= (:status (request :get "/json/blog/list-documents" main-routes)) 200))
 
     (is (= (:status (request
                           :post
@@ -206,7 +206,38 @@
     (is (= (:body (request :get "/blog/bar" main-routes))
            "<h1>Page not found</h1>"))
 
-    (is (= (:status (request :get "/blog/test" main-routes)) 200))))
+    (is (= (:status (request :get "/blog/test" main-routes)) 200))
+   
+    (let [post-feed-request (request :post
+                                     "/json/new-feed"
+                                     (json-str {:name "blog"
+                                                :title "Vix Weblog"
+                                                :subtitle "Vix Weblog..."
+                                                :default-slug-format
+                                                  "/{document-title}"
+                                                :default-document-type "standard"})
+                                     main-routes)]
+      (is (= (:status post-feed-request) 201)))
+    
+
+    (let [get-feed-request (request :get "/json/feed/blog" main-routes)
+          json-body (read-json (:body get-feed-request))]
+      (is (= (:status get-feed-request) 200))
+      (is (= (:name json-body) "blog"))
+      (is (= (:title json-body) "Vix Weblog"))
+
+      (let [put-feed-request (request :put
+                                      "/json/feed/blog"
+                                      (json-str (assoc json-body :title "Vix!"))
+                                      main-routes)
+            json-put-body (read-json (:body put-feed-request))]
+        (is (= (:status put-feed-request) 200))
+        (is (= (:name json-put-body) "blog"))
+        (is (= (:title json-put-body) "Vix!"))))
+    
+    (is (:status (request :get "/json/feed/blog" main-routes)) 200)
+    (is (:status (request :delete "/json/feed/blog" main-routes)) 200)
+    (is (:status (request :get "/json/feed/blog" main-routes)) 404)))
 
 (deftest ^{:integration true} test-routes-authorization
   (do
@@ -218,13 +249,23 @@
        :feed "blog"
        :slug "/blog/test"
        :content "bar"
-       :draft false}))
+       :draft false})
+    
+    (create-feed +test-server+
+                 +test-db+
+                 {:title "Weblog"
+                  :subtitle "Vix Weblog!"
+                  :name "blog"
+                  :default-slug-format "/{feed-name}/{document-title}"
+                  :default-document-type "with-description"}))
 
-  (with-redefs [db-name +test-db+]
+  (with-redefs [database +test-db+]
     (testing "Test if authorization is enforced correctly."
-      (is (= (:status (unauthorized-request :get "/admin/blog" main-routes))
+      (is (= (:status (unauthorized-request :get "/admin/" main-routes))
              302))
-      (is (= (:status (unauthorized-request :get "/json/blog" main-routes))
+      (is (= (:status (unauthorized-request :get
+                                            "/json/blog/list-documents"
+                                            main-routes))
              302))
       (is (= (:status (unauthorized-request
                         :post
@@ -253,6 +294,31 @@
                         :delete
                         "/json/document/blog/test"
                         main-routes))
+             302))
+
+      ;; feed
+      (is (= (:status (unauthorized-request
+                        :post
+                        "/json/new-feed"
+                        main-routes))
+             302))
+      
+      (is (= (:status (unauthorized-request
+                        :get
+                        "/json/feed/blog"
+                        main-routes))
+             302))
+      
+      (is (= (:status (unauthorized-request
+                        :put
+                        "/json/feed/blog"
+                        main-routes))
+             302))
+
+      (is (= (:status (unauthorized-request
+                        :delete
+                        "/json/feed/blog"
+                        main-routes))
              302)))))
 
 (deftest ^{:integration true} test-routes-authentication
@@ -268,10 +334,12 @@
        :draft false}))
 
   (testing "Test if authentication is enforced correctly."
-    (with-redefs [db-name +test-db+]
-      (is (= (:status (unauthenticated-request :get "/admin/blog" main-routes))
+    (with-redefs [database +test-db+]
+      (is (= (:status (unauthenticated-request :get "/admin" main-routes))
              302))
-      (is (= (:status (unauthenticated-request :get "/json/blog" main-routes))
+      (is (= (:status (unauthenticated-request :get
+                                               "/json/blog/list-documents"
+                                               main-routes))
              302))
       (is (= (:status (unauthenticated-request
                         :post
@@ -318,7 +386,7 @@
       "oops"
       {:* ["GET" "POST" "PUT" "DELETE"]}))
 
-  (with-redefs [db-name +test-db+]
+  (with-redefs [database +test-db+]
     (is (= (form-request :post "/login" main-routes {"username" "fmw"
                                                      "password" "foo"})
            {:status 302
@@ -327,7 +395,7 @@
 
     (let [r (form-request :post "/login" main-routes {"username" "fmw"
                                                      "password" "oops"})]
-      (is (= ((:headers r) "Location") "/admin/blog"))
+      (is (= ((:headers r) "Location") "/admin/"))
       (is (= (:status r) 302)))
    ))
 

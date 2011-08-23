@@ -24,9 +24,6 @@
             [clj-time.format])
   (:import [java.net URLEncoder]))
 
-(def db-server "http://localhost:5984/")
-(def db-name "vix")
-
 (def views {:by_feed  {:map (slurp (str "/home/fmw/clj/vix/src/"
                                         "database-views/"
                                         "map_document_by_feed.js"))}
@@ -35,7 +32,10 @@
                                         "map_document_by_slug.js"))}
             :by_username  {:map (slurp (str "/home/fmw/clj/vix/src/"
                                         "database-views/"
-                                        "map_user_by_username.js"))}})
+                                        "map_user_by_username.js"))}
+            :feeds {:map (slurp (str "/home/fmw/clj/vix/src/"
+                                          "database-views/"
+                                          "map_feeds_by_name.js"))}})
 
 (defn #^{:rebind true} view-sync
   [server db design-doc view-name view-functions]
@@ -58,37 +58,104 @@
              :views {(keyword view-name) view-functions}}))))
   (log-restore!))
 
-(defn view-get [server db design-doc view-name & [view-options]]
-  (json/read-json (:body (http/get
-                          (str server
-                               db
-                               "/_design/"
-                               design-doc
-                               "/_view/"
-                               view-name
-                               "?"
-                               (couchdb/url-encode view-options))))))
-
 (defn create-views [db-server db-name design-doc views]
   (doseq [view views]
     (view-sync
-      db-server db-name design-doc (key view) (val view))))
+     db-server db-name design-doc (key view) (val view))))
+
+(defn encode-view-options [options]
+  (let [encoded-values (map #(URLEncoder/encode % "UTF-8")
+                            (map json/json-str (vals options)))
+        opt-seq (interleave (map name (keys options)) encoded-values)]
+    (apply str (butlast (interleave opt-seq (flatten (repeat ["=" "&"])))))))
+
+(defn view-get [db-server db-name design-doc view-name & [view-options]]
+  (try
+    (let [uri (str db-server
+                   db-name
+                   "/_design/"
+                   design-doc
+                   "/_view/"
+                   view-name
+                   "?"
+                   (encode-view-options view-options))]
+
+      (json/read-json (:body (http/get uri))))
+      (catch java.lang.Exception e
+        (if (= (.getMessage e) "404")
+          (do
+            ; automatically add missing views and run again
+            (create-views db-server db-name "views" views)
+            (view-get db-server db-name design-doc view-name view-options))
+          (.printStackTrace e)))))
+
+(defn list-feeds [db-server db-name]
+  (if-let [feeds (:rows (view-get db-server
+                                  db-name
+                                  "views"
+                                  "feeds"
+                                  {:descending true}))]
+    (map #(:value %) feeds)))
+
+(defn get-feed [db-server db-name feed-name]
+  (let [feed (view-get db-server
+                       db-name
+                       "views"
+                       "feeds"
+                       {:include_docs true
+                        :key feed-name})]
+    (:value (first (:rows feed)))))
+
+(defn create-feed [db-server db-name data-map]
+  (couchdb/document-create
+    db-server
+    db-name
+    (assoc data-map
+           :type "feed"
+           :created (now-rfc3339))))
+
+(defn update-feed [db-server db-name feed-name data-map]
+  (if-let [feed (get-feed db-server db-name feed-name)]
+    (couchdb/document-update
+      db-server
+      db-name
+      (:_id feed)
+      (assoc feed
+             :feed-updated (now-rfc3339)
+             :title (:title data-map)
+             :subtitle (:subtitle data-map)
+             :default-slug-format (:default-slug-format data-map)
+             :default-document-type (:default-document-type data-map)))))
+
+; TODO: delete/flag feed content
+(defn delete-feed [db-server db-name feed-name]
+  (kit/with-handler
+    (if-let [feed (get-feed db-server db-name feed-name)]
+      (couchdb/document-delete db-server db-name (:_id feed)))
+    (kit/handle couchdb/DocumentNotFound []
+                nil)
+    (kit/handle couchdb/ResourceConflict []
+                nil)))
+
+(defn get-documents-for-feed [db-server db-name feed]
+  (if-let [entries (:rows (view-get db-server
+                                    db-name
+                                    "views"
+                                    "by_feed"
+                                    {:endkey [feed]
+                                     :startkey [feed "2999"]
+                                     :include_docs true
+                                     :descending true}))]
+    (map #(:value %) entries)))
 
 (defn get-document [db-server db-name slug]
-  (kit/with-handler
-    (let [document (couchdb/view-get
-                     db-server
-                     db-name
-                     "views"
-                     "by_slug"
-                     {:include_docs true
-                      :key slug})]
-      (:doc (first (:rows document))))
-    ; Create views if they don't exist yet.
-    (kit/handle couchdb/DocumentNotFound []
-      (do
-        (create-views db-server db-name "views" views)
-        (get-document db-server db-name slug)))))
+  (let [document (view-get db-server
+                           db-name
+                           "views"
+                           "by_slug"
+                           {:include_docs true
+                            :key slug})]
+    (:value (first (:rows document)))))
 
 (defn get-unique-slug [db-server db-name slug]
   (loop [slug slug]
@@ -107,24 +174,6 @@
            :slug (get-unique-slug db-server db-name (:slug document))
            :published (now-rfc3339))))
 
-(defn get-feed [db-server db-name feed]
-  (if-let [entries
-    (:rows
-     (view-get
-      db-server
-      db-name
-      "views"
-      "by_feed"
-      {:endkey (str "[\"" feed "\"]")
-       :startkey (str "[\"" feed "\", \"2999\"]")
-       :descending "true"}))]
-    (map #(:value %) entries)
-    ; Create views if they don't exist yet.
-    (do
-      (create-views db-server db-name "views" views)
-      (get-feed db-server db-name feed))))
-
-
 (defn update-document [db-server db-name slug new-document]
   (if-let [document (get-document db-server db-name slug)]
     (couchdb/document-update
@@ -141,7 +190,7 @@
   (kit/with-handler
     (if-let [document (get-document db-server db-name slug)]
       (couchdb/document-delete db-server db-name (:_id document)))
-  (kit/handle couchdb/DocumentNotFound []
-              nil)
-  (kit/handle couchdb/ResourceConflict []
-              nil)))
+    (kit/handle couchdb/DocumentNotFound []
+                nil)
+    (kit/handle couchdb/ResourceConflict []
+                nil)))

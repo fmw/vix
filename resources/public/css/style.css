@@ -64,22 +64,29 @@ header a:hover {
     width: 600px;
 }
 
-.document-fields-row {
+.document-fields-row, .feed-fields-row {
     font-size: 20px;
     margin-bottom: 15px;
+    clear: both;
+}
+
+.document-fields-row {
     width: 600px;
 }
 
-.document-fields-row label:first-of-type {
+.document-fields-row label:first-of-type, .feed-fields-row label:first-of-type {
     display: block;
     float: left;
+}
+.document-fields-row label:first-of-type {
     width: 50px;
 }
 
-.document-fields-row .checkbox-field {
+.feed-fields-row label:first-of-type {
+    width: 200px;
 }
 
-.document-fields-row .input-field {
+.document-fields-row .input-field, .feed-fields-row .input-field {
     position: relative;
     top: -3px;
     font-size: 20px;
