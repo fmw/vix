@@ -129,7 +129,12 @@
                                            list-feeds)))))
 (defn get-invalid-tokens [slug]
   (set/difference (set (re-seq #"\{[^\}]{0,}}" slug))
-                  #{"{day}" "{month}" "{year}" "{document-title}" "{feed-name}"}))
+                  #{"{day}"
+                    "{month}"
+                    "{year}"
+                    "{document-title}"
+                    "{feed-name}"
+                    "{ext}"}))
 
 (defn has-unbalanced-braces? [slug]
   (let [braces (re-seq #"[\{\}]" slug)]

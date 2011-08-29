@@ -144,7 +144,8 @@
                           ["{feed-name}" (:name @*feed*)]
                           ["{year}" (:year today)]
                           ["{month}" (:month today)]
-                          ["{day}" (:day today)]]]
+                          ["{day}" (:day today)]
+                          ["{ext}" "html"]]]
       (if (pos? (count substitutions))
         (recur (string/replace slug
                                (first (first substitutions))
