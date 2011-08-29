@@ -51,12 +51,6 @@
 (defn slug-has-invalid-chars? [slug]
   (if (re-matches #"[/\-a-zA-Z0-9\.]+" slug) false true))
 
-(defn get-feed-from-uri []
-  (let [parts (re-find #"/admin/([^/]+)/(.*?)" global/document.location.pathname)]
-    ;; TODO: throw error if feed isn't found
-    (when (= 3 (count parts))
-      (nth parts 1))))
-
 (defn create-editor-field [element-id]
   (goog.editor.Field. element-id))
 
@@ -181,8 +175,8 @@
 
 (def editor-field (atom nil))
 
-(defn get-document-value-map! []
-  {:feed (get-feed-from-uri)
+(defn get-document-value-map! [feed-name]
+  {:feed feed-name
    :title (.value (dom/getElement "title"))
    :slug (.value (dom/getElement "slug"))
    :draft (.checked (dom/getElement "draft"))
@@ -197,10 +191,10 @@
       (ui/display-error (dom/getElement "status-message")
                         could-not-create-document-err))))
 
-(defn save-new-document-click-callback [e]
+(defn save-new-document-click-callback [feed-name e]
   (document/create-doc save-new-document-xhr-callback
-                       (get-feed-from-uri)
-                       (get-document-value-map!)))
+                       feed-name
+                       (get-document-value-map! feed-name)))
 
 (defn save-existing-document-xhr-callback [e]
   (let [xhr (.target e)]
@@ -209,10 +203,10 @@
       (ui/display-error (dom/getElement "status-message")
                         could-not-save-document-err))))
 
-(defn save-existing-document-click-callback [e]
+(defn save-existing-document-click-callback [feed-name e]
   (document/update-doc (.value (dom/getElement "slug"))
                        save-existing-document-xhr-callback
-                       (get-document-value-map!)))
+                       (get-document-value-map! feed-name)))
 
 (defn render-editor-template [data]
   (do
@@ -240,25 +234,26 @@
                         (partial toggle-custom-slug feed))
          (events/listen (dom/getElement "save-document")
                         "click"
-                        save-new-document-click-callback))
+                        (partial save-new-document-click-callback (:name feed))))
        (do
          (render-editor-template tpl-map)
          (events/listen (dom/getElement "save-document")
                         "click"
-                        save-existing-document-click-callback)))
+                        (partial save-existing-document-click-callback
+                                 (:name feed)))))
 
-     (let [editor (create-editor-field "content")
-           toolbar (create-editor-toolbar "toolbar")]
-       (reset! editor-field editor)
-       (when content
-         (. editor (setHtml false content true false)))
+       (let [editor (create-editor-field "content")
+             toolbar (create-editor-toolbar "toolbar")]
+         (reset! editor-field editor)
+         (when content
+           (. editor (setHtml false content true false)))
 
-       (do
-         (register-editor-plugins editor)
-         (goog.ui.editor.ToolbarController. editor toolbar)
-         (. editor (makeEditable))))))
+         (do
+           (register-editor-plugins editor)
+           (goog.ui.editor.ToolbarController. editor toolbar)
+           (. editor (makeEditable))))))
 
-(defn start-default-mode! [slug status feed]
+(defn start-default-mode! [feed slug status]
   (if (= :new status)
     (do
       (util/set-page-title! "New document")
@@ -284,7 +279,7 @@
                                              ("content" json)))
                             (render-document-not-found-template)))))))
 
-(defn start-image-mode! [slug status feed]
+(defn start-image-mode! [feed slug status]
   (if (= :new status)
     (do
       (util/set-page-title! "New document")
@@ -319,12 +314,11 @@
                   :default-document-type ("default-document-type" json)}]
         (cond
          (= (:default-document-type feed) "image")
-           (start-image-mode! slug status feed)
+           (start-image-mode! feed slug status)
          :default
-           (start-default-mode! slug status feed))))))
+           (start-default-mode! feed slug status))))))
 
-(defn start [status uri]
-  (let [feed-name (get-feed-from-uri)
-        slug (when (= status :edit)
+(defn start [feed-name status uri]
+  (let [slug (when (= status :edit)
                (str "/" (last (re-find #"^/admin/[^/]+/edit/(.*?)$" uri))))]
     (document/get-feed feed-name (partial start-mode-callback! slug status))))
