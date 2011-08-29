@@ -15,7 +15,7 @@
             [goog.Uri :as Uri]))
 
 (def default-slug-has-invalid-chars-err
-  (str "Slugs can only contain '/', '-', alphanumeric characters "
+  (str "Slugs can only contain '/', '-', '.', alphanumeric characters "
        "and tokens (e.g. {day} and {document-title})."))
 
 (def default-slug-has-consecutive-dashes-or-slashes-err
@@ -63,6 +63,35 @@
                      (util/map-to-obj
                       {:json (. xhr (getResponseJson))})))
 
+(defn list-documents [uri-path]
+  (let [feed (last (re-find #"^/admin/(.*?)/overview$" uri-path))]
+    (util/set-page-title! (str "List of documents for feed \"" feed "\""))
+    (document/get-documents-for-feed
+     feed
+     (fn [e]
+       (let [main-el (dom/getElement "main-page")
+             xhr (.target e)
+             status (. xhr (getStatus))]
+         (if (= status 200)
+           (do
+             (display-document-list main-el xhr)
+             (create-document-list-events feed))
+           (soy/renderElement main-el tpl/list-documents-error)))))))
+
+(defn list-feeds-callback [e]
+  (let [main-el (dom/getElement "main-page")
+        xhr (.target e)
+        status (. xhr (getStatus))]
+    (if (= status 200)
+      (do
+        (display-feed-list main-el xhr)
+        (create-feed-list-events))
+      (soy/renderElement main-el tpl/list-feeds-error))))
+
+(defn list-feeds []
+  (util/set-page-title! "Feeds overview")
+  (document/get-feeds-list list-feeds-callback))
+
 (defn delete-doc-callback [e]
   (list-documents global/document.location.pathname))
 
@@ -98,36 +127,6 @@
                      (. e (preventDefault))
                      (document/delete-feed (.substr (.id (.target e)) 17)
                                            list-feeds)))))
-
-(defn list-documents [uri-path]
-  (let [feed (last (re-find #"^/admin/(.*?)/overview$" uri-path))]
-    (util/set-page-title! (str "List of documents for feed \"" feed "\""))
-    (document/get-documents-for-feed
-     feed
-     (fn [e]
-       (let [main-el (dom/getElement "main-page")
-             xhr (.target e)
-             status (. xhr (getStatus))]
-         (if (= status 200)
-           (do
-             (display-document-list main-el xhr)
-             (create-document-list-events feed))
-           (soy/renderElement main-el tpl/list-documents-error)))))))
-
-(defn list-feeds-callback [e]
-  (let [main-el (dom/getElement "main-page")
-        xhr (.target e)
-        status (. xhr (getStatus))]
-    (if (= status 200)
-      (do
-        (display-feed-list main-el xhr)
-        (create-feed-list-events))
-      (soy/renderElement main-el tpl/list-feeds-error))))
-
-(defn list-feeds []
-  (util/set-page-title! "Feeds overview")
-  (document/get-feeds-list list-feeds-callback))
-
 (defn get-invalid-tokens [slug]
   (set/difference (set (re-seq #"\{[^\}]{0,}}" slug))
                   #{"{day}" "{month}" "{year}" "{document-title}" "{feed-name}"}))
@@ -148,7 +147,7 @@
     (cond
      (not (= (first slug) "/"))
        (err default-slug-initial-slash-required-err)
-     (re-find #"[^/\-a-zA-Z0-9\{\}]" slug)
+     (re-find #"[^/\-a-zA-Z0-9\{\}\.]" slug)
        (err default-slug-has-invalid-chars-err)
      (not (re-find #"\{document-title\}" slug))
        (err default-slug-requires-document-title-err)

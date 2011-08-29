@@ -28,7 +28,7 @@
             [goog.dom.classes :as classes]))
 
 (def slug-has-invalid-chars-err
-  "Slugs can only contain '/', '-' and alphanumeric characters.")
+  "Slugs can only contain '/', '-', '.' and alphanumeric characters.")
 
 (def slug-has-consecutive-dashes-or-slashes-err
   "Slugs shouldn't contain any consecutive '-' or '/' characters.")
@@ -49,7 +49,7 @@
   "Something went wrong while saving the document.")
 
 (defn slug-has-invalid-chars? [slug]
-  (if (re-matches #"[/\-a-zA-Z0-9]+" slug) false true))
+  (if (re-matches #"[/\-a-zA-Z0-9\.]+" slug) false true))
 
 (defn get-feed-from-uri []
   (let [parts (re-find #"/admin/([^/]+)/(.*?)" global/document.location.pathname)]
