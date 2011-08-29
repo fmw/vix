@@ -124,24 +124,14 @@
      :else (when (= (. status-el textContent) slug-not-unique-err)
              (ui/remove-error status-el slug-el slug-label-el)))))
 
-(def *feed* (atom {:default-slug-format "/{feed-name}/{document-title}"}))
-
-(defn fetch-feed-details! [e]
-  (let [xhr (.target e)
-        status (. xhr (getStatus))]
-    (when (= status 200)
-      (let [json (js->clj (. xhr (getResponseJson)))]
-        (swap! *feed* assoc :name ("name" json)
-                            :default-slug-format ("default-slug-format" json))))))
-
 (defn create-document-title-token [title]
   (string/join "-" (filter #(not (string/blank? %)) (.split title #"[^a-zA-Z0-9]"))))
 
-(defn create-slug [title]
+(defn create-slug [feed title]
   (let [today (util/date-now)]
-    (loop [slug (:default-slug-format @*feed*)
+    (loop [slug (:default-slug-format feed)
            substitutions [["{document-title}" (create-document-title-token title)]
-                          ["{feed-name}" (:name @*feed*)]
+                          ["{feed-name}" (:name feed)]
                           ["{year}" (:year today)]
                           ["{month}" (:month today)]
                           ["{day}" (:day today)]
@@ -153,14 +143,14 @@
                (rest substitutions))
         slug))))
 
-(defn sync-slug-with-title []
+(defn sync-slug-with-title [feed]
   (when-not (.checked (dom/getElement "custom-slug"))
     (let [title (.value (dom/getElement "title"))
           slug-el (dom/getElement "slug")]
-      (ui/set-form-value slug-el (create-slug title))
+      (ui/set-form-value slug-el (create-slug feed title))
       (document/get-doc (.value slug-el) handle-duplicate-slug-callback))))
 
-(defn toggle-custom-slug []
+(defn toggle-custom-slug [feed]
   (let [slug-el (dom/getElement "slug")]
     (if (.checked (dom/getElement "custom-slug"))
       (ui/enable-element slug-el)
@@ -169,7 +159,7 @@
         (ui/remove-error (dom/getElement "status-message")
                            slug-el
                            (dom/getElement "slug-label"))
-        (sync-slug-with-title)))))
+        (sync-slug-with-title feed)))))
 
 (defn validate-slug []
   (if (.checked (dom/getElement "custom-slug"))
@@ -234,20 +224,20 @@
   (soy/renderElement (dom/getElement "main-page") tpl/document-not-found))
 
 (defn render-editor
-  ([tpl-map] (render-editor tpl-map nil))
-  ([tpl-map content]
+  ([feed tpl-map] (render-editor feed tpl-map nil))
+  ([feed tpl-map content]
      (if (= "new" (:status tpl-map))
        (do
          (render-editor-template tpl-map)
          (events/listen (dom/getElement "title")
                         event-type/INPUT
-                        sync-slug-with-title)
+                        (partial sync-slug-with-title feed))
          (events/listen (dom/getElement "slug")
                         event-type/INPUT
                         validate-slug)
          (events/listen (dom/getElement "custom-slug")
                         event-type/CHANGE
-                        toggle-custom-slug)
+                        (partial toggle-custom-slug feed))
          (events/listen (dom/getElement "save-document")
                         "click"
                         save-new-document-click-callback))
@@ -268,30 +258,73 @@
          (goog.ui.editor.ToolbarController. editor toolbar)
          (. editor (makeEditable))))))
 
-(defn start [status uri]
-  (let [feed-name (get-feed-from-uri)]
+(defn start-default-mode! [slug status feed]
+  (if (= :new status)
     (do
-      (document/get-feed feed-name fetch-feed-details!)
-      (if (= :new status)
-        (do
-          (util/set-page-title! "New document")
-          (render-editor {:status "new"
-                          :feed feed-name
-                          :title ""
-                          :slug ""
-                          :draft false}))
-        (document/get-doc (str "/" (last (re-find #"^/admin/[^/]+/edit/(.*?)$" uri)))
-                          (fn [e]
-                            (let [xhr (.target e)
-                                  status (. xhr (getStatus))]
-                              (if (= status 200)
-                                (let [json (js->clj (. xhr (getResponseJson)))]
-                                  (util/set-page-title!
-                                   (str "Edit \"" ("title" json) "\""))
-                                  (render-editor {:status "edit"
-                                                  :feed ("feed" json)
-                                                  :title ("title" json)
-                                                  :slug ("slug" json)
-                                                  :draft ("draft" json)}
-                                                 ("content" json)))
-                                (render-document-not-found-template)))))))))
+      (util/set-page-title! "New document")
+      (render-editor feed
+                     {:status "new"
+                      :feed (:name feed)
+                      :title ""
+                      :slug ""
+                      :draft false}))
+    (document/get-doc slug
+                      (fn [e]
+                        (let [xhr (.target e)]
+                          (if (= (. xhr (getStatus)) 200)
+                            (let [json (js->clj (. xhr (getResponseJson)))]
+                              (util/set-page-title!
+                               (str "Edit \"" ("title" json) "\""))
+                              (render-editor feed
+                                             {:status "edit"
+                                              :feed ("feed" json)
+                                              :title ("title" json)
+                                              :slug ("slug" json)
+                                              :draft ("draft" json)}
+                                             ("content" json)))
+                            (render-document-not-found-template)))))))
+
+(defn start-image-mode! [slug status feed]
+  (if (= :new status)
+    (do
+      (util/set-page-title! "New document")
+      (render-editor feed
+                     {:status "new"
+                      :feed (:name feed)
+                      :title ""
+                      :slug ""
+                      :draft false}))
+    (document/get-doc slug
+                      (fn [e]
+                        (let [xhr (.target e)]
+                          (if (= (. xhr (getStatus)) 200)
+                            (let [json (js->clj (. xhr (getResponseJson)))]
+                              (util/set-page-title!
+                               (str "Edit \"" ("title" json) "\""))
+                              (render-editor feed
+                                             {:status "edit"
+                                              :feed ("feed" json)
+                                              :title ("title" json)
+                                              :slug ("slug" json)
+                                              :draft ("draft" json)}
+                                             ("content" json)))
+                            (render-document-not-found-template)))))))
+
+(defn start-mode-callback! [slug status e]
+  (let [xhr (.target e)]
+    (when (= (. xhr (getStatus)) 200)
+      (let [json (js->clj (. xhr (getResponseJson)))
+            feed {:name ("name" json)
+                  :default-slug-format ("default-slug-format" json)
+                  :default-document-type ("default-document-type" json)}]
+        (cond
+         (= (:default-document-type feed) "image")
+           (start-image-mode! slug status feed)
+         :default
+           (start-default-mode! slug status feed))))))
+
+(defn start [status uri]
+  (let [feed-name (get-feed-from-uri)
+        slug (when (= status :edit)
+               (str "/" (last (re-find #"^/admin/[^/]+/edit/(.*?)$" uri))))]
+    (document/get-feed feed-name (partial start-mode-callback! slug status))))
