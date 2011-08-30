@@ -318,6 +318,8 @@
           (cond
            (= dsf "/{feed-name}/{document-title}")
              (select-option "/{feed-name}/{document-title}")
+           (= dsf "/{feed-name}/{document-title}.{ext}")
+             (select-option "/{feed-name}/{document-title}.{ext}")
            (= dsf "/{document-title}")
              (select-option "/{document-title}")
            (= dsf "/{year}/{month}/{day}/{document-title}")
