@@ -83,7 +83,7 @@
                         (db/get-documents-for-feed db-server database "blog"))))
   (GET "/admin*" {session :session {feed "feed"} :params}
        (when (authorize session :* :DELETE)
-         (response (new-document-template {}))))
+         (response (admin-template {}))))
   (GET "/login" [] (response (login-page-template "")))
   (POST "/login"
       {session :session {username "username" password "password"} :form-params}

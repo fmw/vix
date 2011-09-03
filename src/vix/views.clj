@@ -30,7 +30,7 @@
   [message]
   [:div#status-message] (html/content message))
 
-(html/deftemplate new-document-template "templates/new-document.html"
+(html/deftemplate admin-template "templates/admin.html"
   [ctxt]
   [:div#status-message] (html/content (:message ctxt)))
 
