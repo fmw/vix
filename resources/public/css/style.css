@@ -4,7 +4,7 @@ body {
     font-family: Helvetica, Arial, sans-serif;
 }
 
-header {
+#logo-bar {
     height: 60px;
     padding: 5px 5px 5px 10px;
     background-color: #000;
@@ -21,19 +21,27 @@ header {
 }
 
 #menu {
-    float: right;
+    font-size: 16px;
 }
 
 header ul {
     list-style: none;
+    margin: 5px 5px 5px 5px;
+    padding: 0;
 }
 
 header li {
     display: inline;
 }
+header li:before {
+    content: "\00BB";
+    color: grey;
+    margin-right: 10px;
+    margin-left: 4px;
+}
 
-header a {
-    color: #dfdfdf;
+header a:visited {
+    color: #000;
 }
 
 header a:hover {
