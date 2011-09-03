@@ -17,12 +17,14 @@
 (ns vix.db
   (:use vix.core)
   (:require [clojure.contrib [error-kit :as kit]]
+            [clojure.contrib.base64 :as base64]
             [couchdb [client :as couchdb]]
             [clj-http.client :as http]
             [clojure.data.json :as json]
             [clj-time.core]
             [clj-time.format])
-  (:import [java.net URLEncoder]))
+  (:import [java.net URLEncoder]
+           [org.apache.commons.codec.binary Base64]))
 
 (def views {:by_feed  {:map (slurp (str "/home/fmw/clj/vix/src/"
                                         "database-views/"
@@ -165,26 +167,56 @@
         slug))))
 
 (defn create-document [db-server db-name feed document]
-  (couchdb/document-create
-    db-server
-    db-name
-    (assoc document
-           :type "document"
-           :feed feed
-           :slug (get-unique-slug db-server db-name (:slug document))
-           :published (now-rfc3339))))
+  (let [slug (get-unique-slug db-server db-name (:slug document))
+        doc (couchdb/document-create db-server
+                                     db-name
+                                     (assoc (dissoc document :attachment)
+                                       :type "document"
+                                       :feed feed
+                                       :slug slug
+                                       :published (now-rfc3339)))]
+
+    (if-not (and (nil? (:data (:attachment document)))
+                   (nil? (:type (:attachment document))))
+      (do
+        (couchdb/attachment-create db-server
+                                   db-name
+                                   (:_id doc)
+                                   "original"
+                                   (Base64/decodeBase64
+                                    (:data (:attachment document)))
+                                   (:type (:attachment document)))
+        ; return newly fetched doc from db (including attachment)
+        (get-document db-server db-name (:slug doc)))
+      ; when there is no attachment we don't need to refetch
+      doc)))
 
 (defn update-document [db-server db-name slug new-document]
   (if-let [document (get-document db-server db-name slug)]
-    (couchdb/document-update
-      db-server
-      db-name
-      (:_id document)
-      (assoc document
-             :updated (now-rfc3339)
-             :title (:title new-document)
-             :content (:content new-document)
-             :draft (:draft new-document)))))
+    (let [doc (couchdb/document-update
+               db-server
+               db-name
+               (:_id document)
+               (assoc (dissoc document :attachment)
+                 :updated (now-rfc3339)
+                 :title (:title new-document)
+                 :content (:content new-document)
+                 :draft (:draft new-document)))]
+      
+      (if-not (and (nil? (:data (:attachment new-document)))
+                   (nil? (:type (:attachment new-document))))
+        (do
+          (couchdb/attachment-create db-server
+                                     db-name
+                                     (:_id doc)
+                                     "original"
+                                     (Base64/decodeBase64
+                                      (:data (:attachment new-document)))
+                                     (:type (:attachment new-document)))
+          ; return newly fetched doc from db (including attachment)
+          (get-document db-server db-name (:slug doc)))
+        ; when there is no attachment we don't need to refetch
+        doc))))
 
 (defn delete-document [db-server db-name slug]
   (kit/with-handler

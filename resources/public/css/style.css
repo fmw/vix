@@ -150,6 +150,16 @@ footer {
     width: 602px;
 }
 
+#image-drop-target {
+    border: 2px dashed #bbb;
+    -moz-border-radius: 5px;
+    -webkit-border-radius: 5px;
+    border-radius: 5px;
+    padding: 25px;
+    color: #bbb;
+    font-size: 20px;
+}
+
 /* Google Closure */
 .goog-inline-block {
     position: relative;

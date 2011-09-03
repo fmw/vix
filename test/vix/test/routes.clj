@@ -19,7 +19,8 @@
         [vix.auth :only [add-user]]
         [clojure.contrib.json :only [json-str read-json]]
         [vix.test.db :only [database-fixture +test-server+ +test-db+]])
-  (:use [clojure.test]))
+  (:use [clojure.test])
+  (:import [org.apache.commons.codec.binary Base64]))
 
 ; Copied from Clojure 1.3.
 ; Also discussed in Joy of Clojure by Fogus & Houser, page 299.
@@ -102,25 +103,28 @@
 (deftest test-json-response
   (is (= (:status (json-response nil)) 404))
 
-  ; FIXME: move from ISO-8859-1 to UTF-8...
+  ; FIXME: fix charset issues
   (is (= (json-response {:foo "bar"})
          {:status 200
-          :headers {"Content-type" "application/json; charset=ISO-8859-1"}
+          :headers {"Content-type" "application/json; charset=UTF-8"}
           :body "{\"foo\":\"bar\"}"}))
 
-  (is (= (json-response {:foo "bar"} 201)
+  (is (= (json-response {:foo "bar"} :status 201)
          {:status 201
-          :headers {"Content-type" "application/json; charset=ISO-8859-1"}
+          :headers {"Content-type" "application/json; charset=UTF-8"}
           :body "{\"foo\":\"bar\"}"})))
 
 (deftest test-response
   (is (= (response "foo") {:status 200
                          :headers {"Content-type"
-                                   "text/html; charset=ISO-8859-1"}
+                                   "text/html; charset=UTF-8"}
                          :body "foo"}))
 
   (is (= (:status (response nil) 404)))
-  (is (= (:status (response "foo" 201) 201))))
+  (is (= (:status (response "foo" :status 201) 201)))
+
+  (is (= (get (:headers (response "foo" :content-type "image/png")) "Content-type")
+         "image/png")))
 
 (deftest test-catch-all
   (is (= (:status (catch-all +test-server+ +test-db+ "/blog/bar")) 404))
@@ -137,7 +141,24 @@
        :content "bar"
        :draft false}))
 
-  (is (= (:status (catch-all +test-server+ +test-db+ "/blog/bar")) 200)))
+  (is (= (:status (catch-all +test-server+ +test-db+ "/blog/bar")) 200))
+
+  (testing "Test if attachments are handled correctly."
+    (let [gif (str "R0lGODlhAQABA++/vQAAAAAAAAAA77+9AQIAAAAh77+9BAQUA++/"
+                   "vQAsAAAAAAEAAQAAAgJEAQA7")
+          document (create-document
+                    +test-server+
+                    +test-db+
+                    "images"
+                    {:attachment {:type "image/gif" :data gif}
+                     :title "a single black pixel!"
+                     :slug "/pixel.gif"
+                     :content ""
+                     :draft false})
+          catch-all (catch-all +test-server+ +test-db+ "/pixel.gif")]
+
+      (is (= (get (:headers catch-all) "Content-type") "image/gif"))
+      (is (= (class (:body catch-all)) java.io.ByteArrayInputStream)))))
 
 (deftest ^{:integration true} test-routes
   (do

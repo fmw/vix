@@ -4,7 +4,6 @@
             [vix.ui :as ui]
             [vix.util :as util]
             [vix.templates.editor :as tpl]
-            [soy :as soy]
             [clojure.string :as string]
             [goog.date :as date]
             [goog.global :as global]
@@ -25,7 +24,8 @@
             [goog.events :as events]
             [goog.events.EventType :as event-type]
             [goog.dom :as dom]
-            [goog.dom.classes :as classes]))
+            [goog.dom.classes :as classes]
+            [goog.crypt.base64 :as base64]))
 
 (def slug-has-invalid-chars-err
   "Slugs can only contain '/', '-', '.' and alphanumeric characters.")
@@ -47,6 +47,12 @@
 
 (def could-not-save-document-err
   "Something went wrong while saving the document.")
+
+(def invalid-filetype-err
+  "The filetype for the file you are trying to upload isn't supported.")
+
+(def file-required-err
+  "This editing mode requires a file to be added.")
 
 (defn slug-has-invalid-chars? [slug]
   (if (re-matches #"[/\-a-zA-Z0-9\.]+" slug) false true))
@@ -121,15 +127,19 @@
 (defn create-document-title-token [title]
   (string/join "-" (filter #(not (string/blank? %)) (.split title #"[^a-zA-Z0-9]"))))
 
-(defn create-slug [feed title]
-  (let [today (util/date-now)]
+(defn create-slug! [feed title]
+  (let [today (util/date-now)
+        extension (if (and (= (:default-document-type feed) "image")
+                           (:extension (:data @*file*)))
+                    (:extension (:data @*file*))
+                    "html")]
     (loop [slug (:default-slug-format feed)
            substitutions [["{document-title}" (create-document-title-token title)]
                           ["{feed-name}" (:name feed)]
                           ["{year}" (:year today)]
                           ["{month}" (:month today)]
                           ["{day}" (:day today)]
-                          ["{ext}" "html"]]]
+                          ["{ext}" extension]]]
       (if (pos? (count substitutions))
         (recur (string/replace slug
                                (first (first substitutions))
@@ -141,7 +151,7 @@
   (when-not (.checked (dom/getElement "custom-slug"))
     (let [title (.value (dom/getElement "title"))
           slug-el (dom/getElement "slug")]
-      (ui/set-form-value slug-el (create-slug feed title))
+      (ui/set-form-value slug-el (create-slug! feed title))
       (document/get-doc (.value slug-el) handle-duplicate-slug-callback))))
 
 (defn toggle-custom-slug [feed]
@@ -208,39 +218,149 @@
                        save-existing-document-xhr-callback
                        (get-document-value-map! feed-name)))
 
-(defn render-editor-template [data]
+(defn strip-filename-extension [filename]
+  (let [pieces (re-find #"^(.*?)\.[a-zA-Z0-9]{1,10}$" filename)]
+    (if (= (count pieces) 2)
+      (nth pieces 1)
+      filename)))
+
+(def *file* (atom {}))
+
+(defn display-image-preview [file title]
+  (let [reader (new (js* "FileReader"))]
+    (set! (.onload reader)
+          (fn [e]
+            (ui/render-template (dom/getElement "image-preview")
+                                tpl/image
+                                {:title title
+                                 :src (.result (.target e))})))
+    (. reader (readAsDataURL file))))
+
+(defn save-image-document-click-callback [create? feed-name]
+  (let [file (:obj @*file*)]
+    (if file
+      (let [reader (new (js* "FileReader"))]
+        (set! (.onload reader)
+              (fn [e]
+                ;; FIXME: change when a better map-to-json converter is implemented
+                (let [image-data (util/map-to-obj {:type (.type file)
+                                                   :data (base64/encodeString
+                                                          (.result (.target e)))})]
+                  (if create?
+                    (document/create-doc save-new-document-xhr-callback
+                                         feed-name
+                                         (assoc (get-document-value-map! feed-name)
+                                           :attachment
+                                           image-data))
+                    (document/update-doc (.value (dom/getElement "slug"))
+                                         save-existing-document-xhr-callback
+                                         (assoc (get-document-value-map! feed-name)
+                                           :attachment
+                                           image-data))))))
+        (. reader (readAsBinaryString file)))
+      (ui/display-error (dom/getElement "status-message") file-required-err))))
+
+(defn handle-image-drop-callback [feed status e]
   (do
-    (soy/renderElement
-     (dom/getElement "main-page") tpl/editor (util/map-to-obj data))
-    (core/xhrify-internal-links! (core/get-internal-links!))))
+    (. e (preventDefault))
+    (. e (stopPropagation)))
+  
+  (let [status-el (dom/getElement "status-message")
+        image-information-el (dom/getElement "image-information")
+        file (aget (.files (.dataTransfer e)) 0)
+        title (string/join " "
+                           (filter #(not (string/blank? %))
+                                   (.split (strip-filename-extension (.name file))
+                                           #"[^a-zA-Z0-9]")))
+        extension (cond
+                   (= (.type file) "image/png") "png"
+                   (= (.type file) "image/gif") "gif"
+                   (= (.type file) "image/jpeg") "jpg")]
+    (if extension
+      (do
+        (swap! *file* assoc :obj file :data {:extension extension})
+        (ui/remove-error status-el)
+        (ui/set-form-value (dom/getElement "title") title)
+        (display-image-preview file title)
+        (classes/remove image-information-el "hide")
+        (ui/render-template image-information-el
+                            tpl/image-information
+                            {:filename (.name file)
+                             :filetype (.type file)
+                             :size (/ (.size file) 1024)})
+        
+        (when (= status "new")
+          (sync-slug-with-title feed)))
+      (do
+        (swap! *file* dissoc :obj :data)
+        (classes/add image-information-el "hide")
+        (ui/display-error status-el invalid-filetype-err)))))
+
+(defn render-editor-template [mode data]
+  (ui/render-template (dom/getElement "main-page")
+                      (cond
+                       (= mode :image) tpl/image-mode
+                       (= mode :default) tpl/default-mode)
+                      data)
+  (core/xhrify-internal-links! (core/get-internal-links!)))
 
 (defn render-document-not-found-template []
-  (soy/renderElement (dom/getElement "main-page") tpl/document-not-found))
+  (ui/render-template (dom/getElement "main-page") tpl/document-not-found))
 
 (defn render-editor
   ([feed tpl-map] (render-editor feed tpl-map nil))
   ([feed tpl-map content]
-     (if (= "new" (:status tpl-map))
-       (do
-         (render-editor-template tpl-map)
-         (events/listen (dom/getElement "title")
-                        event-type/INPUT
-                        (partial sync-slug-with-title feed))
-         (events/listen (dom/getElement "slug")
-                        event-type/INPUT
-                        validate-slug)
-         (events/listen (dom/getElement "custom-slug")
-                        event-type/CHANGE
-                        (partial toggle-custom-slug feed))
-         (events/listen (dom/getElement "save-document")
-                        "click"
-                        (partial save-new-document-click-callback (:name feed))))
-       (do
-         (render-editor-template tpl-map)
-         (events/listen (dom/getElement "save-document")
-                        "click"
-                        (partial save-existing-document-click-callback
-                                 (:name feed)))))
+     (let [mode (cond
+                 (= (:default-document-type feed) "image") :image
+                 :default :default)
+           tpl-map (if (= mode :image)
+                     (assoc tpl-map :image (:slug tpl-map))
+                     tpl-map)]
+       (if (= "new" (:status tpl-map))
+         (do
+           (render-editor-template mode tpl-map)
+           (events/listen (dom/getElement "title")
+                          event-type/INPUT
+                          (partial sync-slug-with-title feed))
+           (events/listen (dom/getElement "slug")
+                          event-type/INPUT
+                          validate-slug)
+           (events/listen (dom/getElement "custom-slug")
+                          event-type/CHANGE
+                          (partial toggle-custom-slug feed)))
+         (do
+           (render-editor-template mode tpl-map)))
+
+         (let [save-fn (if (= "new" (:status tpl-map))
+                         (cond
+                          (= mode :image)
+                            (partial save-image-document-click-callback
+                                     true
+                                     (:name feed))
+                          :default
+                            (partial save-new-document-click-callback (:name feed)))
+                         (cond
+                          (= mode :image)
+                            (partial save-image-document-click-callback
+                                     false
+                                     (:name feed))
+                          :default
+                            (partial save-existing-document-click-callback
+                                     (:name feed))))]
+         (events/listen (dom/getElement "save-document") "click" save-fn))
+
+       (when (= mode :image)
+         (let [drop-target-el (dom/getElement "image-drop-target")]
+           (. drop-target-el (addEventListener "drop"
+                                               (partial handle-image-drop-callback
+                                                        feed
+                                                        (:status tpl-map))
+                                               false))
+           (. drop-target-el (addEventListener "dragover"
+                                               (fn [e]
+                                                 (. e (preventDefault))
+                                                 (. e (stopPropagation)))
+                                               false))))
 
        (let [editor (create-editor-field "content")
              toolbar (create-editor-toolbar "toolbar")]
@@ -251,7 +371,7 @@
          (do
            (register-editor-plugins editor)
            (goog.ui.editor.ToolbarController. editor toolbar)
-           (. editor (makeEditable))))))
+           (. editor (makeEditable)))))))
 
 (defn start-default-mode! [feed slug status]
   (if (= :new status)
@@ -319,6 +439,7 @@
            (start-default-mode! feed slug status))))))
 
 (defn start [feed-name status uri]
+  (swap! *file* dissoc :obj :data)
   (let [slug (when (= status :edit)
                (str "/" (last (re-find #"^/admin/[^/]+/edit/(.*?)$" uri))))]
     (document/get-feed feed-name (partial start-mode-callback! slug status))))

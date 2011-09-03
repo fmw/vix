@@ -9,8 +9,9 @@
                  [enlive "1.0.0-SNAPSHOT"]
                  [clj-time "0.3.0"]
                  [clj-http "0.1.3"]
-                 [org.clojars.pieterbreed/clojure-couchdb "0.4.7"]]
+                 [org.clojars.pieterbreed/clojure-couchdb "0.4.7"]
+                 [commons-codec/commons-codec "1.5"]]
   :dev-dependencies [[lein-ring "0.4.5"]
                      [org.clojars.autre/lein-vimclojure "1.0.0"]
-                     [swank-clojure "1.2.1"]]
+                     [swank-clojure "1.3.2"]]
   :ring {:handler vix.routes/app})

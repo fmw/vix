@@ -1,5 +1,6 @@
 (ns vix.ui
   (:require [vix.util :as util]
+            [soy :as soy]
             [goog.dom :as dom]
             [goog.dom.forms :as forms]
             [goog.dom.classes :as classes]
@@ -43,6 +44,9 @@
 (defn set-form-value [el-id-or-obj value]
   (let [el (util/get-element el-id-or-obj)]
     (forms/setValue el value)))
+
+(defn render-template [dom-el template data-map]
+  (soy/renderElement dom-el template (util/map-to-obj data-map)))
 
 ; TODO: this function is still a work-in-progress
 (defn fx!

@@ -24,32 +24,38 @@
         [ring.util.response :only [redirect]])
   (:require [vix.db :as db]
             [clojure.contrib [error-kit :as kit]]
+            [couchdb [client :as couchdb]]
             [compojure.route :as route]
             [compojure.handler :as handler]))
 
 (def db-server "http://localhost:5984/")
 (def database "vix")
 
-; FIXME: switch to utf-8, but need to fix conversion problems first
-(defn response [body & [status]]
+; FIXME: test character encoding issues
+(defn response [body & {:keys [status content-type]}]
   {:status (or status (if (nil? body) 404 200))
-   :headers {"Content-type" "text/html; charset=ISO-8859-1"}
+   :headers {"Content-type" (or content-type "text/html; charset=UTF-8")}
    :body body})
 
-; FIXME: switch to utf-8, but need to fix conversion problems first
-(defn json-response [body & [status]]
-  (let [json-body (when-not (nil? body) (json-str body))
-        status (if status status (if (nil? body) 404 200))]
-    (assoc-in (response json-body status)
-              [:headers "Content-type"]
-              "application/json; charset=ISO-8859-1")))
+; FIXME: test character encoding issues
+(defn json-response [body & {:keys [status]}]
+  (response (when-not (nil? body) (json-str body))
+            :status (or status (if (nil? body) 404 200))
+            :content-type "application/json; charset=UTF-8"))
 
 ; FIXME: add a nice 404 page
 ; FIXME: add authorization
 (defn catch-all [db-server database slug]
   (if-let [document (db/get-document db-server database slug)]
-    (response (blog-article-template document))
-    (response "<h1>Page not found</h1>" 404)))
+    (if-let [original (:original (:_attachments document))]
+      (response (new java.io.ByteArrayInputStream
+                     (:body (couchdb/attachment-get db-server
+                                                    database
+                                                    (:_id document)
+                                                    "original")))
+                :content-type (:content_type original))
+      (response (blog-article-template document)))
+    (response "<h1>Page not found</h1>" :status 404)))
 
 (defn logout [session]
   {:session (dissoc session :username)
@@ -98,7 +104,7 @@
                            db-server
                            database
                            (read-json (slurp* (:body request))))
-                         201)))
+                         :status 201)))
   (GET "/json/feed/:name" {{feed-name :name} :params session :session}
        (if-let [feed (db/get-feed db-server database feed-name)]
          (when (authorize session feed-name :GET)
@@ -130,7 +136,7 @@
                            database
                            (:feed (:params request))
                            (read-json (slurp* (:body request))))
-                         201)))
+                        :status 201)))
   (GET "/json/document/*" {{slug :*} :params session :session}
        (if-let [document (db/get-document
                            db-server database (force-initial-slash slug))]

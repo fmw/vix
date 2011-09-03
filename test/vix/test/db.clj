@@ -18,7 +18,8 @@
   (:use [clojure.test]
         [clojure.contrib.json :only [read-json]])
   (:require [couchdb [client :as couchdb]]
-            [clj-http.client :as http]))
+            [clj-http.client :as http])
+  (:import [org.apache.commons.codec.binary Base64]))
 
 (defn couchdb-id? [s]
   (re-matches #"^[a-z0-9]{32}$" s))
@@ -303,7 +304,33 @@
         (is (= (:title document) "foo"))
         (is (= (:slug document) (str "/blog/foo-" (+ n 2))))
         (is (= (:content document) "bar"))
-        (is (true? (:draft document)))))))
+        (is (true? (:draft document))))))
+
+
+  (testing "Test if attachments are handled correctly."
+    (let [gif (str "R0lGODlhAQABA++/vQAAAAAAAAAA77+9AQIAAAAh77+9BAQUA++/"
+                   "vQAsAAAAAAEAAQAAAgJEAQA7")
+          document (create-document
+                    +test-server+
+                    +test-db+
+                    "images"
+                    {:attachment {:type "image/gif" :data gif}
+                     :title "a single black pixel!"
+                     :slug "pixel.gif"
+                     :content ""
+                     :draft false})
+          attachment (couchdb/attachment-get +test-server+
+                                             +test-db+
+                                             (:_id document)
+                                             "original")]
+      (is (nil? (:attachment document)))
+      (is (= (:_attachments document)
+             {:original {:content_type "image/gif"
+                         :revpos 2
+                         :length 57
+                         :stub true}}))
+
+      (is (= (Base64/encodeBase64String (:body attachment)) gif)))))
 
 (deftest test-create-feed
   (let [feed (create-feed +test-server+
@@ -390,7 +417,57 @@
     (is (couchdb-rev? 2 (:_rev updated-doc)))
     (is (iso-date? (:updated updated-doc)))
     (is (= (:published new-doc) (:published updated-doc)))
-    (is (= (:title updated-doc) "hic sunt dracones"))))
+    (is (= (:title updated-doc) "hic sunt dracones")))
+  
+  (testing "Test if attachments are handled correctly."
+    (let [black-pixel (str "R0lGODlhAQABA++/vQAAAAAAAAAA77+9AQIAAAAh77+9BAQUA++/"
+                           "vQAsAAAAAAEAAQAAAgJEAQA7")
+          white-pixel (str "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgK"
+                           "DBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0"
+                           "Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIy"
+                           "MjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIy"
+                           "MjL/wAARCAABAAEDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAA"
+                           "AAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQID"
+                           "AAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcY"
+                           "GRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlq"
+                           "c3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2"
+                           "t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3"
+                           "+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QA"
+                           "tREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEI"
+                           "FEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNE"
+                           "RUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImK"
+                           "kpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU"
+                           "1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD3"
+                           "+iiigD//2Q==")
+          new-doc (create-document
+                   +test-server+
+                   +test-db+
+                   "images"
+                   {:attachment {:type "image/jpeg" :data white-pixel}
+                    :title "a single black pixel!"
+                    :slug "/pixel.jpeg"
+                    :content ""
+                    :draft false})
+          updated-doc (update-document
+                       +test-server+
+                       +test-db+
+                       "/pixel.jpeg"
+                       {:attachment {:type "image/gif" :data black-pixel}
+                        :title "a single black pixel!"
+                        :content ""
+                        :draft false})
+          attachment (couchdb/attachment-get +test-server+
+                                             +test-db+
+                                             (:_id updated-doc)
+                                             "original")]
+
+      (is (= (:_attachments updated-doc)
+             {:original {:content_type "image/gif"
+                         :revpos 4
+                         :length 57
+                         :stub true}}))
+
+      (is (= (Base64/encodeBase64String (:body attachment)) black-pixel)))))
 
 (deftest test-update-feed
   (let [blog-feed (create-feed +test-server+

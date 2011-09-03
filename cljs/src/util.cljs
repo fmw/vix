@@ -4,6 +4,7 @@
             [goog.date :as date]
             [clojure.string :as string]))
 
+;; FIXME: support nested maps
 (defn map-to-obj [m]
   (let [o (js-obj)]
     ;; FIXME: remove ugly string/split hack once the name function is fixed

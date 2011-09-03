@@ -5,7 +5,6 @@
             [vix.ui :as ui]
             [clojure.set :as set]
             [clojure.string :as string]
-            [soy :as soy]
             [vix.templates.feed :as tpl]
             [goog.global :as global]
             [goog.events :as events]
@@ -52,16 +51,10 @@
   "Something went wrong while trying to save this feed.")
 
 (defn display-document-list [main-el xhr]
-  (soy/renderElement main-el
-                     tpl/list-documents
-                     (util/map-to-obj
-                      {:json (. xhr (getResponseJson))})))
+  (ui/render-template main-el tpl/list-documents {:json (. xhr (getResponseJson))}))
 
 (defn display-feed-list [main-el xhr]
-  (soy/renderElement main-el
-                     tpl/list-feeds
-                     (util/map-to-obj
-                      {:json (. xhr (getResponseJson))})))
+  (ui/render-template main-el tpl/list-feeds {:json (. xhr (getResponseJson))}))
 
 (defn list-documents [uri-path]
   (let [feed (last (re-find #"^/admin/(.*?)/overview$" uri-path))]
@@ -76,7 +69,7 @@
            (do
              (display-document-list main-el xhr)
              (create-document-list-events feed))
-           (soy/renderElement main-el tpl/list-documents-error)))))))
+           (ui/render-template main-el tpl/list-documents-error)))))))
 
 (defn list-feeds-callback [e]
   (let [main-el (dom/getElement "main-page")
@@ -86,7 +79,7 @@
       (do
         (display-feed-list main-el xhr)
         (create-feed-list-events))
-      (soy/renderElement main-el tpl/list-feeds-error))))
+      (ui/render-template main-el tpl/list-feeds-error))))
 
 (defn list-feeds []
   (util/set-page-title! "Feeds overview")
@@ -283,9 +276,7 @@
                                                (get-feed-value-map!))))))))
 
 (defn render-feed-form [feed-data]
-  (soy/renderElement (dom/getElement "main-page")
-                     tpl/manage-feed
-                     (util/map-to-obj feed-data))
+  (ui/render-template (dom/getElement "main-page") tpl/manage-feed feed-data)
   (core/xhrify-internal-links! (core/get-internal-links!)))
 
 (defn display-new-feed-form []
@@ -333,7 +324,7 @@
         (ui/disable-element "name")
         (create-feed-form-events feed-name))
       ; else clause
-      (soy/renderElement (dom/getElement "main-page") tpl/feed-not-found))))
+      (ui/render-template (dom/getElement "main-page") tpl/feed-not-found))))
 
 (defn display-edit-feed-form [feed-name]
   (document/get-feed feed-name #(display-edit-feed-xhr-callback feed-name %)))

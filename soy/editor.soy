@@ -1,7 +1,7 @@
 {namespace vix.templates.editor}
 
 /**
- * Displays the Vix Editor.
+ * Displays the default mode for the Vix Editor.
  *
  * @param status
  * @param feed
@@ -9,7 +9,7 @@
  * @param slug
  * @param draft
  */
-{template .editor}
+{template .default_mode}
   <p><a href="/admin/{$feed}/overview">Back to overview</a></p>
 
   <div id="status-message">&nbsp;</div>
@@ -56,6 +56,97 @@
 
   <p><button id="save-document">Save</button></p>
 
+{/template}
+
+/**
+ * Displays the image mode for the Vix Editor.
+ *
+ * @param status
+ * @param feed
+ * @param title
+ * @param slug
+ * @param draft
+ * @param image
+ */
+{template .image_mode}
+  <p><a href="/admin/{$feed}/overview">Back to overview</a></p>
+
+  <div id="status-message">&nbsp;</div>
+  
+  <div id="image-drop-target">
+    Drag the image and drop it here.
+    <div id="image-preview">
+    {if $image}
+        <img src="{$image}" title="{$title}" alt="{$title}"/>
+    {/if}
+    </div>
+  </div>
+
+  <p id="image-information">&nbsp;</p>
+
+  <h3 id="caption">
+    {if $status == 'new'}
+      Upload Image
+    {else}
+    Edit Image
+    {/if}
+  </h3>
+
+  <div class="document-fields-row">
+    <label for="title">Title:</label>
+    <input type="text" id="title" name="title" class="input-field"
+           value="{$title}" />
+    <input type="checkbox" id="draft" name="draft" class="checkbox-field"
+           {if $draft}
+             checked="checked"
+           {/if} />
+    <label for="draft">Draft</label>
+  </div>
+
+  <div class="document-fields-row">
+    <label for="slug" id="slug-label"
+           {if $status == 'edit'}
+             class="disabled"
+           {/if}>Slug:</label>
+    <input type="text" id="slug" name="slug" class="input-field disabled"
+           disabled="disabled" value="{$slug}" />
+    <input type="checkbox" id="custom-slug" name="custom-slug"
+           {if $status == 'edit'}
+             disabled="disabled"
+           {/if}
+           class="checkbox-field" />
+    <label for="custom-slug" id="custom-slug-label"
+           {if $status == 'edit'}
+             class="disabled"
+           {/if}>Custom</label>
+  </div>
+
+  <div id="toolbar"></div>
+  <div id="content"></div>
+
+  <p><button id="save-document">Save</button></p>
+
+{/template}
+
+/**
+ * Displays information about images.
+ *
+ * @param filename
+ * @param filetype
+ * @param size
+ */
+{template .image_information}
+  <em>{$filename}</em> ({$filetype}; {round($size,1)} kb)
+{/template}
+
+/**
+ * Display image
+ *
+ * @param src
+ * @param title
+ */
+{template .image}
+  <img src="{$src}" alt="{$title}" title="{$title}" />
 {/template}
 
 /***/
