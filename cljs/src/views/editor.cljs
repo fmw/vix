@@ -258,7 +258,12 @@
                                            :attachment
                                            image-data))))))
         (. reader (readAsBinaryString file)))
-      (ui/display-error (dom/getElement "status-message") file-required-err))))
+      (if-not create?
+        ; update without changing image
+        (document/update-doc (.value (dom/getElement "slug"))
+                             save-existing-document-xhr-callback
+                             (get-document-value-map! feed-name))
+        (ui/display-error (dom/getElement "status-message") file-required-err)))))
 
 (defn handle-image-drop-callback [feed status e]
   (do
