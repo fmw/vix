@@ -139,7 +139,7 @@
                         :status 201)))
   (GET "/json/document/*" {{slug :*} :params session :session}
        (if-let [document (db/get-document
-                           db-server database (force-initial-slash slug))]
+                           db-server database (force-initial-slash slug) true)]
          (when (authorize session (:feed document) :GET)
            (json-response document))
          (json-response nil)))

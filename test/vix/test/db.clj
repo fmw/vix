@@ -216,7 +216,38 @@
         (is (= (:title document) "foo"))
         (is (= (:slug document) (str "/blog/foo")))
         (is (= (:content document) "bar"))
-        (is (true? (:draft document)))))
+        (is (true? (:draft document))))
+
+  (testing "Test if attachments are handled correctly."
+    (let [gif (str "R0lGODlhAQABA++/vQAAAAAAAAAA77+9AQIAAAAh77+9BAQUA++/"
+                   "vQAsAAAAAAEAAQAAAgJEAQA7")]
+      (do
+        (create-document +test-server+
+                         +test-db+
+                         "images"
+                         {:attachment {:type "image/gif" :data gif}
+                          :title "a single black pixel!"
+                          :slug "/images/white-pixel.gif"
+                          :content ""
+                          :draft false})
+        (create-document +test-server+
+                         +test-db+
+                         "images"
+                         {:title "not a single black pixel!"
+                          :slug "/images/not-a-white-pixel.gif"
+                          :content ""
+                          :draft false}))
+
+      (is (= (:attachment (get-document +test-server+
+                                        +test-db+
+                                        "/images/white-pixel.gif"
+                                        true))
+             {:type "image/gif" :data gif}))
+
+      (is (nil? (:attachment (get-document +test-server+
+                                           +test-db+
+                                           "/images/not-a-white-pixel.gif"
+                                           true)))))))
 
 (deftest test-get-feed
   (do

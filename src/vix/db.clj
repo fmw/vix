@@ -150,14 +150,25 @@
                                      :descending true}))]
     (map #(:value %) entries)))
 
-(defn get-document [db-server db-name slug]
-  (let [document (view-get db-server
-                           db-name
-                           "views"
-                           "by_slug"
-                           {:include_docs true
-                            :key slug})]
-    (:value (first (:rows document)))))
+(defn get-document
+  ([db-server db-name slug] (get-document db-server db-name slug false))
+  ([db-server db-name slug include-attachment?]
+     (let [document (view-get db-server
+                              db-name
+                              "views"
+                              "by_slug"
+                              {:include_docs true
+                               :key slug})
+           doc-row (:value (first (:rows document)))]
+       (if (and include-attachment? (:original (:_attachments doc-row)))
+         (let [content-type (:content_type (:original (:_attachments doc-row)))
+               f (:body (couchdb/attachment-get db-server
+                                                db-name
+                                                (:_id doc-row)
+                                                "original"))]
+           (assoc doc-row :attachment {:type content-type
+                                       :data (Base64/encodeBase64String f)}))
+         doc-row))))
 
 (defn get-unique-slug [db-server db-name slug]
   (loop [slug slug]

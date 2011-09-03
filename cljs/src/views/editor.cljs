@@ -315,13 +315,17 @@
 (defn render-editor
   ([feed tpl-map] (render-editor feed tpl-map nil))
   ([feed tpl-map content]
-     (let [mode (cond
+     (let [new? (= "new" (:status tpl-map))
+           mode (cond
                  (= (:default-document-type feed) "image") :image
                  :default :default)
-           tpl-map (if (= mode :image)
-                     (assoc tpl-map :image (:slug tpl-map))
+           tpl-map (if (and (= mode :image) (not new?))
+                     (assoc tpl-map :image (str "data:"
+                                                (:type (:attachment tpl-map))
+                                                ";base64,"
+                                                (:data (:attachment tpl-map))))
                      tpl-map)]
-       (if (= "new" (:status tpl-map))
+       (if new?
          (do
            (render-editor-template mode tpl-map)
            (events/listen (dom/getElement "title")
@@ -336,7 +340,7 @@
          (do
            (render-editor-template mode tpl-map)))
 
-         (let [save-fn (if (= "new" (:status tpl-map))
+         (let [save-fn (if new?
                          (cond
                           (= mode :image)
                             (partial save-image-document-click-callback
@@ -426,7 +430,13 @@
                                               :feed ("feed" json)
                                               :title ("title" json)
                                               :slug ("slug" json)
-                                              :draft ("draft" json)}
+                                              :draft ("draft" json)
+                                              :attachment {:type ("type"
+                                                                  ("attachment"
+                                                                   json))
+                                                           :data ("data"
+                                                                  ("attachment"
+                                                                   json))}}
                                              ("content" json)))
                             (render-document-not-found-template)))))))
 
