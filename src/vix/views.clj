@@ -49,7 +49,7 @@
   [documents]
   [:#main-page] (html/content
                   (map #(article-model % (parse-date (:published %)))
-                       documents)))
+                       (:documents documents))))
 
 (html/deftemplate blog-article-template "templates/blog.html"
   [document]
