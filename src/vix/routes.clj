@@ -94,7 +94,12 @@
          (json-response
           (db/get-documents-for-feed db-server
                                      database
-                                     (:feed (:params request))))))
+                                     (:feed (:params request))
+                                     (when (:limit (:params request))
+                                       (Integer/parseInt
+                                        (:limit (:params request))))
+                                     (:startkey-published (:params request))
+                                     (:startkey_docid (:params request))))))
   (GET "/json/list-feeds" {session :session {feed "feed"} :params}
        (when (authorize session :* :GET)
          (json-response (db/list-feeds db-server database))))

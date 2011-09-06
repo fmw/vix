@@ -14,7 +14,7 @@
   </h3>
 
   <ul id="document-list">
-    {foreach $doc in $json}
+    {foreach $doc in $json.documents}
       <li>
         <a href="/admin/{$doc.feed}/edit{$doc.slug}"
            class="edit-link">{$doc.title}</a>

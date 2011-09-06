@@ -62,17 +62,19 @@
                     (fn [] ~@body)))
 
 
-(defn request-map [method resource body & params]
+(defn request-map [method resource body params]
   {:request-method method
    :uri resource
    :body (when body (java.io.StringReader. body))
-   :params (first params)})
+   :params params})
 
 ; FIXME: refactor these four request functions to get rid of duplication
 (defn request
   ([method resource my-routes]
-   (request method resource "" my-routes))
-  ([method resource body my-routes & params]
+     (request method resource "" my-routes {}))
+  ([method resource body my-routes]
+     (request method resource body my-routes {}))
+  ([method resource body my-routes params]
    (my-routes (assoc (request-map method resource body params)
                      :session
                      {:username "someone"
@@ -98,7 +100,7 @@
   (app (dissoc (assoc (request-map method resource nil nil)
                             :form-params
                             form-params)
-                     :body)))
+               :body)))
 
 (deftest test-json-response
   (is (= (:status (json-response nil)) 404))
@@ -173,6 +175,33 @@
        :draft false}))
 
   (with-redefs [database +test-db+]
+    (testing "test pagination"
+      (dotimes [n 21]
+        (create-document +test-server+
+                         +test-db+
+                         "pages"
+                         {:title (str "doc " n)
+                          :slug (str "/pages/doc-" n)
+                          :content "bar"
+                          :draft false}))
+
+      (let [first-five (read-json (:body (request :get
+                                                  "/json/pages/list-documents"
+                                                  nil
+                                                  main-routes
+                                                  {:limit "5"})))]
+        (is (= (count (:documents first-five)) 5))
+
+        (let [next-five (read-json (:body (request :get
+                                                   "/json/pages/list-documents"
+                                                   nil
+                                                   main-routes
+                                                   {:limit "5"
+                                                    :startkey-published
+                                                    (:published
+                                                     (:next first-five))})))]
+          (is (= (count (:documents next-five)) 5)))))
+    
     (is (= (:status (request :get "/" main-routes)) 200))
     (is (= (:status (request :get "/login" main-routes)) 200))
     (is (= (:status (request :get "/logout" main-routes)) 302))

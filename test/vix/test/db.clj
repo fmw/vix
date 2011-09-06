@@ -15,7 +15,8 @@
 
 (ns vix.test.db
   (:use [vix.db] :reload)
-  (:use [clojure.test]
+  (:use [vix.core]
+        [clojure.test]
         [clojure.contrib.json :only [read-json]])
   (:require [couchdb [client :as couchdb]]
             [clj-http.client :as http])
@@ -138,9 +139,12 @@
   
   (is (= (encode-view-options {:endkey ["blog"]
                                :startkey ["blog" "2999"]
+                               :startkey_docid "foo"
+                               :endkey_docid "bar"
                                :descending true
                                :include_docs true})                                  
          (str "endkey=%5B%22blog%22%5D&startkey=%5B%22blog%22%2C%222999%22%5D"
+              "&startkey_docid=foo&endkey_docid=bar"
               "&descending=true&include_docs=true"))))
 
 (deftest test-view-get
@@ -395,10 +399,102 @@
         
         feed (get-documents-for-feed +test-server+ +test-db+ "blog")]
 
-    (is (= (count feed) 2))
+    (is (= (count (:documents feed)) 2))
 
-    (is (some #{doc-1} feed))
-    (is (some #{doc-2} feed))))
+    (is (= (:next feed) nil))
+    (is (some #{doc-1} (:documents feed)))
+    (is (some #{doc-2} (:documents feed))))
+
+  (testing "test pagination"
+    (let [now "2011-09-06T12:56:16.322Z"]
+      (dotimes [n 21]
+        (couchdb/document-create +test-server+
+                                 +test-db+
+                                 {:type "document"
+                                  :title (str "doc " n)
+                                  :slug (str "/pages/doc-" n)
+                                  :content ""
+                                  :draft false
+                                  :feed "pages"
+                                  ; mix identical and unique dates
+                                  :published (if (< n 7)
+                                               now
+                                               (now-rfc3339))})))
+    
+    (is (= (count (:documents (get-documents-for-feed +test-server+
+                                                      +test-db+
+                                                      "pages")))
+            21))
+
+    (let [first-five (get-documents-for-feed +test-server+ +test-db+ "pages" 5)]
+      (is (= (count (:documents first-five)) 5))
+      
+      (is (= (:title (nth (:documents first-five) 0)) "doc 20"))
+      (is (= (:title (nth (:documents first-five) 1)) "doc 19"))
+      (is (= (:title (nth (:documents first-five) 2)) "doc 18"))
+      (is (= (:title (nth (:documents first-five) 3)) "doc 17"))
+      (is (= (:title (nth (:documents first-five) 4)) "doc 16"))
+
+      (let [next-five (get-documents-for-feed +test-server+
+                                              +test-db+
+                                              "pages"
+                                              5
+                                              (:published (:next first-five))
+                                              (:startkey_docid (:next first-five)))]
+        
+        (is (= (count (:documents next-five)) 5))
+
+        (is (= (:title (nth (:documents next-five) 0)) "doc 15"))
+        (is (= (:title (nth (:documents next-five) 1)) "doc 14"))
+        (is (= (:title (nth (:documents next-five) 2)) "doc 13"))
+        (is (= (:title (nth (:documents next-five) 3)) "doc 12"))
+        (is (= (:title (nth (:documents next-five) 4)) "doc 11"))
+
+        (let [next-ten (get-documents-for-feed +test-server+
+                                               +test-db+
+                                               "pages"
+                                               10
+                                               (:published (:next next-five))
+                                               (:startkey_docid (:next next-five)))]
+
+          (is (= (count (:documents next-ten)) 10))
+
+          (is (= (:title (nth (:documents next-ten) 0)) "doc 10"))
+          (is (= (:title (nth (:documents next-ten) 1)) "doc 9"))
+          (is (= (:title (nth (:documents next-ten) 2)) "doc 8"))
+          (is (= (:title (nth (:documents next-ten) 3)) "doc 7"))
+          (is (= (:title (nth (:documents next-ten) 4)) "doc 6"))
+          (is (= (:title (nth (:documents next-ten) 5)) "doc 5"))
+          (is (= (:title (nth (:documents next-ten) 6)) "doc 4"))
+          (is (= (:title (nth (:documents next-ten) 7)) "doc 3"))
+          (is (= (:title (nth (:documents next-ten) 8)) "doc 2"))
+          (is (= (:title (nth (:documents next-ten) 9)) "doc 1"))
+
+          (is (= (:published (nth (:documents next-ten) 4))
+                 (:published (nth (:documents next-ten) 5))
+                 (:published (nth (:documents next-ten) 6))
+                 (:published (nth (:documents next-ten) 7))
+                 (:published (nth (:documents next-ten) 7))
+                 (:published (nth (:documents next-ten) 9))
+                 "2011-09-06T12:56:16.322Z"))
+
+          (let [last-doc (get-documents-for-feed +test-server+
+                                                 +test-db+
+                                                 "pages"
+                                                 1
+                                                 (:published (:next next-ten))
+                                                 (:startkey_docid (:next next-ten)))
+                x2 (get-documents-for-feed +test-server+
+                                           +test-db+
+                                           "pages"
+                                           10
+                                           (:published (:next next-ten))
+                                           (:startkey_docid (:next next-ten)))]
+            (is (= last-doc x2))
+            (is (nil? (:next last-doc)))
+            (is (= (:published (nth (:documents last-doc) 0))
+                   "2011-09-06T12:56:16.322Z"))
+            (is (= (:title (nth (:documents last-doc) 0)) "doc 0"))))))))
 
 (deftest test-list-feeds
   (let [blog-feed (create-feed +test-server+

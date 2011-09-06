@@ -66,8 +66,13 @@
      db-server db-name design-doc (key view) (val view))))
 
 (defn encode-view-options [options]
-  (let [encoded-values (map #(URLEncoder/encode % "UTF-8")
-                            (map json/json-str (vals options)))
+  (let [encode-option (fn [option]
+                        (if (or (= (key option) :startkey_docid)
+                                (= (key option) :endkey_docid))
+                          (val option) ; don't quote docids
+                          (json/json-str (val option))))
+        encoded-values (map #(URLEncoder/encode % "UTF-8")
+                            (map encode-option options))
         opt-seq (interleave (map name (keys options)) encoded-values)]
     (apply str (butlast (interleave opt-seq (flatten (repeat ["=" "&"])))))))
 
@@ -139,16 +144,31 @@
     (kit/handle couchdb/ResourceConflict []
                 nil)))
 
-(defn get-documents-for-feed [db-server db-name feed]
-  (if-let [entries (:rows (view-get db-server
-                                    db-name
-                                    "views"
-                                    "by_feed"
-                                    {:endkey [feed]
-                                     :startkey [feed "2999"]
-                                     :include_docs true
-                                     :descending true}))]
-    (map #(:value %) entries)))
+(defn get-documents-for-feed
+  ([db-server db-name feed]
+     (get-documents-for-feed db-server db-name feed nil nil nil))
+  ([db-server db-name feed limit]
+     (get-documents-for-feed db-server db-name feed limit nil nil))
+  ([db-server db-name feed limit startkey startkey_docid]
+     (let [options {:endkey [feed nil]
+                    :startkey [feed (or startkey "2999")]
+                    :include_docs true
+                    :descending true}
+           options (if (nil? limit)
+                     options
+                     (assoc options :limit (+ 1 limit))) ; +1 for extra doc
+           options (if (nil? startkey_docid)
+                    options
+                    (assoc options :startkey_docid startkey_docid))
+           result (view-get db-server db-name "views" "by_feed" options)]
+       (if-let [entries (:rows result)]
+         (let [docs (map #(:value %) entries)]
+           (if (or (nil? limit) (<= (count docs) limit)) ; has next page?
+             {:next nil
+              :documents docs}
+             {:next {:startkey_docid (:_id (last docs))
+                     :published (:published (last docs))}
+              :documents (butlast docs)}))))))
 
 (defn get-document
   ([db-server db-name slug] (get-document db-server db-name slug false))
