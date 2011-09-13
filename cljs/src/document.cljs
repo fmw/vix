@@ -40,11 +40,32 @@
 (defn update-doc [slug callback json-map]
   (request-doc-with-slug slug callback "PUT" json-map))
 
-(defn get-documents-for-feed [name callback]
-  (xhrio/send (str "/json/" name "/list-documents") callback))
+(defn get-documents-for-feed
+  ([name callback]
+     (get-documents-for-feed name callback nil nil nil))
+  ([name callback limit]
+     (get-documents-for-feed name callback limit nil nil))
+  ([name callback limit startkey-published startkey_docid]
+     (let [base-uri (str "/json/" name "/list-documents")
+           uri  (if (or (nil? startkey-published) (nil? startkey_docid) (nil? limit))
+                  (if limit
+                    (str base-uri "?limit=" limit)
+                    base-uri)
+                  (str base-uri
+                       "?limit=" limit
+                       "&startkey-published=" startkey-published
+                       "&startkey_docid=" startkey_docid))]
+       (xhrio/send uri callback))))
 
-(defn get-feeds-list [callback]
-  (xhrio/send "/json/list-feeds" callback))
+(defn get-feeds-list
+  ([callback]
+     (get-feeds-list callback nil))
+  ([callback default-document-type]
+     (let [uri (if default-document-type
+                 (str "/json/list-feeds?default-document-type="
+                      default-document-type)
+                 "/json/list-feeds")]
+       (xhrio/send uri callback))))
 
 (defn get-feed [feed-name callback]
   (request (str "/json/feed/" feed-name) callback "GET" nil))

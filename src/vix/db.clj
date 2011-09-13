@@ -37,7 +37,12 @@
                                         "map_user_by_username.js"))}
             :feeds {:map (slurp (str "/home/fmw/clj/vix/src/"
                                           "database-views/"
-                                          "map_feeds_by_name.js"))}})
+                                          "map_feeds_by_name.js"))}
+            :feeds_by_default_document_type {:map (slurp (str "/home/fmw/clj/vix/"
+                                                              "src/database-views/"
+                                                              "map_feeds_by_"
+                                                              "default_document_"
+                                                              "type.js"))}})
 
 (defn #^{:rebind true} view-sync
   [server db design-doc view-name view-functions]
@@ -102,6 +107,15 @@
                                   "views"
                                   "feeds"
                                   {:descending true}))]
+    (map #(:value %) feeds)))
+
+(defn list-feeds-by-default-document-type [db-server db-name default-document-type]
+  (if-let [feeds (:rows (view-get db-server
+                                  db-name
+                                  "views"
+                                  "feeds_by_default_document_type"
+                                  {:descending true
+                                   :key default-document-type}))]
     (map #(:value %) feeds)))
 
 (defn get-feed [db-server db-name feed-name]

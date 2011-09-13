@@ -103,6 +103,39 @@ header a:hover {
     width: 430px;
 }
 
+#editor-images {
+    clear: both;
+}
+
+.editor-image-bar {
+    clear: both;
+}
+
+.editor-image-preview-box {
+    padding: 15px 15px 15px 15px;
+    margin: 10px 10px 10px 10px;
+    width: 150px;
+    background-color: #dfdfdf;
+    border: 1px solid black;
+    float: left;
+}
+
+#editor-images img {
+    max-width: 150px;
+}
+
+#editor-images-pagination-links {
+    width: 600px;
+}
+
+#editor-images-pagination-prev {
+    float: left;
+}
+
+#editor-images-pagination-next {
+    float: right;
+}
+
 .disabled {
     color: grey;
 }

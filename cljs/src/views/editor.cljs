@@ -57,6 +57,78 @@
 (defn slug-has-invalid-chars? [slug]
   (if (re-matches #"[/\-a-zA-Z0-9\.]+" slug) false true))
 
+(defn display-image-feeds []
+  (document/get-feeds-list
+   (fn [e]
+     (let [xhr (.target e)
+           json (. xhr (getResponseJson))]
+       (if (pos? (count json))
+         (display-images (.name (first json)) json)
+         (ui/render-template (dom/getElement "editor-images")
+                             tpl/no-image-feeds-found))))
+   "image"))
+
+(defn display-images
+  ([feed all-feeds]
+     (display-images feed all-feeds nil []))
+  ([feed all-feeds current-page previous-pages]
+     (let [display-images-xhr-callback
+           (fn [e]
+             (let [xhr (.target e)
+                   json (. xhr (getResponseJson))
+                   first-doc (first (.documents json))
+                   current-page (or current-page
+                                    {:startkey-published (.published first-doc)
+                                     :startkey_docid (._id first-doc)})
+                   next-page {:startkey-published (when (.next json)
+                                                    (.published (.next json)))
+                              :startkey_docid (when (.next json)
+                                                (.startkey_docid (.next json)))}]
+               
+               (ui/render-template (dom/getElement "editor-images")
+                                   tpl/editor-images
+                                   {:hasPrev (pos? (count previous-pages))
+                                    :feeds all-feeds
+                                    :feed feed
+                                    :json json})
+               
+               (let [image-feeds-select-el (dom/getElement "image-feeds")]
+                 (events/listen image-feeds-select-el
+                                event-type/CHANGE
+                                (fn [evt]
+                                  (display-images (.value image-feeds-select-el)
+                                                  all-feeds))))
+
+               (when (pos? (count previous-pages))
+                 (events/listen (dom/getElement "editor-images-pagination-prev-link")
+                                event-type/CLICK
+                                (fn [evt]
+                                  (. evt (preventDefault))
+                                  ; conj will mess up the order of the elements
+                                  ; when called on nil (because only vectors have
+                                  ; the expected order), so make sure an empty vector
+                                  ; is passed instead of nil.
+                                  (display-images feed
+                                                  all-feeds
+                                                  (last previous-pages)
+                                                  (or (butlast previous-pages)
+                                                      [])))))
+               (when (.next json)
+                 (events/listen (dom/getElement "editor-images-pagination-next-link")
+                                event-type/CLICK
+                                (fn [evt]
+                                  (. evt (preventDefault))
+                                  (display-images feed
+                                                  all-feeds
+                                                  next-page
+                                                  (conj previous-pages
+                                                        current-page)))))))]
+       (document/get-documents-for-feed feed
+                                        display-images-xhr-callback
+                                        6
+                                        (:startkey-published current-page)
+                                        (:startkey_docid current-page)))))
+
 (defn create-editor-field [element-id]
   (goog.editor.Field. element-id))
 
@@ -82,6 +154,7 @@
                            buttons/FONT_FACE
                            buttons/FONT_SIZE
                            buttons/LINK
+                           buttons/IMAGE
                            buttons/UNDO
                            buttons/REDO
                            buttons/UNORDERED_LIST
@@ -195,7 +268,7 @@
 (defn save-new-document-xhr-callback [e]
   (let [xhr (.target e)]
     (if (= (.getStatus xhr e) 201)
-      (let [json (js->clj (.getResponseJson xhr e))]
+      (let [json (js->clj (. xhr (getResponseJson)))]
         (core/navigate-replace-state (str ("feed" json) "/edit" ("slug" json))
                                      (str "Edit \"" ("title" json) "\"")))
       (ui/display-error (dom/getElement "status-message")
@@ -380,7 +453,15 @@
          (do
            (register-editor-plugins editor)
            (goog.ui.editor.ToolbarController. editor toolbar)
-           (. editor (makeEditable)))))))
+           (. editor (makeEditable))
+           
+           (events/listen (dom/getElement "image")
+                          event-type/CLICK
+                          (fn [e]
+                            (let [editor-images-el (dom/getElement "editor-images")]
+                              (if (. editor-images-el (hasChildNodes))
+                                (set! (.innerHTML editor-images-el) "")
+                                (display-image-feeds))))))))))
 
 (defn start-default-mode! [feed slug status]
   (if (= :new status)

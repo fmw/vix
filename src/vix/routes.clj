@@ -100,9 +100,13 @@
                                         (:limit (:params request))))
                                      (:startkey-published (:params request))
                                      (:startkey_docid (:params request))))))
-  (GET "/json/list-feeds" {session :session {feed "feed"} :params}
+  (GET "/json/list-feeds" {session :session {ddt :default-document-type} :params}
        (when (authorize session :* :GET)
-         (json-response (db/list-feeds db-server database))))
+         (json-response  (if ddt
+                           (db/list-feeds-by-default-document-type db-server
+                                                                   database
+                                                                   ddt)
+                           (db/list-feeds db-server database)))))
   (POST "/json/new-feed" request
         (when (authorize (:session request) :* :POST)
           (json-response (db/create-feed

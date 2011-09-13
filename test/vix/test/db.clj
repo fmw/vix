@@ -103,12 +103,19 @@
                           +test-db+
                           "/_design/views"))))]
 
-    (is (= (count (:views view-doc)) 4))
+    (is (= (count (:views view-doc)) 5))
     
     (is (= (:map (:feeds (:views view-doc)))
            (str "function(doc) {\n"
                 "    if(doc.type === \"feed\") {\n"
                 "        emit(doc.name, doc);\n"
+                "    }\n"
+                "}")))
+
+    (is (= (:map (:feeds_by_default_document_type (:views view-doc)))
+           (str "function(doc) {\n"
+                "    if(doc.type === \"feed\") {\n"
+                "        emit(doc[\"default-document-type\"], doc);\n"
                 "    }\n"
                 "}")))
     
@@ -496,7 +503,7 @@
                    "2011-09-06T12:56:16.322Z"))
             (is (= (:title (nth (:documents last-doc) 0)) "doc 0"))))))))
 
-(deftest test-list-feeds
+(deftest test-list-feeds-and-list-feeds-by-default-document-type
   (let [blog-feed (create-feed +test-server+
                                +test-db+
                                {:title "Weblog"
@@ -524,7 +531,12 @@
 
     (is (some #{blog-feed} feeds))
     (is (some #{pages-feed} feeds))
-    (is (some #{images-feed} feeds))))
+    (is (some #{images-feed} feeds))
+
+    (is (= (list-feeds-by-default-document-type +test-server+
+                                                +test-db+
+                                                "image")
+           [images-feed]))))
 
 (deftest test-update-document
   (let [new-doc (create-document

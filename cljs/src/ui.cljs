@@ -45,8 +45,12 @@
   (let [el (util/get-element el-id-or-obj)]
     (forms/setValue el value)))
 
-(defn render-template [dom-el template data-map]
-  (soy/renderElement dom-el template (util/map-to-obj data-map)))
+(defn render-template [dom-el template data]
+  (soy/renderElement dom-el
+                     template
+                     (if (map? data)
+                       (util/map-to-obj data)
+                       data)))
 
 ; TODO: this function is still a work-in-progress
 (defn fx!

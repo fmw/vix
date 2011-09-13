@@ -267,10 +267,31 @@
                                                   "/{document-title}"
                                                 :default-document-type "standard"})
                                      main-routes)]
-      (is (= (:status post-feed-request) 201)))
-    
+      (is (= (:status post-feed-request) 201))
 
-    (let [get-feed-request (request :get "/json/feed/blog" main-routes)
+      (let [all-feeds (read-json
+                       (:body (request :get "/json/list-feeds" main-routes)))]
+        (do
+          (request :post
+                   "/json/new-feed"
+                   (json-str {:name "image"
+                              :title "Images"
+                              :subtitle "Pictures."
+                              :default-slug-format "/static/{document-title}.{ext}"
+                              :default-document-type "image"})
+                   main-routes))
+
+        (is (= (count all-feeds) 1))
+        (is (= (count (read-json
+                       (:body (request :get "/json/list-feeds" main-routes)))) 2))
+        (is (= all-feeds (read-json
+                          (:body (request :get
+                                          "/json/list-feeds"
+                                          nil
+                                          main-routes
+                                          {:default-document-type "standard"})))))))
+
+   (let [get-feed-request (request :get "/json/feed/blog" main-routes)
           json-body (read-json (:body get-feed-request))]
       (is (= (:status get-feed-request) 200))
       (is (= (:name json-body) "blog"))

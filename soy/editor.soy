@@ -51,11 +51,78 @@
            {/if}>Custom</label>
   </div>
 
+  <div id="editor-images"></div>
+  <div style="clear: both;">&nbsp;</div>
+
   <div id="toolbar"></div>
   <div id="content"></div>
 
   <p><button id="save-document">Save</button></p>
 
+{/template}
+
+/**
+ *
+ * @param hasPrev
+ * @param feeds
+ * @param feed
+ * @param json
+ */
+{template .editor_images}
+  <label for="image-feeds">Image feed: </label>
+  <select name="image-feeds" id="image-feeds">
+    {foreach $f in $feeds}
+      <option value="{$f.name}"
+              {if $feed == $f.name}selected="selected"{/if}
+              >{$f.title}</option>
+    {/foreach}
+  </select>
+
+  <p>Drag the image you want to include into the editor box below.</p>
+
+  <div class="editor-image-bar">
+    {for $i in range(3)}
+      {if $json.documents[$i]}
+        <div class="editor-image-preview-box">
+          <img src="{$json.documents[$i]['slug']}"
+               alt="{$json.documents[$i]['title']}"
+               title="{$json.documents[$i]['title']}" />
+        </div>
+      {/if}
+    {/for}
+  </div>
+  <div class="editor-image-bar">
+    {for $i in range(3,6)}
+      {if $json.documents[$i]}
+        <div class="editor-image-preview-box">
+          <img src="{$json.documents[$i]['slug']}"
+               alt="{$json.documents[$i]['title']}"
+               title="{$json.documents[$i]['title']}" />
+        </div>
+       {/if}
+    {/for}
+
+  <div style="clear: both;">&nbsp;</div>
+
+  <div id="editor-images-pagination-links">
+    {if $hasPrev}
+    <div id="editor-images-pagination-prev">
+      <a id="editor-images-pagination-prev-link" href="#">Previous</a>
+    </div>
+    {/if}
+    {if $json.next}
+      <div id="editor-images-pagination-next">
+        <a id="editor-images-pagination-next-link" href="#">Next</a>
+      </div>
+    {/if}
+{/template}
+
+/****/
+{template .no_image_feeds_found}
+  <p>
+    There are no image feeds yet. Please make a feed with "Image file"
+    as the default document type and upload some images.
+  </p>
 {/template}
 
 /**
