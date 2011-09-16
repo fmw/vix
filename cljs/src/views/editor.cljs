@@ -15,7 +15,6 @@
             [goog.editor.plugins.SpacesTabHandler :as SpacesTabHandler]
             [goog.editor.plugins.EnterHandler :as EnterHandler]
             [goog.editor.plugins.HeaderFormatter :as HeaderFormatter]
-            [goog.editor.plugins.LoremIpsum :as LoremIpsum]
             [goog.editor.plugins.LinkDialogPlugin :as LinkDialogPlugin]
             [goog.editor.plugins.LinkBubble :as LinkBubble]
             [goog.editor.Command :as buttons]
@@ -144,7 +143,6 @@
     (.registerPlugin (goog.editor.plugins.SpacesTabHandler.))
     (.registerPlugin (goog.editor.plugins.EnterHandler.))
     (.registerPlugin (goog.editor.plugins.HeaderFormatter.))
-    (.registerPlugin (goog.editor.plugins.LoremIpsum. "Click here to edit."))
     (.registerPlugin (goog.editor.plugins.LinkDialogPlugin.))
     (.registerPlugin (goog.editor.plugins.LinkBubble.))))
 
