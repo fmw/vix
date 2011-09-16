@@ -59,6 +59,26 @@
 (defn slug-has-invalid-chars? [slug]
   (if (re-matches #"[/\-a-zA-Z0-9\.]+" slug) false true))
 
+
+(defn html-with-clean-image-uris [html]
+  (let [get-num-sub-paths (fn [s] (when (string? s)
+                                    (count (re-seq #"../" s))))
+        unsorted-pairs (map (fn [re-pair]
+                              (let [orig-src (nth re-pair 1)]
+                                [orig-src
+                                 (str "/"
+                                      (string/replace orig-src "../" ""))]))
+                            (re-seq #"<img src=\"(.*?)\"" html))]
+    ; need to sort, otherwise shorter links to the same image mess up longer ones
+    (loop [modified-html html
+           img-uri-pairs (sort-by get-num-sub-paths unsorted-pairs)]
+    (if (pos? (count img-uri-pairs))
+      (recur (string/replace modified-html
+                             (first (last img-uri-pairs))
+                             (last (last img-uri-pairs)))
+             (butlast img-uri-pairs))
+      modified-html))))
+
 (defn display-image-feeds []
   (document/get-feeds-list
    (fn [e]
@@ -277,7 +297,8 @@
    :title (.value (dom/getElement "title"))
    :slug (.value (dom/getElement "slug"))
    :draft (.checked (dom/getElement "draft"))
-   :content (.getCleanContents @editor-field @editor-field)})
+   :content (html-with-clean-image-uris
+              (.getCleanContents @editor-field @editor-field))})
 
 (defn save-new-document-xhr-callback [e]
   (let [xhr (.target e)]
