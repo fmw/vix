@@ -27,6 +27,9 @@
             [goog.dom.classes :as classes]
             [goog.crypt.base64 :as base64]))
 
+(def document-title-required-err
+  "The document title value is required.")
+
 (def slug-has-invalid-chars-err
   "Slugs can only contain '/', '-', '.' and alphanumeric characters.")
 
@@ -238,6 +241,19 @@
                            (dom/getElement "slug-label"))
         (sync-slug-with-title feed)))))
 
+(defn validate-title []
+  (let [status-el (dom/getElement "status-message")
+        title-el (dom/getElement "title")
+        title-label-el (dom/getElement "title-label")]
+    (if (string/blank? (.value title-el))
+      (ui/display-error status-el
+                        document-title-required-err
+                        title-el
+                        title-label-el)
+      (ui/remove-error status-el
+                       title-el
+                       title-label-el))))
+
 (defn validate-slug []
   (if (.checked (dom/getElement "custom-slug"))
     (let [status-el (dom/getElement "status-message")
@@ -403,7 +419,10 @@
            (render-editor-template mode tpl-map)
            (events/listen (dom/getElement "title")
                           event-type/INPUT
-                          (partial sync-slug-with-title feed))
+                          (fn [e]
+                            (do
+                              (validate-title)
+                              (sync-slug-with-title feed))))
            (events/listen (dom/getElement "slug")
                           event-type/INPUT
                           validate-slug)
@@ -413,23 +432,30 @@
          (do
            (render-editor-template mode tpl-map)))
 
-         (let [save-fn (if new?
-                         (cond
-                          (= mode :image)
-                            (partial save-image-document-click-callback
-                                     true
-                                     (:name feed))
-                          :default
-                            (partial save-new-document-click-callback (:name feed)))
-                         (cond
-                          (= mode :image)
-                            (partial save-image-document-click-callback
-                                     false
-                                     (:name feed))
-                          :default
-                            (partial save-existing-document-click-callback
-                                     (:name feed))))]
-         (events/listen (dom/getElement "save-document") "click" save-fn))
+       (let [error? #(classes/has (dom/getElement "status-message") "error")
+             validate-title-and-get-save-fn
+             (fn [e]
+               (validate-title)
+               (when-not (error?)
+                 (if new?
+                   (cond
+                    (= mode :image)
+                    (do
+                      (save-image-document-click-callback true (:name feed)))
+                    :default
+                    (do
+                      (save-new-document-click-callback (:name feed))))
+                   (cond
+                    (= mode :image)
+                    (do
+                      (save-image-document-click-callback false (:name feed)))
+                    :default
+                    (do
+                        (save-existing-document-click-callback (:name feed)))))))]
+         
+         (events/listen (dom/getElement "save-document")
+                        "click"
+                        #(validate-title-and-get-save-fn)))
 
        (when (= mode :image)
          (let [drop-target-el (dom/getElement "image-drop-target")]
