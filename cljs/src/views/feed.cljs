@@ -214,6 +214,7 @@
   {:name (.value (dom/getElement "name"))
    :title (.value (dom/getElement "title"))
    :subtitle (.value (dom/getElement "subtitle"))
+   :language (.value (dom/getElement "language"))
    :default-slug-format (.value (dom/getElement "default-slug-format"))
    :default-document-type (.value (dom/getElement "default-document-type"))})
 
@@ -277,7 +278,10 @@
 
 (defn render-feed-form [feed-data]
   (ui/render-template (dom/getElement "main-page") tpl/manage-feed feed-data)
-  (core/xhrify-internal-links! (core/get-internal-links!)))
+  (core/xhrify-internal-links! (core/get-internal-links!))
+
+  (when (:language feed-data)
+    (ui/set-form-value (dom/getElement "language") (:language feed-data))))
 
 (defn display-new-feed-form []
   (render-feed-form {:status "new"
@@ -300,6 +304,7 @@
                            :name ("name" json)
                            :title ("title" json)
                            :subtitle (or ("subtitle" json) "")
+                           :language ("language" json)
                            :default_slug_format ("default-slug-format" json)
                            :default_document_type ("default-document-type" json)})
         

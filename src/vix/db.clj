@@ -145,6 +145,7 @@
              :feed-updated (now-rfc3339)
              :title (:title data-map)
              :subtitle (:subtitle data-map)
+             :language (:language data-map)
              :default-slug-format (:default-slug-format data-map)
              :default-document-type (:default-document-type data-map)))))
 

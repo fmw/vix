@@ -380,6 +380,7 @@
                           {:title "Weblog"
                            :subtitle "Vix Weblog!"
                            :name "blog"
+                           :language "en"
                            :default-slug-format "/{document-title}"
                            :default-document-type "with-description"})]
     
@@ -390,6 +391,7 @@
     (is (= (:title feed) "Weblog"))
     (is (= (:subtitle feed) "Vix Weblog!"))
     (is (= (:name feed) "blog"))
+    (is (= (:language feed) "en"))
     (is (= (:default-slug-format feed) "/{document-title}"))
     (is (= (:default-document-type feed) "with-description"))))
 
@@ -614,6 +616,7 @@
                                {:title "Weblog"
                                 :subtitle "Vix Weblog!"
                                 :name "blog"
+                                :language "en"
                                 :default-slug-format "/{feed-name}/{document-title}"
                                 :default-document-type "with-description"})
         blog-feed-updated (update-feed +test-server+
@@ -622,6 +625,7 @@
                                        {:title "Weblog Feed"
                                         :subtitle "Vix Weblog"
                                         :name "weblog"
+                                        :language "nl"
                                         :default-slug-format "/{document-title}"
                                         :default-document-type "standard"})]
        
@@ -631,6 +635,7 @@
     (is (= (:created blog-feed) (:created blog-feed-updated)))
     (is (= (:title blog-feed-updated) "Weblog Feed"))
     (is (= (:subtitle blog-feed-updated) "Vix Weblog"))
+    (is (= (:language blog-feed-updated) "nl"))
     (is (= (:name blog-feed-updated) "blog")) ; NB: not updated!
     (is (= (:default-slug-format blog-feed-updated) "/{document-title}"))
     (is (= (:default-document-type blog-feed-updated) "standard"))))

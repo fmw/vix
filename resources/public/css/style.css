@@ -94,7 +94,8 @@ header a:hover {
     width: 200px;
 }
 
-.document-fields-row .input-field, .feed-fields-row .input-field {
+.document-fields-row .input-field, .feed-fields-row .input-field,
+        .feed-fields-row select {
     position: relative;
     top: -3px;
     font-size: 20px;
