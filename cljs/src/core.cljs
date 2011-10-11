@@ -49,18 +49,20 @@
 ; TODO: make the (routes) fn work like the compojure routes function
 (defn routes [uri-path]
   (cond
-   (re-matches #"^/admin/$" uri-path) (feed/list-feeds)
-   (re-matches #"^/admin/new-feed$" uri-path) (feed/display-new-feed-form)
-   (re-matches #"^/admin/edit-feed/[^/]+$" uri-path) (feed/display-edit-feed-form
-                                                      (. uri-path (substr 17)))
-   (re-matches #"^/admin/[^/]+/new$" uri-path) (editor/start (get-feed-from-uri)
-                                                             :new
-                                                             uri-path)
-   (re-matches #"^/admin/[^/]+/edit.+" uri-path) (editor/start (get-feed-from-uri)
-                                                               :edit
-                                                               uri-path)
-   (re-matches #"^/admin/[^/]+/overview$" uri-path) (feed/list-documents uri-path)
-   :else (navigate-replace-state "" "Vix overview"))
+   (re-matches #"^/admin/$" uri-path)
+     (feed/list-feeds)
+   (re-matches #"^/admin/new-feed$" uri-path)
+     (feed/display-new-feed-form)
+   (re-matches #"^/admin/edit-feed/[^/]+$" uri-path)
+     (feed/display-edit-feed-form (. uri-path (substr 17)))
+   (re-matches #"^/admin/[^/]+/new$" uri-path)
+     (editor/start (get-feed-from-uri) :new uri-path)
+   (re-matches #"^/admin/[^/]+/edit.+" uri-path)
+     (editor/start (get-feed-from-url) :edit uri-path)
+   (re-matches #"^/admin/[^/]+/overview$" uri-path)
+     (feed/list-documents uri-path)
+   :else
+     (navigate-replace-state "" "Vix overview"))
   nil)
 
 (defn navigate [token title]
@@ -70,5 +72,6 @@
   (. @*h* (replaceToken token title)))
 
 (defn ^:export start-app [uri-path]
-  (start-history!) ; in Chrome this triggers an event, leading to a (routes) call
+  (start-history!) ; in Chrome this triggers an event,
+                   ; leading to a (routes) call
   (routes uri-path))
