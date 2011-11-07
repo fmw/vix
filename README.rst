@@ -146,12 +146,15 @@ Download the Soy compiler::
     wget http://closure-templates.googlecode.com/files/closure-templates-for-javascript-latest.zip
     unzip closure-templates-for-javascript-latest.zip
 
-Add the following lines to your your .bash_profile or .bashrc file::
+Add the following lines to your your ~/.bash_profile or ~/.bashrc file
+using your favorite text editor::
 
     export CLOJURESCRIPT_HOME="$HOME/clj/clojurescript"
 
     alias cotpl="java -jar SoyToJsSrcCompiler.jar --shouldProvideRequireSoyNamespaces --shouldGenerateJsdoc --outputPathFormat resources/public/js/soy/{INPUT_FILE_NAME_NO_EXT}.soy.js soy/editor.soy soy/feed.soy"
-    alias cljs="rlwrap java -cp \"$CLOJURESCRIPT_HOME/lib/*:$CLOJURESCRIPT_HOME/src/clj:$CLOJURESCRIPT_HOME/src/cljs/:$CLOJURESCRIPT_HOME/test/cljs:cljs/macros\" clojure.main"
+    alias cljs="rlwrap java -cp
+    \"$CLOJURESCRIPT_HOME/lib/*:$CLOJURESCRIPT_HOME/src/clj:$CLOJURESCRIPT_HOME/src/cljs/:$CLOJURESCRIPT_HOME/test/cljs:cljs/macros\"
+    clojure.main"
 
 Compile the templates (this command must be executed in the vix
 directory)::
