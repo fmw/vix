@@ -144,16 +144,20 @@ entered, because the other lines are REPL output.
 Download the Soy compiler::
 
     wget http://closure-templates.googlecode.com/files/closure-templates-for-javascript-latest.zip
-    unzip closure-templates-for-javascript-latest.zip 
+    unzip closure-templates-for-javascript-latest.zip
 
-Compile the templates::
+Add the following lines to your your .bash_profile or .bashrc file::
 
-    java -jar SoyToJsSrcCompiler.jar \
-         --shouldProvideRequireSoyNamespaces \
-         --shouldGenerateJsdoc  \
-         --outputPathFormat resources/public/js/soy/{INPUT_FILE_NAME_NO_EXT}.soy.js \
-          soy/editor.soy \
-          soy/feed.soy
+    export CLOJURESCRIPT_HOME="$HOME/clj/clojurescript"
+
+    alias cotpl="java -jar SoyToJsSrcCompiler.jar --shouldProvideRequireSoyNamespaces --shouldGenerateJsdoc --outputPathFormat resources/public/js/soy/{INPUT_FILE_NAME_NO_EXT}.soy.js soy/editor.soy soy/feed.soy"
+    alias cljs="rlwrap java -cp \"$CLOJURESCRIPT_HOME/lib/*:$CLOJURESCRIPT_HOME/src/clj:$CLOJURESCRIPT_HOME/src/cljs/:$CLOJURESCRIPT_HOME/test/cljs:cljs/macros\" clojure.main"
+
+Compile the templates (this command must be executed in the vix
+directory)::
+
+    cd ~/clj/vix
+    cotpl
 
 Create the output directory for the compiled JavaScript::
 
@@ -161,15 +165,16 @@ Create the output directory for the compiled JavaScript::
 
 Start the ClojureScript REPL to compile the client-side code::
 
-    cd ~/clj/clojurescript/
-    script/repl
+    cd ~/clj/vix
+    cljs
 
 Execute this code to compile the ClojureScript, but change the
 directory ("/home/fmw/clj/vix") to reflect the right path on your
 system::
 
-    user=> (use 'cljs.closure) (defn b [] (build "/home/fmw/clj/vix/cljs/src" {:pretty-print true :output-to "/home/fmw/clj/vix/resources/public/js/vix/vix.js" :output-dir "/home/fmw/clj/vix/resources/public/js/out" :libs ["/home/fmw/clj/vix/resources/public/js/soy/"]}))
-    user=> (b)
+    (use 'cljs.closure)
+    (defn b [] (build "/home/fmw/clj/vix/cljs/src" {:pretty-print true :output-to "/home/fmw/clj/vix/resources/public/js/vix/vix.js" :output-dir "/home/fmw/clj/vix/resources/public/js/out" :libs ["/home/fmw/clj/vix/resources/public/js/soy/"]}))
+    (b)
 
 You can ignore any undeclared Var errors; just run (b) again to
 recompile in that case.

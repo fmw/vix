@@ -5,12 +5,13 @@
  *
  * @param status
  * @param feed
+ * @param language
  * @param title
  * @param slug
  * @param draft
  */
 {template .default_mode}
-  <p><a href="/admin/{$feed}/overview">Back to overview</a></p>
+  <p><a href="/admin/{$language}/{$feed}/overview">Back to overview</a></p>
 
   <div id="status-message">&nbsp;</div>
 
@@ -72,13 +73,15 @@
   <label for="image-feeds">Image feed: </label>
   <select name="image-feeds" id="image-feeds">
     {foreach $f in $feeds}
-      <option value="{$f.name}"
+      <option value="{$f.language}:{$f.name}"
               {if $feed == $f.name}selected="selected"{/if}
               >{$f.title}</option>
     {/foreach}
   </select>
 
-  <p>Drag the image you want to include into the editor box below.</p>
+  {if length($json.documents) > 0}
+    <p>Drag the image you want to include into the editor box below.</p>
+  {/if}
 
   <div class="editor-image-bar">
     {for $i in range(3)}
@@ -130,13 +133,14 @@
  *
  * @param status
  * @param feed
+ * @param language
  * @param title
  * @param slug
  * @param draft
  * @param image
  */
 {template .image_mode}
-  <p><a href="/admin/{$feed}/overview">Back to overview</a></p>
+  <p><a href="/admin/{$language}/{$feed}/overview">Back to overview</a></p>
 
   <div id="status-message">&nbsp;</div>
   

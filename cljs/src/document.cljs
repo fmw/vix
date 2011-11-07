@@ -34,20 +34,24 @@
 (defn delete-doc [slug callback]
   (request-doc-with-slug slug callback "DELETE" nil))
 
-(defn create-doc [callback feed json-map]
-  (request (str "/json/" feed "/new") callback "POST" json-map))
+(defn create-doc [callback language feed-name json-map]
+  (request (str "/json/" language "/" feed-name "/new")
+           callback
+           "POST"
+           json-map))
 
 (defn update-doc [slug callback json-map]
   (request-doc-with-slug slug callback "PUT" json-map))
 
 (defn get-documents-for-feed
-  ([name callback]
-     (get-documents-for-feed name callback nil nil nil))
-  ([name callback limit]
-     (get-documents-for-feed name callback limit nil nil))
-  ([name callback limit startkey-published startkey_docid]
-     (let [base-uri (str "/json/" name "/list-documents")
-           uri  (if (or (nil? startkey-published) (nil? startkey_docid) (nil? limit))
+  ([language feed-name callback]
+     (get-documents-for-feed language feed-name callback nil nil nil))
+  ([language feed-name callback limit]
+     (get-documents-for-feed language feed-name callback limit nil nil))
+  ([language feed-name callback limit startkey-published startkey_docid]
+     (let [base-uri (str "/json/" language "/" feed-name "/list-documents")
+           uri  (if (or (nil? startkey-published)
+                        (nil? startkey_docid) (nil? limit))
                   (if limit
                     (str base-uri "?limit=" limit)
                     base-uri)
@@ -67,14 +71,17 @@
                  "/json/list-feeds")]
        (xhrio/send uri callback))))
 
-(defn get-feed [feed-name callback]
-  (request (str "/json/feed/" feed-name) callback "GET" nil))
+(defn get-feed [language feed-name callback]
+  (request (str "/json/feed/" language "/" feed-name) callback "GET" nil))
 
 (defn create-feed [callback json-map]
   (request "/json/new-feed" callback "POST" json-map))
 
-(defn update-feed [feed-name callback json-map]
-  (request (str "/json/feed/" feed-name) callback "PUT" json-map))
+(defn update-feed [language feed-name callback json-map]
+  (request (str "/json/feed/" language "/" feed-name)
+           callback
+           "PUT"
+           json-map))
 
-(defn delete-feed [feed-name callback]
-  (request (str "/json/feed/" feed-name) callback "DELETE" nil))
+(defn delete-feed [language feed-name callback]
+  (request (str "/json/feed/" language "/" feed-name) callback "DELETE" nil))

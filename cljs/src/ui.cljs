@@ -45,6 +45,10 @@
   (let [el (util/get-element el-id-or-obj)]
     (forms/setValue el value)))
 
+(defn get-form-value [el-id-or-obj]
+  (let [el (util/get-element el-id-or-obj)]
+    (forms/getValue el)))
+
 (defn render-template [dom-el template data]
   (soy/renderElement dom-el
                      template

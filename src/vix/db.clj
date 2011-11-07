@@ -37,12 +37,13 @@
                                         "map_user_by_username.js"))}
             :feeds {:map (slurp (str "/home/fmw/clj/vix/src/"
                                           "database-views/"
-                                          "map_feeds_by_name.js"))}
-            :feeds_by_default_document_type {:map (slurp (str "/home/fmw/clj/vix/"
-                                                              "src/database-views/"
-                                                              "map_feeds_by_"
-                                                              "default_document_"
-                                                              "type.js"))}})
+                                          "map_feeds.js"))}
+            :feeds_by_default_document_type {:map
+                                             (slurp (str "/home/fmw/clj/vix/"
+                                                         "src/database-views/"
+                                                         "map_feeds_by_"
+                                                         "default_document_"
+                                                         "type.js"))}})
 
 (defn #^{:rebind true} view-sync
   [server db design-doc view-name view-functions]
@@ -118,13 +119,13 @@
                                    :key default-document-type}))]
     (map #(:value %) feeds)))
 
-(defn get-feed [db-server db-name feed-name]
+(defn get-feed [db-server db-name language feed-name]
   (let [feed (view-get db-server
                        db-name
                        "views"
                        "feeds"
                        {:include_docs true
-                        :key feed-name})]
+                        :key [language feed-name]})]
     (:value (first (:rows feed)))))
 
 (defn create-feed [db-server db-name data-map]
@@ -135,8 +136,8 @@
            :type "feed"
            :created (now-rfc3339))))
 
-(defn update-feed [db-server db-name feed-name data-map]
-  (if-let [feed (get-feed db-server db-name feed-name)]
+(defn update-feed [db-server db-name language feed-name data-map]
+  (if-let [feed (get-feed db-server db-name language feed-name)]
     (couchdb/document-update
       db-server
       db-name
@@ -150,9 +151,9 @@
              :default-document-type (:default-document-type data-map)))))
 
 ; TODO: delete/flag feed content
-(defn delete-feed [db-server db-name feed-name]
+(defn delete-feed [db-server db-name language feed-name]
   (kit/with-handler
-    (if-let [feed (get-feed db-server db-name feed-name)]
+    (if-let [feed (get-feed db-server db-name language feed-name)]
       (couchdb/document-delete db-server db-name (:_id feed)))
     (kit/handle couchdb/DocumentNotFound []
                 nil)
@@ -160,12 +161,25 @@
                 nil)))
 
 (defn get-documents-for-feed
-  ([db-server db-name feed]
-     (get-documents-for-feed db-server db-name feed nil nil nil))
-  ([db-server db-name feed limit]
-     (get-documents-for-feed db-server db-name feed limit nil nil))
-  ([db-server db-name feed limit startkey startkey_docid]
-     (let [options {:endkey [feed nil]
+  ([db-server db-name language feed-name]
+     (get-documents-for-feed db-server
+                             db-name
+                             language
+                             feed-name
+                             nil
+                             nil
+                             nil))
+  ([db-server db-name language feed-name limit]
+     (get-documents-for-feed db-server
+                             db-name
+                             language
+                             feed-name
+                             limit
+                             nil
+                             nil))
+  ([db-server db-name language feed-name limit startkey startkey_docid]
+     (let [feed [language feed-name]
+           options {:endkey [feed nil]
                     :startkey [feed (or startkey "2999")]
                     :include_docs true
                     :descending true}
@@ -196,7 +210,8 @@
                                :key slug})
            doc-row (:value (first (:rows document)))]
        (if (and include-attachment? (:original (:_attachments doc-row)))
-         (let [content-type (:content_type (:original (:_attachments doc-row)))
+         (let [content-type (:content_type (:original
+                                            (:_attachments doc-row)))
                f (:body (couchdb/attachment-get db-server
                                                 db-name
                                                 (:_id doc-row)
@@ -212,13 +227,14 @@
         (recur (increment-slug slug))
         slug))))
 
-(defn create-document [db-server db-name feed document]
+(defn create-document [db-server db-name language feed-name document]
   (let [slug (get-unique-slug db-server db-name (:slug document))
         doc (couchdb/document-create db-server
                                      db-name
                                      (assoc (dissoc document :attachment)
                                        :type "document"
-                                       :feed feed
+                                       :feed feed-name
+                                       :language language
                                        :slug slug
                                        :published (now-rfc3339)))]
 
@@ -232,9 +248,9 @@
                                    (Base64/decodeBase64
                                     (:data (:attachment document)))
                                    (:type (:attachment document)))
-        ; return newly fetched doc from db (including attachment)
+        ;; return newly fetched doc from db (including attachment)
         (get-document db-server db-name (:slug doc)))
-      ; when there is no attachment we don't need to refetch
+      ;; when there is no attachment we don't need to refetch
       doc)))
 
 (defn update-document [db-server db-name slug new-document]

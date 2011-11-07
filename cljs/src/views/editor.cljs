@@ -66,10 +66,15 @@
         unsorted-pairs (map (fn [re-pair]
                               (let [orig-src (nth re-pair 1)]
                                 [orig-src
-                                 (str "/"
-                                      (string/replace orig-src "../" ""))]))
+                                 (str
+                                  (when-not (re-matches
+                                             #"^http[s]{0,1}(.*)"
+                                             orig-src)
+                                    "/")
+                                  (string/replace orig-src "../" ""))]))
                             (re-seq #"<img src=\"(.*?)\"" html))]
-    ; need to sort, otherwise shorter links to the same image mess up longer ones
+    ;; need to sort, otherwise shorter links to the same image mess
+    ;; up longer ones
     (loop [modified-html html
            img-uri-pairs (sort-by get-num-sub-paths unsorted-pairs)]
     (if (pos? (count img-uri-pairs))
@@ -83,69 +88,93 @@
   (document/get-feeds-list
    (fn [e]
      (let [xhr (.target e)
-           json (. xhr (getResponseJson))]
+           json (. xhr (getResponseJson))
+           first-feed (first json)]
        (if (pos? (count json))
-         (display-images (.name (first json)) json)
+         (display-images (.language first-feed) (.name first-feed) json)
          (ui/render-template (dom/getElement "editor-images")
                              tpl/no-image-feeds-found))))
    "image"))
 
 (defn display-images
-  ([feed all-feeds]
-     (display-images feed all-feeds nil []))
-  ([feed all-feeds current-page previous-pages]
+  ([language feed-name all-feeds]
+     (display-images language feed-name all-feeds nil []))
+  ([language feed-name all-feeds current-page previous-pages]
      (let [display-images-xhr-callback
            (fn [e]
              (let [xhr (.target e)
                    json (. xhr (getResponseJson))
-                   first-doc (first (.documents json))
-                   current-page (or current-page
-                                    {:startkey-published (.published first-doc)
-                                     :startkey_docid (._id first-doc)})
-                   next-page {:startkey-published (when (.next json)
-                                                    (.published (.next json)))
-                              :startkey_docid (when (.next json)
-                                                (.startkey_docid (.next json)))}]
-               
+                   docs (when (pos? (count (.documents json)))
+                          (.documents json))
+                   first-doc (when docs
+                               (first docs))
+                   current-page (when docs
+                                  (or current-page
+                                      {:startkey-published
+                                       (.published first-doc)
+                                       :startkey_docid (._id first-doc)}))
+                   next-page (when docs
+                               {:startkey-published (when (.next json)
+                                                      (.published
+                                                       (.next json)))
+                                :startkey_docid (when (.next json)
+                                                  (.startkey_docid
+                                                   (.next json)))})]
+
                (ui/render-template (dom/getElement "editor-images")
                                    tpl/editor-images
                                    {:hasPrev (pos? (count previous-pages))
                                     :feeds all-feeds
-                                    :feed feed
+                                    :feed feed-name
+                                    :language language
                                     :json json})
-               
                (let [image-feeds-select-el (dom/getElement "image-feeds")]
                  (events/listen image-feeds-select-el
                                 event-type/CHANGE
                                 (fn [evt]
-                                  (display-images (.value image-feeds-select-el)
-                                                  all-feeds))))
+                                  (let [chunks (string/split
+                                                (.value
+                                                 image-feeds-select-el)
+                                                ":")
+                                        language (nth chunks 0)
+                                        feed-name (nth chunks 1)]
+                                    (display-images language
+                                                    feed-name
+                                                    all-feeds)))))
 
                (when (pos? (count previous-pages))
-                 (events/listen (dom/getElement "editor-images-pagination-prev-link")
+                 (events/listen (dom/getElement
+                                 "editor-images-pagination-prev-link")
                                 event-type/CLICK
                                 (fn [evt]
                                   (. evt (preventDefault))
-                                  ; conj will mess up the order of the elements
-                                  ; when called on nil (because only vectors have
-                                  ; the expected order), so make sure an empty vector
-                                  ; is passed instead of nil.
-                                  (display-images feed
-                                                  all-feeds
-                                                  (last previous-pages)
-                                                  (or (butlast previous-pages)
-                                                      [])))))
+                                  ;; conj will mess up the order of
+                                  ;; the elements when called on nil
+                                  ;; (because only vectors have the
+                                  ;; expected order), so make sure an
+                                  ;; empty vector is passed instead of nil.
+                                           (display-images feed
+                                                           all-feeds
+                                                           (last
+                                                            previous-pages)
+                                                           (or
+                                                            (butlast
+                                                             previous-pages)
+                                                            [])))))
                (when (.next json)
-                 (events/listen (dom/getElement "editor-images-pagination-next-link")
-                                event-type/CLICK
-                                (fn [evt]
-                                  (. evt (preventDefault))
-                                  (display-images feed
-                                                  all-feeds
-                                                  next-page
-                                                  (conj previous-pages
-                                                        current-page)))))))]
-       (document/get-documents-for-feed feed
+                 (events/listen
+                  (dom/getElement "editor-images-pagination-next-link")
+                  event-type/CLICK
+                  (fn [evt]
+                    (. evt (preventDefault))
+                    (display-images language
+                                    feed-name
+                                    all-feeds
+                                    next-page
+                                    (conj previous-pages
+                                          current-page)))))))]
+       (document/get-documents-for-feed language
+                                        feed-name
                                         display-images-xhr-callback
                                         6
                                         (:startkey-published current-page)
@@ -218,34 +247,21 @@
      :else (when (= (. status-el textContent) slug-not-unique-err)
              (ui/remove-error status-el slug-el slug-label-el)))))
 
-(defn create-document-title-token [title]
-  (string/join "-" (filter #(not (string/blank? %)) (.split title #"[^a-zA-Z0-9]"))))
-
-(defn create-slug! [feed title]
-  (let [today (util/date-now)
-        extension (if (and (= (:default-document-type feed) "image")
-                           (:extension (:data @*file*)))
-                    (:extension (:data @*file*))
-                    "html")]
-    (loop [slug (:default-slug-format feed)
-           substitutions [["{document-title}" (create-document-title-token title)]
-                          ["{feed-name}" (:name feed)]
-                          ["{year}" (:year today)]
-                          ["{month}" (:month today)]
-                          ["{day}" (:day today)]
-                          ["{ext}" extension]]]
-      (if (pos? (count substitutions))
-        (recur (string/replace slug
-                               (first (first substitutions))
-                               (last (first substitutions)))
-               (rest substitutions))
-        slug))))
+(defn create-slug! [title feed]
+  (util/create-slug (:default-slug-format feed)
+                    title
+                    feed
+                    (util/date-now!)
+                    (if (and (= (:default-document-type feed) "image")
+                             (:extension (:data @*file*)))
+                      (:extension (:data @*file*))
+                      "html")))
 
 (defn sync-slug-with-title [feed]
   (when-not (.checked (dom/getElement "custom-slug"))
     (let [title (.value (dom/getElement "title"))
           slug-el (dom/getElement "slug")]
-      (ui/set-form-value slug-el (create-slug! feed title))
+      (ui/set-form-value slug-el (create-slug! title feed))
       (document/get-doc (.value slug-el) handle-duplicate-slug-callback))))
 
 (defn toggle-custom-slug [feed]
@@ -288,12 +304,13 @@
        :else (ui/remove-error status-el slug-el slug-label-el))
 
       (when (and (not (string/blank? slug)) (= (first slug) "/"))
-        (document/get-doc (.value slug-el) handle-duplicate-custom-slug-callback)))))
+        (document/get-doc (.value slug-el)
+                          handle-duplicate-custom-slug-callback)))))
 
 (def editor-field (atom nil))
 
-(defn get-document-value-map! [feed-name]
-  {:feed feed-name
+(defn get-document-value-map! [language feed-name]
+  {:feed [language feed-name]
    :title (.value (dom/getElement "title"))
    :slug (.value (dom/getElement "slug"))
    :draft (.checked (dom/getElement "draft"))
@@ -304,27 +321,33 @@
   (let [xhr (.target e)]
     (if (= (.getStatus xhr e) 201)
       (let [json (js->clj (. xhr (getResponseJson)))]
-        (core/navigate-replace-state (str ("feed" json) "/edit" ("slug" json))
+        (core/navigate-replace-state (str ("language" json)
+                                          "/"
+                                          ("feed" json)
+                                          "/edit"
+                                          ("slug" json))
                                      (str "Edit \"" ("title" json) "\"")))
       (ui/display-error (dom/getElement "status-message")
                         could-not-create-document-err))))
 
-(defn save-new-document-click-callback [feed-name e]
+(defn save-new-document-click-callback [language feed-name e]
   (document/create-doc save-new-document-xhr-callback
+                       language
                        feed-name
-                       (get-document-value-map! feed-name)))
+                       (get-document-value-map! language feed-name)))
 
 (defn save-existing-document-xhr-callback [e]
-  (let [xhr (.target e)]
+  (let [xhr (.target
+             e)]
     (if (= (. xhr (getStatus)) 200)
       nil ; TODO: display status message
       (ui/display-error (dom/getElement "status-message")
                         could-not-save-document-err))))
 
-(defn save-existing-document-click-callback [feed-name e]
+(defn save-existing-document-click-callback [language feed-name e]
   (document/update-doc (.value (dom/getElement "slug"))
                        save-existing-document-xhr-callback
-                       (get-document-value-map! feed-name)))
+                       (get-document-value-map! language feed-name)))
 
 (defn strip-filename-extension [filename]
   (let [pieces (re-find #"^(.*?)\.[a-zA-Z0-9]{1,10}$" filename)]
@@ -344,34 +367,44 @@
                                  :src (.result (.target e))})))
     (. reader (readAsDataURL file))))
 
-(defn save-image-document-click-callback [create? feed-name]
+(defn save-image-document-click-callback [create? language feed-name]
   (let [file (:obj @*file*)]
     (if file
       (let [reader (new (js* "FileReader"))]
         (set! (.onload reader)
               (fn [e]
-                ;; FIXME: change when a better map-to-json converter is implemented
-                (let [image-data (util/map-to-obj {:type (.type file)
-                                                   :data (base64/encodeString
-                                                          (.result (.target e)))})]
+                ;; FIXME: change when a better map-to-json converter
+                ;; is implemented
+                (let [image-data (util/map-to-obj
+                                  {:type (.type file)
+                                   :data (base64/encodeString
+                                          (.result (.target e)))})]
                   (if create?
                     (document/create-doc save-new-document-xhr-callback
+                                         language
                                          feed-name
-                                         (assoc (get-document-value-map! feed-name)
+                                         (assoc
+                                             (get-document-value-map!
+                                              language
+                                              feed-name)
                                            :attachment
                                            image-data))
                     (document/update-doc (.value (dom/getElement "slug"))
                                          save-existing-document-xhr-callback
-                                         (assoc (get-document-value-map! feed-name)
+                                         (assoc
+                                             (get-document-value-map!
+                                              language
+                                              feed-name)
                                            :attachment
                                            image-data))))))
         (. reader (readAsBinaryString file)))
       (if-not create?
-        ; update without changing image
+        ;; update without changing image
         (document/update-doc (.value (dom/getElement "slug"))
                              save-existing-document-xhr-callback
-                             (get-document-value-map! feed-name))
-        (ui/display-error (dom/getElement "status-message") file-required-err)))))
+                             (get-document-value-map! language feed-name))
+        (ui/display-error (dom/getElement "status-message")
+                          file-required-err)))))
 
 (defn handle-image-drop-callback [feed status e]
   (do
@@ -431,7 +464,8 @@
                      (assoc tpl-map :image (str "data:"
                                                 (:type (:attachment tpl-map))
                                                 ";base64,"
-                                                (:data (:attachment tpl-map))))
+                                                (:data
+                                                 (:attachment tpl-map))))
                      tpl-map)]
        (if new?
          (do
@@ -460,17 +494,27 @@
                    (cond
                     (= mode :image)
                     (do
-                      (save-image-document-click-callback true (:name feed)))
+                      (save-image-document-click-callback
+                       true
+                       (:language feed)
+                       (:name feed)))
                     :default
                     (do
-                      (save-new-document-click-callback (:name feed))))
+                      (save-new-document-click-callback
+                       (:language feed)
+                       (:name feed))))
                    (cond
                     (= mode :image)
                     (do
-                      (save-image-document-click-callback false (:name feed)))
+                      (save-image-document-click-callback
+                       false
+                       (:language feed)
+                       (:name feed)))
                     :default
                     (do
-                        (save-existing-document-click-callback (:name feed)))))))]
+                      (save-existing-document-click-callback
+                       (:language feed)
+                       (:name feed)))))))]
          
          (events/listen (dom/getElement "save-document")
                         "click"
@@ -479,9 +523,10 @@
        (when (= mode :image)
          (let [drop-target-el (dom/getElement "image-drop-target")]
            (. drop-target-el (addEventListener "drop"
-                                               (partial handle-image-drop-callback
-                                                        feed
-                                                        (:status tpl-map))
+                                               (partial
+                                                handle-image-drop-callback
+                                                feed
+                                                (:status tpl-map))
                                                false))
            (. drop-target-el (addEventListener "dragover"
                                                (fn [e]
@@ -503,7 +548,8 @@
            (events/listen (dom/getElement "image")
                           event-type/CLICK
                           (fn [e]
-                            (let [editor-images-el (dom/getElement "editor-images")]
+                            (let [editor-images-el (dom/getElement
+                                                    "editor-images")]
                               (if (. editor-images-el (hasChildNodes))
                                 (set! (.innerHTML editor-images-el) "")
                                 (display-image-feeds))))))))))
@@ -515,6 +561,7 @@
       (render-editor feed
                      {:status "new"
                       :feed (:name feed)
+                      :language (:language feed)
                       :title ""
                       :slug ""
                       :draft false}))
@@ -528,6 +575,7 @@
                               (render-editor feed
                                              {:status "edit"
                                               :feed ("feed" json)
+                                              :language (:language feed)
                                               :title ("title" json)
                                               :slug ("slug" json)
                                               :draft ("draft" json)}
@@ -541,6 +589,7 @@
       (render-editor feed
                      {:status "new"
                       :feed (:name feed)
+                      :language (:language feed)
                       :title ""
                       :slug ""
                       :draft false}))
@@ -554,15 +603,17 @@
                               (render-editor feed
                                              {:status "edit"
                                               :feed ("feed" json)
+                                              :language (:language feed)
                                               :title ("title" json)
                                               :slug ("slug" json)
                                               :draft ("draft" json)
-                                              :attachment {:type ("type"
-                                                                  ("attachment"
-                                                                   json))
-                                                           :data ("data"
-                                                                  ("attachment"
-                                                                   json))}}
+                                              :attachment
+                                              {:type ("type"
+                                                      ("attachment"
+                                                       json))
+                                               :data ("data"
+                                                      ("attachment"
+                                                       json))}}
                                              ("content" json)))
                             (render-document-not-found-template)))))))
 
@@ -570,7 +621,8 @@
   (let [xhr (.target e)]
     (when (= (. xhr (getStatus)) 200)
       (let [json (js->clj (. xhr (getResponseJson)))
-            feed {:name ("name" json)
+            feed {:language ("language" json)
+                  :name ("name" json)
                   :default-slug-format ("default-slug-format" json)
                   :default-document-type ("default-document-type" json)}]
         (cond
@@ -579,8 +631,8 @@
          :default
            (start-default-mode! feed slug status))))))
 
-(defn start [feed-name status uri]
+(defn start [language feed-name slug status]
   (swap! *file* dissoc :obj :data)
-  (let [slug (when (= status :edit)
-               (str "/" (last (re-find #"^/admin/[^/]+/edit/(.*?)$" uri))))]
-    (document/get-feed feed-name (partial start-mode-callback! slug status))))
+  (document/get-feed language
+                     feed-name
+                     (partial start-mode-callback! slug status)))

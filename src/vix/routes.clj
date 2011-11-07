@@ -78,84 +78,114 @@
     (kit/handle UsernamePasswordMismatch []
       (redirect "/login"))))
 
+;; FIXME: change order of authorize/json-response calls, so attackers
+;; can't get a 404 from an unauthorized request to mine for existing docs
+;; -
+;; consider escaping json calls (e.g. /json/document/_new
+;; instead of just /new)
 (defroutes main-routes
   (GET "/" [] (response (blog-frontpage-template
-                        (db/get-documents-for-feed db-server database "blog"))))
+                         (db/get-documents-for-feed db-server
+                                                    database
+                                                    ;; FIXME: make configurable
+                                                    "en"
+                                                    "blog"))))
   (GET "/admin*" {session :session {feed "feed"} :params}
-       (when (authorize session :* :DELETE)
+       (when (authorize session nil :* :DELETE)
          (response (admin-template {}))))
   (GET "/login" [] (response (login-page-template "")))
   (POST "/login"
-      {session :session {username "username" password "password"} :form-params}
+        {session :session
+         {username "username" password "password"} :form-params}
         (login session username password))
   (GET "/logout" {session :session} (logout session))
-  (GET "/json/:feed/list-documents" request
-       (when (authorize (:session request) (:feed (:params request)) :GET)
+  (GET "/json/:language/:feed/list-documents"
+       {{language :language
+         feed-name :feed
+         limit :limit
+         startkey-published :startkey-published
+         startkey_docid :startkey_docid} :params
+         session :session}
+       (when (authorize session language feed-name :GET)
          (json-response
           (db/get-documents-for-feed db-server
                                      database
-                                     (:feed (:params request))
-                                     (when (:limit (:params request))
-                                       (Integer/parseInt
-                                        (:limit (:params request))))
-                                     (:startkey-published (:params request))
-                                     (:startkey_docid (:params request))))))
-  (GET "/json/list-feeds" {session :session {ddt :default-document-type} :params}
-       (when (authorize session :* :GET)
+                                     language
+                                     feed-name
+                                     (when limit
+                                       (Integer/parseInt limit))
+                                     startkey-published
+                                     startkey_docid))))
+  (GET "/json/list-feeds"
+       {session :session {ddt :default-document-type} :params}
+       (when (authorize session nil :* :GET)
          (json-response  (if ddt
                            (db/list-feeds-by-default-document-type db-server
                                                                    database
                                                                    ddt)
                            (db/list-feeds db-server database)))))
   (POST "/json/new-feed" request
-        (when (authorize (:session request) :* :POST)
+        (when (authorize (:session request) nil :* :POST)
           (json-response (db/create-feed
                            db-server
                            database
                            (read-json (slurp* (:body request))))
                          :status 201)))
-  (GET "/json/feed/:name" {{feed-name :name} :params session :session}
-       (if-let [feed (db/get-feed db-server database feed-name)]
-         (when (authorize session feed-name :GET)
+  (GET "/json/feed/:language/:name"
+       {{language :language feed-name :name} :params session :session}
+       (if-let [feed (db/get-feed db-server database language feed-name)]
+         (when (authorize session language feed-name :GET)
            (json-response feed))
          (json-response nil)))
-  (PUT "/json/feed/:name" {{feed-name :name} :params body :body session :session}
-       (if-let [feed (db/get-feed db-server database feed-name)]
-         (when (authorize session feed-name :PUT)
+  (PUT "/json/feed/:language/:name"
+       {{language :language feed-name :name}
+        :params body :body session :session}
+       (if-let [feed (db/get-feed db-server database language feed-name)]
+         (when (authorize session language feed-name :PUT)
            (json-response 
             (db/update-feed
              db-server
              database
+             language
              feed-name
              (read-json (slurp* body)))))
          (json-response nil)))
-  (DELETE "/json/feed/:name" {{feed-name :name} :params session :session}
-          (if-let [feed (db/get-feed db-server database feed-name)]
-            (when (authorize session feed-name :DELETE)
+  (DELETE "/json/feed/:language/:name"
+          {{language :language feed-name :name} :params session :session}
+          (if-let [feed (db/get-feed db-server database language feed-name)]
+            (when (authorize session language feed-name :DELETE)
               (json-response 
                (db/delete-feed
                 db-server
                 database
+                language
                 feed-name)))
             (json-response nil)))
-  (POST "/json/:feed/new" request
-        (when (authorize (:session request) (:feed (:params request)) :POST)
-          (json-response (db/create-document
-                           db-server
-                           database
-                           (:feed (:params request))
-                           (read-json (slurp* (:body request))))
-                        :status 201)))
+  (POST "/json/:language/:feed/new"
+        {{language :language feed-name :feed} :params
+         session :session
+         body :body}
+        (when (authorize session language feed-name :POST)
+          (json-response (db/create-document db-server
+                                             database
+                                             language
+                                             feed-name
+                                             (read-json (slurp* body)))
+                         :status 201)))
   (GET "/json/document/*" {{slug :*} :params session :session}
-       (if-let [document (db/get-document
-                           db-server database (force-initial-slash slug) true)]
-         (when (authorize session (:feed document) :GET)
+       (if-let [document (db/get-document db-server
+                                          database
+                                          (force-initial-slash slug) true)]
+         (when (authorize session (:language document) (:feed document) :GET)
            (json-response document))
          (json-response nil)))
   (PUT "/json/document/*" {{slug :*} :params body :body session :session}
        (let [slug (force-initial-slash slug)]
          (if-let [document (db/get-document db-server database slug)]
-           (when (authorize session (:feed document) :PUT)
+           (when (authorize session
+                            (:language document)
+                            (:feed document)
+                            :PUT)
              (json-response 
                (db/update-document
                  db-server
@@ -166,7 +196,10 @@
   (DELETE "/json/document/*" {{slug :*} :params session :session}
           (let [slug (force-initial-slash slug)]
             (if-let [document (db/get-document db-server database slug)]
-              (when (authorize session (:feed document) :DELETE)
+              (when (authorize session
+                               (:language document)
+                               (:feed document)
+                               :DELETE)
                 (json-response 
                   (db/delete-document
                     db-server

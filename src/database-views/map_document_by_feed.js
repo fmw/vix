@@ -1,5 +1,5 @@
 function(doc) {
     if(doc.type === "document") {
-        emit([doc.feed, doc.published], doc);
+        emit([[doc.language, doc.feed], doc.published], doc);
     }
 }

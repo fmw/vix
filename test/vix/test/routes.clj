@@ -134,14 +134,14 @@
          "<h1>Page not found</h1>"))
 
   (do
-    (create-document
-      +test-server+
-      +test-db+
-      "blog"
-      {:title "foo"
-       :slug "/blog/bar"
-       :content "bar"
-       :draft false}))
+    (create-document +test-server+
+                     +test-db+
+                     "en"
+                     "blog"
+                     {:title "foo"
+                      :slug "/blog/bar"
+                      :content "bar"
+                      :draft false}))
 
   (is (= (:status (catch-all +test-server+ +test-db+ "/blog/bar")) 200))
 
@@ -151,6 +151,7 @@
           document (create-document
                     +test-server+
                     +test-db+
+                    "en"
                     "images"
                     {:attachment {:type "image/gif" :data gif}
                      :title "a single black pixel!"
@@ -164,53 +165,58 @@
 
 (deftest ^{:integration true} test-routes
   (do
-    (create-document
-      +test-server+
-      +test-db+
-      "blog"
-      {:title "foo"
-       :feed "blog"
-       :slug "/blog/bar"
-       :content "bar"
-       :draft false}))
+    (create-document +test-server+
+                     +test-db+
+                     "en"
+                     "blog"
+                     {:title "foo"
+                      :slug "/blog/bar"
+                      :content "bar"
+                      :draft false}))
 
   (with-redefs [database +test-db+]
     (testing "test pagination"
       (dotimes [n 21]
         (create-document +test-server+
                          +test-db+
+                         "en"
                          "pages"
                          {:title (str "doc " n)
                           :slug (str "/pages/doc-" n)
                           :content "bar"
                           :draft false}))
 
-      (let [first-five (read-json (:body (request :get
-                                                  "/json/pages/list-documents"
-                                                  nil
-                                                  main-routes
-                                                  {:limit "5"})))]
+      (let [first-five (read-json
+                        (:body (request :get
+                                        "/json/en/pages/list-documents"
+                                        nil
+                                        main-routes
+                                        {:limit "5"})))]
         (is (= (count (:documents first-five)) 5))
 
-        (let [next-five (read-json (:body (request :get
-                                                   "/json/pages/list-documents"
-                                                   nil
-                                                   main-routes
-                                                   {:limit "5"
-                                                    :startkey-published
-                                                    (:published
-                                                     (:next first-five))})))]
+        (let [next-five (read-json
+                         (:body (request :get
+                                         "/json/en/pages/list-documents"
+                                         nil
+                                         main-routes
+                                         {:limit "5"
+                                          :startkey-published
+                                          (:published
+                                           (:next first-five))})))]
           (is (= (count (:documents next-five)) 5)))))
     
     (is (= (:status (request :get "/" main-routes)) 200))
     (is (= (:status (request :get "/login" main-routes)) 200))
     (is (= (:status (request :get "/logout" main-routes)) 302))
     (is (= (:status (request :get "/admin" main-routes)) 200))
-    (is (= (:status (request :get "/json/blog/list-documents" main-routes)) 200))
+    (is (= (:status (request :get
+                             "/json/en/blog/list-documents"
+                             main-routes))
+           200))
 
     (is (= (:status (request
                           :post
-                          "/json/blog/new"
+                          "/json/en/blog/new"
                           (json-str {:title "test-create"
                                      :slug "/blog/test"
                                      :content "hic sunt dracones"})
@@ -220,8 +226,10 @@
     (let [document (get-document +test-server+ +test-db+ "/blog/test")]
       (is (= (:title document)) "test-create"))
 
-    (is (= (:status (request :get "/json/document/blog/bar" main-routes)) 200))
-    (is (= (:status (request :get "/json/document/blog/t3" main-routes)) 404))
+    (is (= (:status (request :get "/json/document/blog/bar" main-routes))
+           200))
+    (is (= (:status (request :get "/json/document/blog/t3" main-routes))
+           404))
     
     ; FIXME: should add a test-case for a 409 conflict
     (let [document (get-document +test-server+ +test-db+ "/blog/bar")]
@@ -258,15 +266,17 @@
 
     (is (= (:status (request :get "/blog/test" main-routes)) 200))
    
-    (let [post-feed-request (request :post
-                                     "/json/new-feed"
-                                     (json-str {:name "blog"
-                                                :title "Vix Weblog"
-                                                :subtitle "Vix Weblog..."
-                                                :default-slug-format
-                                                  "/{document-title}"
-                                                :default-document-type "standard"})
-                                     main-routes)]
+    (let [post-feed-request (request
+                             :post
+                             "/json/new-feed"
+                             (json-str {:name "blog"
+                                        :title "Vix Weblog"
+                                        :language "en"
+                                        :subtitle "Vix Weblog..."
+                                        :default-slug-format
+                                        "/{document-title}"
+                                        :default-document-type "standard"})
+                             main-routes)]
       (is (= (:status post-feed-request) 201))
 
       (let [all-feeds (read-json
@@ -276,51 +286,57 @@
                    "/json/new-feed"
                    (json-str {:name "image"
                               :title "Images"
+                              :language "en"
                               :subtitle "Pictures."
-                              :default-slug-format "/static/{document-title}.{ext}"
+                              :default-slug-format
+                              "/static/{document-title}.{ext}"
                               :default-document-type "image"})
                    main-routes))
 
         (is (= (count all-feeds) 1))
         (is (= (count (read-json
-                       (:body (request :get "/json/list-feeds" main-routes)))) 2))
+                       (:body (request :get
+                                       "/json/list-feeds"
+                                       main-routes))))
+               2))
         (is (= all-feeds (read-json
-                          (:body (request :get
-                                          "/json/list-feeds"
-                                          nil
-                                          main-routes
-                                          {:default-document-type "standard"})))))))
+                          (:body (request
+                                  :get
+                                  "/json/list-feeds"
+                                  nil
+                                  main-routes
+                                  {:default-document-type "standard"})))))))
 
-   (let [get-feed-request (request :get "/json/feed/blog" main-routes)
+   (let [get-feed-request (request :get "/json/feed/en/blog" main-routes)
           json-body (read-json (:body get-feed-request))]
       (is (= (:status get-feed-request) 200))
       (is (= (:name json-body) "blog"))
       (is (= (:title json-body) "Vix Weblog"))
 
       (let [put-feed-request (request :put
-                                      "/json/feed/blog"
-                                      (json-str (assoc json-body :title "Vix!"))
+                                      "/json/feed/en/blog"
+                                      (json-str (assoc json-body
+                                                  :title "Vix!"))
                                       main-routes)
             json-put-body (read-json (:body put-feed-request))]
         (is (= (:status put-feed-request) 200))
         (is (= (:name json-put-body) "blog"))
         (is (= (:title json-put-body) "Vix!"))))
     
-    (is (:status (request :get "/json/feed/blog" main-routes)) 200)
-    (is (:status (request :delete "/json/feed/blog" main-routes)) 200)
-    (is (:status (request :get "/json/feed/blog" main-routes)) 404)))
+    (is (:status (request :get "/json/feed/en/blog" main-routes)) 200)
+    (is (:status (request :delete "/json/feed/en/blog" main-routes)) 200)
+    (is (:status (request :get "/json/feed/en/blog" main-routes)) 404)))
 
 (deftest ^{:integration true} test-routes-authorization
   (do
-    (create-document
-      +test-server+
-      +test-db+
-      "blog"
-      {:title "foo"
-       :feed "blog"
-       :slug "/blog/test"
-       :content "bar"
-       :draft false})
+    (create-document +test-server+
+                     +test-db+
+                     "en"
+                     "blog"
+                     {:title "foo"
+                      :slug "/blog/test"
+                      :content "bar"
+                      :draft false})
     
     (create-feed +test-server+
                  +test-db+
@@ -328,19 +344,20 @@
                   :subtitle "Vix Weblog!"
                   :name "blog"
                   :default-slug-format "/{feed-name}/{document-title}"
-                  :default-document-type "with-description"}))
+                  :default-document-type "with-description"
+                  :language "en"}))
 
   (with-redefs [database +test-db+]
     (testing "Test if authorization is enforced correctly."
       (is (= (:status (unauthorized-request :get "/admin/" main-routes))
              302))
       (is (= (:status (unauthorized-request :get
-                                            "/json/blog/list-documents"
+                                            "/json/en/blog/list-documents"
                                             main-routes))
              302))
       (is (= (:status (unauthorized-request
                         :post
-                        "/json/blog/new"
+                        "/json/en/blog/new"
                         (json-str {:title "test-create"
                                    :slug "/blog/test"
                                    :content "hic sunt dracones"})
@@ -376,45 +393,44 @@
       
       (is (= (:status (unauthorized-request
                         :get
-                        "/json/feed/blog"
+                        "/json/feed/en/blog"
                         main-routes))
              302))
       
       (is (= (:status (unauthorized-request
                         :put
-                        "/json/feed/blog"
+                        "/json/feed/en/blog"
                         main-routes))
              302))
 
       (is (= (:status (unauthorized-request
                         :delete
-                        "/json/feed/blog"
+                        "/json/feed/en/blog"
                         main-routes))
              302)))))
 
 (deftest ^{:integration true} test-routes-authentication
   (do
-    (create-document
-      +test-server+
-      +test-db+
-      "blog"
-      {:title "foo"
-       :feed "blog"
-       :slug "/blog/test"
-       :content "bar"
-       :draft false}))
+    (create-document +test-server+
+                     +test-db+
+                     "en"
+                     "blog"
+                     {:title "foo"
+                      :slug "/blog/test"
+                      :content "bar"
+                      :draft false}))
 
   (testing "Test if authentication is enforced correctly."
     (with-redefs [database +test-db+]
       (is (= (:status (unauthenticated-request :get "/admin" main-routes))
              302))
       (is (= (:status (unauthenticated-request :get
-                                               "/json/blog/list-documents"
+                                               "/json/en/blog/list-documents"
                                                main-routes))
              302))
       (is (= (:status (unauthenticated-request
                         :post
-                        "/json/blog/new"
+                        "/json/en/blog/new"
                         (json-str {:title "test-create"
                                    :slug "/blog/test"
                                    :content "hic sunt dracones"})

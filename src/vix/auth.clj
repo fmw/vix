@@ -47,6 +47,17 @@
   {:msg "You need to authenticate before you can perform this action."
    :unhandled (kit/throw-msg Exception)})
 
+(defn fix-complex-keys
+  "Keys (including vectors) are returned as keywords from CouchDB.
+  This function converts keys that are supposed to be vectors back."
+  [m]
+  (let [transform-key (fn [old-key]
+                        (let [converted-key (read-string (name old-key))]
+                          (if (vector? converted-key)
+                            converted-key
+                            old-key)))]
+    (zipmap (map transform-key (keys m)) (vals m))))
+
 (defn get-user [db-server db-name username]
   (kit/with-handler
     (let [document (couchdb/view-get
@@ -56,14 +67,16 @@
                      "by_username"
                      {:include_docs true
                       :key username})]
-      (:doc (first (:rows document))))
+      (let [user (:doc (first (:rows document)))]
+        (when (map? user)
+          (assoc user :permissions (fix-complex-keys (:permissions user))))))
     ; Create views if they don't exist yet.
     (kit/handle couchdb/DocumentNotFound []
       (do
         (db/create-views db-server db-name "views" db/views)
         (get-user db-server db-name username)))))
 
-(defn add-user [db-server db-name username plaintext-password permissions-map]
+(defn add-user [db-server db-name username password permissions-map]
   (if (get-user db-server db-name username)
     (kit/raise UserExists username)
     (if (re-matches #"^[\w-.@]{2,}" username)
@@ -72,7 +85,7 @@
         db-name
         {:type "user"
          :username username
-         :password (BCrypt/hashpw plaintext-password (BCrypt/gensalt 12))
+         :password (BCrypt/hashpw password (BCrypt/gensalt 12))
          :permissions permissions-map})
       (kit/raise InvalidUsername))))
 
@@ -83,20 +96,33 @@
       (kit/raise UsernamePasswordMismatch))
     (kit/raise UserDoesNotExist username)))
 
-(defn authorize-for-feed [permissions-map feed method]
-  (if (some #{(name method)} ((keyword feed) permissions-map))
-    true
-    false))
+(defn authorize-for-feed
+  ([permissions-map feed-name method] ; used for global permissions (:*)
+     (authorize-for-feed permissions-map nil feed-name method))
+  ([permissions-map language feed-name method]
+     (let [feed-key (if (= feed-name :*)
+                      :*
+                      [(keyword language) (keyword feed-name)])
+           feed-permissions-set (set (get permissions-map feed-key))]
+       (contains? feed-permissions-set (name method)))))
 
-(defn authorize [session feed method]
+(defn authorize [session language feed-name method]
   (if (:username session)
-    (if (or (authorize-for-feed (:permissions session) feed method)
-            ; only fall back to global permissions if there are no
-            ; feed-specific permissions provided for this username
-            (and (not ((keyword feed) (:permissions session)))
-                 (authorize-for-feed (:permissions session) :* method)))
-      true
-     (kit/raise InsufficientPrivileges))
-  (kit/raise AuthenticationRequired)))
+    (let [permissions-map (:permissions session)]
+      (if (or (authorize-for-feed permissions-map
+                                  language
+                                  feed-name
+                                  method)
+              ;; only fall back to global permissions if there are no
+              ;; feed-specific permissions provided for this username
+              (and (not (contains? permissions-map [(keyword language)
+                                                    (keyword feed-name)]))
+                   (authorize-for-feed permissions-map
+                                       language
+                                       :*
+                                       method)))
+        true
+        (kit/raise InsufficientPrivileges)))
+      (kit/raise AuthenticationRequired)))
 
 

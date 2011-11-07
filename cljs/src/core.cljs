@@ -1,4 +1,5 @@
 (ns vix.core
+  (:require-macros [vix.macros :as macros])
   (:require [vix.views.editor :as editor]
             [vix.views.feed :as feed]
             [goog.global :as global]
@@ -6,7 +7,8 @@
             [goog.history.EventType :as event-type]
             [goog.history.Html5History :as Html5History]
             [goog.Uri :as Uri]
-            [goog.dom :as dom]))
+            [goog.dom :as dom]
+            [clojure.string :as string]))
 
 (def *h* (atom nil))
 
@@ -18,8 +20,9 @@
           (cljs.core.Vector/fromArray
            (. global/document (getElementsByTagName "a")))))
 
-; FIXME: figure out while only nested calls (e.g. in create-document-list-events
-; and render-editor-template) work and replace with a centralized call
+; FIXME: figure out while only nested calls (e.g. in
+; create-document-list-events and render-editor-template)
+; work and replace with a centralized call
 (defn xhrify-internal-links! [link-elements]
   (doseq [element link-elements]
     (events/listen element
@@ -41,29 +44,82 @@
 
 ; FIXME: get rid!
 (defn get-feed-from-uri []
-  (let [parts (re-find #"/admin/([^/]+)/(.*?)" global/document.location.pathname)]
+  (let [parts (re-find #"/admin/([^/]+)/(.*?)"
+                       global/document.location.pathname)]
     ;; TODO: throw error if feed isn't found
     (when (= 3 (count parts))
       (nth parts 1))))
 
-; TODO: make the (routes) fn work like the compojure routes function
+(defn chop-path [path]
+  (rest (string/split path #"/")))
+
+(comment
+  (deftest test-route-matches
+    (are [segments path expected] (= (route-matches segments path) expected)
+         ["admin" "edit" :x :y] "/admin/edit/foo/bar" {:x "foo" :y "bar"}
+         [:feed :*] "/blog/hello/kitty" {:feed "blog" :* "hello/kitty"}
+         :fallback "/foo/bar" true)
+
+    (testing "these calls are expected to fail"
+      (are [segments path] (= (route-matches segments path) false)
+           [] "/admin/edit"
+           ["admin" "edit" :foo] "/admin/edit/foo/bar"
+           ["admin" "editor" :foo :bar] "/admin/edit/foo/bar"))))
+
+(defn route-matches [route-segments uri-path]
+  (if-not (= route-segments :fallback)
+    (let [values (chop-path uri-path)]
+      (if (and (>= (count values) (count route-segments))
+               (or (= (count values) (count route-segments))
+                   (= (last route-segments) :*)))
+        (loop [segments route-segments
+               values values
+               result {}]
+          (if (pos? (count segments))
+            (let [segment (first segments)
+                  value (first values)]
+              (cond
+               (keyword? segment) (if (= segment :*) ; catch-all
+                                    (recur []
+                                           []
+                                           (assoc result
+                                             :* (string/join "/" values)))
+                                    (recur (rest segments)
+                                           (rest values)
+                                           (assoc result segment value)))
+               (string? segment) (if (= segment value)
+                                   (recur (rest segments)
+                                          (rest values)
+                                          result)
+                                   (recur [] [] false))))
+            result))
+        false))
+    true))
+
 (defn routes [uri-path]
-  (cond
-   (re-matches #"^/admin/$" uri-path)
-     (feed/list-feeds)
-   (re-matches #"^/admin/new-feed$" uri-path)
-     (feed/display-new-feed-form)
-   (re-matches #"^/admin/edit-feed/[^/]+$" uri-path)
-     (feed/display-edit-feed-form (. uri-path (substr 17)))
-   (re-matches #"^/admin/[^/]+/new$" uri-path)
-     (editor/start (get-feed-from-uri) :new uri-path)
-   (re-matches #"^/admin/[^/]+/edit.+" uri-path)
-     (editor/start (get-feed-from-url) :edit uri-path)
-   (re-matches #"^/admin/[^/]+/overview$" uri-path)
-     (feed/list-documents uri-path)
-   :else
-     (navigate-replace-state "" "Vix overview"))
-  nil)
+  (macros/routes uri-path
+                 ["admin" ""]
+                 (feed/list-feeds)
+                 ["admin" "new-feed"]
+                 (feed/display-new-feed-form)
+                 ["admin" "edit-feed" :language :feed-name]
+                 (feed/display-edit-feed-form (:language params)
+                                              (:feed-name params))
+                 ["admin" :language :feed-name "new"]
+                 (editor/start (:language params)
+                               (:feed-name params)
+                               nil
+                               :new)
+                 ["admin" :language :feed-name "edit" :*]
+                 (editor/start (:language params)
+                               (:feed-name params)
+                               (str "/" (:* params))
+                               :edit)
+                 ["admin" :language :feed-name "overview"]
+                 (feed/list-documents (:language params) (:feed-name params))
+                 :fallback
+                 (navigate-replace-state "" "Vix overview")
+                 ))
 
 (defn navigate [token title]
   (. @*h* (setToken token title)))

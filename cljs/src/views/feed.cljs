@@ -51,25 +51,33 @@
   "Something went wrong while trying to save this feed.")
 
 (defn display-document-list [main-el xhr]
-  (ui/render-template main-el tpl/list-documents {:json (. xhr (getResponseJson))}))
+  (ui/render-template main-el
+                      tpl/list-documents
+                      {:json (. xhr (getResponseJson))}))
 
 (defn display-feed-list [main-el xhr]
-  (ui/render-template main-el tpl/list-feeds {:json (. xhr (getResponseJson))}))
+  (let [feeds (. xhr (getResponseJson))]
+    (ui/render-template main-el
+                        tpl/list-feeds
+                        {:feeds feeds
+                         :languages (to-array
+                                     (set (map #("language-full" %)
+                                               (js->clj feeds))))})))
 
-(defn list-documents [uri-path]
-  (let [feed (last (re-find #"^/admin/(.*?)/overview$" uri-path))]
-    (util/set-page-title! (str "List of documents for feed \"" feed "\""))
-    (document/get-documents-for-feed
-     feed
-     (fn [e]
-       (let [main-el (dom/getElement "main-page")
-             xhr (.target e)
-             status (. xhr (getStatus))]
-         (if (= status 200)
-           (do
-             (display-document-list main-el xhr)
-             (create-document-list-events feed))
-           (ui/render-template main-el tpl/list-documents-error)))))))
+(defn list-documents [language feed-name]
+  (util/set-page-title! (str "List of documents for feed \"" feed-name "\""))
+  (document/get-documents-for-feed
+   language
+   feed-name
+   (fn [e]
+     (let [main-el (dom/getElement "main-page")
+           xhr (.target e)
+           status (. xhr (getStatus))]
+       (if (= status 200)
+         (do
+           (display-document-list main-el xhr)
+           (create-document-list-events language feed-name))
+         (ui/render-template main-el tpl/list-documents-error))))))
 
 (defn list-feeds-callback [e]
   (let [main-el (dom/getElement "main-page")
@@ -85,25 +93,30 @@
   (util/set-page-title! "Feeds overview")
   (document/get-feeds-list list-feeds-callback))
 
-(defn delete-doc-callback [e]
-  (list-documents global/document.location.pathname))
+(defn delete-doc-callback [language feed-name e]
+  (list-documents language feed-name))
 
-(defn create-document-list-events [feed]
+(defn create-document-list-events [language feed-name]
   (core/xhrify-internal-links! (core/get-internal-links!))
   (events/listen (dom/getElement "add-document")
                  "click"
                  (fn [e]
-                   (core/navigate (str feed "/new") "New Document")))
+                   (core/navigate (str language "/" feed-name "/new")
+                                  "New Document")))
   
-  ; converting to vector to avoid issues with doseq and arrays
+  ;; converting to vector to avoid issues with doseq and arrays
   (doseq [delete-link (cljs.core.Vector/fromArray
-                       (dom/getElementsByTagNameAndClass "a" "delete-document"))]
+                       (dom/getElementsByTagNameAndClass "a"
+                                                         "delete-document"))]
     (events/listen delete-link
                    "click"
                    (fn [e]
                      (. e (preventDefault))
-                     (document/delete-doc (.substr (.id (.target e)) 12)
-                                          delete-doc-callback)))))
+                     (let [slug (nth (string/split (.id (.target e)) "_") 2)]
+                       (document/delete-doc slug
+                                            (partial delete-doc-callback
+                                                     language
+                                                     feed-name)))))))
 (defn create-feed-list-events [feed]
   (core/xhrify-internal-links! (core/get-internal-links!))
   (events/listen (dom/getElement "add-feed")
@@ -118,11 +131,16 @@
                    "click"
                    (fn [e]
                      (. e (preventDefault))
-                     (document/delete-feed (.substr (.id (.target e)) 17)
-                                           list-feeds)))))
+                     (let [id-segments (string/split (.id (.target e)) ":")
+                           language (nth id-segments 1)
+                           feed-name (nth id-segments 2)]
+                       (document/delete-feed language
+                                             feed-name
+                                             list-feeds))))))
 (defn get-invalid-tokens [slug]
   (set/difference (set (re-seq #"\{[^\}]{0,}}" slug))
-                  #{"{day}"
+                  #{"{language}"
+                    "{day}"
                     "{month}"
                     "{year}"
                     "{document-title}"
@@ -165,8 +183,6 @@
         name-label-el (dom/getElement "name-label")
         status-el (dom/getElement "status-message")
         dsfs-el (dom/getElement "default-slug-format-select")
-        select-opts (cljs.core.Vector/fromArray
-                     (dom/getChildren dsfs-el))
         err #(ui/display-error status-el % name-el name-label-el)]
 
     (cond
@@ -179,14 +195,20 @@
      (util/has-consecutive-dashes-or-slashes? name-val)
       (err feed-name-has-consecutive-dashes-err)
      :else
-      (ui/remove-error status-el name-el name-label-el))
+     (ui/remove-error status-el name-el name-label-el))
 
-    ; preview the feed name in the slug format select
-    (when-not (classes/has name-el "error")
-      (dom/setTextContent (first select-opts)
-                          (str "/"
-                               name-val
-                               "/document-title")))))
+    (preview-slug!)))
+
+(defn preview-slug! []
+  (let [dsfs-el (dom/getElement "default-slug-format-select")
+        select-opts (cljs.core.Vector/fromArray (dom/getChildren dsfs-el))]
+    (when-not (classes/has (dom/getElement "name") "error")
+      (doseq [opt select-opts]
+        (dom/setTextContent opt (util/create-slug (.value opt)
+                                                  "document-title"
+                                                  (get-feed-value-map!)
+                                                  (util/date-now!)
+                                                  "ext"))))))
 
 (defn validate-feed! []
   (let [name-el (dom/getElement "name")
@@ -210,21 +232,36 @@
          false
          true))))
 
+(defn get-language! []
+  (let [language-matches (re-matches #"\['([a-z]+)','([a-zA-Z\-/ ]+)'\]"
+                                     (ui/get-form-value "language"))]
+    (when language-matches
+      {:language (nth language-matches 1)
+       :language-full (nth language-matches 2)})))
+
 (defn get-feed-value-map! []
-  {:name (.value (dom/getElement "name"))
-   :title (.value (dom/getElement "title"))
-   :subtitle (.value (dom/getElement "subtitle"))
-   :language (.value (dom/getElement "language"))
-   :default-slug-format (.value (dom/getElement "default-slug-format"))
-   :default-document-type (.value (dom/getElement "default-document-type"))})
+  (let [language (get-language!)]
+    {:name (ui/get-form-value "name")
+     :title (ui/get-form-value "title")
+     :subtitle (ui/get-form-value "subtitle")
+     :language (:language language)
+     :language-full (:language-full language)
+     :default-slug-format (ui/get-form-value "default-slug-format")
+     :default-document-type (ui/get-form-value "default-document-type")
+     }))
 
 ; FIXME: avoid duplication between this and the other 3 xhr callback fns
 (defn save-new-feed-xhr-callback [e]
   (let [xhr (.target e)]
     (if (= (. xhr (getStatus)) 201)
       (let [json (js->clj (. xhr (getResponseJson)))]
-        (core/navigate-replace-state (str "edit-feed/" ("name" json))
-                                     (str "Edit feed \"" ("name" json) "\"")))
+        (core/navigate-replace-state (str "edit-feed/"
+                                          ("language" json)
+                                          "/"
+                                          ("name" json))
+                                     (str "Edit feed \""
+                                          ("name" json)
+                                          "\"")))
       (ui/display-error (dom/getElement "status-message")
                         could-not-save-feed-err))))
 
@@ -232,11 +269,18 @@
 (defn save-existing-feed-xhr-callback [e]
   (let [xhr (.target e)]
     (if (= (. xhr (getStatus)) 200)
-      nil ; TODO: display status-message
+      (let [json (js->clj (. xhr (getResponseJson)))]
+        (core/navigate-replace-state (str "edit-feed/"
+                                          ("language" json)
+                                          "/"
+                                          ("name" json))
+                                     (str "Edit feed \""
+                                          ("name" json)
+                                          "\"")))
       (ui/display-error (dom/getElement "status-message")
                         could-not-save-feed-err))))
 
-(defn create-feed-form-events [feed-name]  
+(defn create-feed-form-events [status language feed-name]  
   (let [dsf-el (dom/getElement "default-slug-format")
         title-el (dom/getElement "title")]
     (events/listen (dom/getElement "default-slug-format-select")
@@ -269,12 +313,15 @@
                    event-type/CLICK
                    (fn [e]
                      (when (validate-feed!)
-                       (if (= :new feed-name)
-                         (document/create-feed save-new-feed-xhr-callback
-                                               (get-feed-value-map!))
-                         (document/update-feed feed-name
-                                               save-existing-feed-xhr-callback
-                                               (get-feed-value-map!))))))))
+                       (if (= :new status)
+                         (document/create-feed
+                          save-new-feed-xhr-callback
+                          (get-feed-value-map!))
+                         (document/update-feed
+                          language
+                          feed-name
+                          save-existing-feed-xhr-callback
+                          (get-feed-value-map!))))))))
 
 (defn render-feed-form [feed-data]
   (ui/render-template (dom/getElement "main-page") tpl/manage-feed feed-data)
@@ -288,12 +335,13 @@
                      :name ""
                      :title ""
                      :subtitle ""
+                     :language "['en','English']"
                      :default_slug_format
-                     "/{feed-name}/{document-title}"
+                     "/{language}/{feed-name}/{document-title}"
                      :default_document_type "standard"})
-  (create-feed-form-events :new))
+  (create-feed-form-events :new nil nil))
 
-(defn display-edit-feed-xhr-callback [feed-name e]
+(defn display-edit-feed-xhr-callback [language feed-name e]
   (let [xhr (.target e)
         status (. xhr (getStatus))]
     (if (= status 200)
@@ -304,22 +352,29 @@
                            :name ("name" json)
                            :title ("title" json)
                            :subtitle (or ("subtitle" json) "")
-                           :language ("language" json)
+                           :language (str "['"
+                                          ("language" json)
+                                          "','"
+                                          ("language-full" json)
+                                          "']")
                            :default_slug_format ("default-slug-format" json)
-                           :default_document_type ("default-document-type" json)})
-        
+                           :default_document_type
+                           ("default-document-type" json)})
+        (preview-slug!)
         (let [dsf ("default-slug-format" json)
               select-option (partial ui/set-form-value
-                                     (dom/getElement "default-slug-format-select"))]
+                                     (dom/getElement
+                                      "default-slug-format-select"))]
           (cond
-           (= dsf "/{feed-name}/{document-title}")
-             (select-option "/{feed-name}/{document-title}")
-           (= dsf "/{feed-name}/{document-title}.{ext}")
-             (select-option "/{feed-name}/{document-title}.{ext}")
-           (= dsf "/{document-title}")
-             (select-option "/{document-title}")
-           (= dsf "/{year}/{month}/{day}/{document-title}")
-             (select-option "/{year}/{month}/{day}/{document-title}")
+           (= dsf "/{language}/{feed-name}/{document-title}")
+             (select-option "/{language}/{feed-name}/{document-title}")
+           (= dsf "/{language}/{feed-name}/{document-title}.{ext}")
+             (select-option "/{language}/{feed-name}/{document-title}.{ext}")
+           (= dsf "/{language}/{document-title}")
+             (select-option "/{language}/{document-title}")
+           (= dsf "/{language}/{year}/{month}/{day}/{document-title}")
+             (select-option
+               "/{language}/{year}/{month}/{day}/{document-title}")
            :else
              (do
                (select-option "custom")
@@ -327,10 +382,13 @@
                (ui/enable-element "default-slug-format"))))
           
         (ui/disable-element "name")
-        (create-feed-form-events feed-name))
+        (create-feed-form-events :edit language feed-name))
       ; else clause
       (ui/render-template (dom/getElement "main-page") tpl/feed-not-found))))
 
-(defn display-edit-feed-form [feed-name]
-  (document/get-feed feed-name #(display-edit-feed-xhr-callback feed-name %)))
-                     
+(defn display-edit-feed-form [language feed-name]
+  (document/get-feed language
+                     feed-name
+                     #(display-edit-feed-xhr-callback language
+                                                      feed-name
+                                                      %)))
