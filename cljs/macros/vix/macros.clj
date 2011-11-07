@@ -20,10 +20,3 @@
     `(if-let [~'params (vix.core/route-matches ~route-segments ~uri-path)]
       ~body
       (routes ~uri-path ~@clauses))))
-
-(comment
-  (defmacro routes [uri-path & clauses]
-  (when-let [[route-segments body & clauses] clauses]
-    `(if-let [~'params (route-matches ~route-segments (str ~@uri-path))]
-       ~body
-       (routes ~uri-path ~@clauses)))))
