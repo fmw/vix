@@ -60,9 +60,8 @@
     (ui/render-template main-el
                         tpl/list-feeds
                         {:feeds feeds
-                         :languages (to-array
-                                     (set (map #("language-full" %)
-                                               (js->clj feeds))))})))
+                         :languages (set (map #("language-full" %)
+                                              (js->clj feeds)))})))
 
 (defn list-documents [language feed-name]
   (util/set-page-title! (str "List of documents for feed \"" feed-name "\""))
@@ -103,20 +102,17 @@
                  (fn [e]
                    (core/navigate (str language "/" feed-name "/new")
                                   "New Document")))
-  
-  ;; converting to vector to avoid issues with doseq and arrays
-  (doseq [delete-link (cljs.core.Vector/fromArray
-                       (dom/getElementsByTagNameAndClass "a"
-                                                         "delete-document"))]
-    (events/listen delete-link
-                   "click"
-                   (fn [e]
-                     (. e (preventDefault))
-                     (let [slug (nth (string/split (.id (.target e)) "_") 2)]
-                       (document/delete-doc slug
-                                            (partial delete-doc-callback
-                                                     language
-                                                     feed-name)))))))
+
+  (ui/trigger-on-class "delete-document"
+                       "click"
+                       (fn [e]
+                         (. e (preventDefault))
+                         (let [slug (nth
+                                     (string/split (.id (.target e)) "_") 2)]
+                           (document/delete-doc slug
+                                                (partial delete-doc-callback
+                                                         language
+                                                         feed-name))))))
 (defn create-feed-list-events [feed]
   (core/xhrify-internal-links! (core/get-internal-links!))
   (events/listen (dom/getElement "add-feed")
@@ -232,20 +228,13 @@
          false
          true))))
 
-(defn get-language! []
-  (let [language-matches (re-matches #"\['([a-z]+)','([a-zA-Z\-/ ]+)'\]"
-                                     (ui/get-form-value "language"))]
-    (when language-matches
-      {:language (nth language-matches 1)
-       :language-full (nth language-matches 2)})))
-
 (defn get-feed-value-map! []
-  (let [language (get-language!)]
+  (let [language (util/pair-from-string (ui/get-form-value "language"))]
     {:name (ui/get-form-value "name")
      :title (ui/get-form-value "title")
      :subtitle (ui/get-form-value "subtitle")
-     :language (:language language)
-     :language-full (:language-full language)
+     :language (first language)
+     :language-full (last language)
      :default-slug-format (ui/get-form-value "default-slug-format")
      :default-document-type (ui/get-form-value "default-document-type")
      }))

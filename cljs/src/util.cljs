@@ -1,13 +1,55 @@
 (ns vix.util
-  (:require [goog.global :as global]
+  (:require [goog.array :as goog.array]
+            [goog.global :as global]
             [goog.dom :as dom]
             [goog.date :as date]
             [clojure.string :as string]))
 
-;; FIXME: support nested maps
+(defn col-to-js [c]
+  (cond
+   (map? c) (map-to-obj c)
+   (convertable-to-array? c) (convert-to-array c)
+   :default c))
+
 (defn map-to-obj [m]
-  (let [o (js-obj)]
-    (doall (map #(aset o (name (first %)) (second %)) m)) o))
+  (when (map? m)
+    (loop [keys (keys m) values (vals m) o (js-obj)]
+      (if (pos? (count keys))
+        (let [k (first keys)
+              v (first values)
+              key (if (keyword? k)
+                    (name k)
+                    k)
+              value (cond
+                     (map? v) (map-to-obj v)
+                     (convertable-to-array? v) (convert-to-array v)
+                     :default v)]
+          (aset o key value)
+          (recur (rest keys) (rest values) o))
+        o))))
+
+(defn convertable-to-array? [col]
+  (or (vector? col) (seq? col) (set? col)))
+
+(defn convert-to-array [col]
+  (when (convertable-to-array? col)
+    (loop [c (vec col) rv []] ; "todo" nodes c and result vector rv
+      (if (pos? (count c))
+        (recur
+         (rest c)
+         (conj ; add value to the result vector
+          rv
+          (cond ; handle value differently depending on what it is
+           (keyword? (first c)) (name (first c))
+           (map? (first c)) (map-to-obj (first c))
+           (convertable-to-array? (first c)) (convert-to-array (first c))
+           :default (first c))))
+        (to-array rv))))) ; convert result vector to array when done
+
+(defn pair-from-string [s]
+  (let [matches (re-matches #"\['([a-z]+)','([a-zA-Z\-/ ]+)'\]" s)]
+    (when matches
+      (rest matches))))
 
 (defn set-page-title! [title]
   (set! global/document.title title))
@@ -19,6 +61,36 @@
   (if (string? el-id-or-obj)
     (dom/getElement el-id-or-obj)
     el-id-or-obj))
+
+(defn get-elements-by-class [class-name]
+  (goog.array/toArray (dom/getElementsByClass class-name)))
+
+(defn get-children-by-class [el class-name]
+  (goog.array/toArray (dom/getElementsByClass class-name el)))
+
+(defn get-children [el]
+  (goog.array/toArray (dom/getChildren el)))
+
+(defn get-children-by-tag [el tag-name]
+  (goog.array/toArray (. el (getElementsByTagName tag-name))))
+
+(defn get-parent [el]
+  (dom/getAncestor el #(identity true)))
+
+(defn get-position-in-parent [el parent-el]
+  (let [enumerated-children (map-indexed vector (get-children parent-el))]
+    (ffirst (filter #(= el (last %)) enumerated-children))))
+
+(defn get-distance-to-ancestor
+  ([ancestor node]
+     (get-distance-to-ancestor ancestor node 25))
+  ([ancestor node max-distance]
+     (loop [distance 0
+            current-node node]
+       (if (or (= current-node ancestor) (>= distance max-distance))
+         (when (<= distance max-distance)
+           distance)
+         (recur (inc distance) (get-parent current-node))))))
 
 (defn date-now! []
   (let [d (new date/Date)]

@@ -40,11 +40,11 @@ header li:before {
     margin-left: 4px;
 }
 
-header a:visited {
+a, a:visited {
     color: #000;
 }
 
-header a:hover {
+a:hover {
     color: grey;
 }
 
@@ -190,6 +190,11 @@ button {
 
 .hide {
     visibility: hidden !important;
+    display: none;
+}
+
+.invisible {
+    visibility: hidden !important;
 }
 
 .show {
@@ -213,6 +218,70 @@ footer {
     padding: 25px;
     color: #bbb;
     font-size: 20px;
+}
+
+#menu-builder {
+    width: 600px;
+}
+#menu-container {
+    padding: 0;
+    margin: 0;
+    list-style: none;
+}
+
+#menu-container ul {
+    margin-top: 15px;
+    list-style: none;
+}
+
+#menu-top-level-drop-zone {
+    width: 280px;
+    text-align: center;
+    margin: 5px 0 18px 0;
+    padding: 10px 8px 10px 8px;
+    border: 2px dashed #000;
+    border-radius: 8px;
+    -moz-border-radius: 8px;
+    -webkit-border-radius: 8px;
+}
+
+.draggable {
+    cursor: move;
+}
+
+.dragover {
+    background-color: #fff !important;
+}
+
+.dragging {
+    background-color: #0ae !important;
+}
+
+#add-menu-item {
+    font-weight: bold;
+    font-size: 20px;
+}
+
+.add-item-node {
+    list-style: none;
+    margin-top: 5px;
+    cursor: default;
+}
+
+#menu-container li {
+    background-color: #dfdfdf;
+    width: auto;
+    margin: 5px 0 5px 0;
+    padding: 8px;
+    border: 2px solid #000;
+    border-radius: 8px;
+    -moz-border-radius: 8px;
+    -webkit-border-radius: 8px;
+}
+
+#menu-container .fixed  {
+    border: 0;
+    background-color: transparent;
 }
 
 /* Google Closure */

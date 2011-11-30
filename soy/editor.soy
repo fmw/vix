@@ -64,6 +64,249 @@
 
 /**
  *
+ * @param documents
+ */
+{template .document_link_options}
+  {foreach $document in $documents}
+    <option value="{$document.slug}">{$document.title}</option>
+  {/foreach}
+{/template}
+
+/**
+ * Displays the menu mode for the Vix Editor.
+ *
+ * @param feeds
+ * @param documents
+ */
+{template .add_menu_item_dialog}
+  <form name="add-menu-item-dialog-form" id="add-menu-item-dialog-form">
+  <p id="add-link-status" class="hide"></p>
+  <table id="add-menu-item-dialog">
+    <tr>
+      <td>
+        Type:
+      </td>
+      <td>
+        <input type="radio"
+               name="link-type"
+               value="internal"
+               id="link-type-internal"
+               checked="checked" />
+        <label for="link-type-internal">Internal</label>
+        <input type="radio"
+               name="link-type"
+               value="external"
+               id="link-type-external" />
+        <label for="link-type-external">External</label>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <label for="link-label" id="link-label-label">Label:</label>
+      </td>
+      <td>
+        <input type="text" name="link-label" id="link-label" />
+      </td>
+    </tr>
+    <tr id="internal-link-row">
+      <td>
+        <label for="internal-link">Link:</label>
+      </td>
+      <td>
+        <select name="internal-link-feed" id="internal-link-feed">
+          {foreach $feed in $feeds}
+            <option value="['{$feed.language}','{$feed.name}']"
+              >{$feed.name}</option>
+          {/foreach}
+        </select>
+        <select name="internal-link" id="internal-link">
+          {foreach $document in $documents}
+            <option value="{$document.slug}">{$document.title}</option>
+          {/foreach}
+        </select>
+      </td>
+    </tr>
+    <tr id="external-link-row" class="hide">
+      <td>
+        <label for="external-link">URL:</label>
+      </td>
+      <td>
+        <input type="text" name="external-link" id="external-link" />
+      </td>
+    </tr>
+  </table>
+  </form>
+{/template}
+
+/**
+ * Displays the menu mode for the Vix Editor.
+ *
+ * @param status
+ * @param feed
+ * @param language
+ * @param title
+ * @param slug
+ * @param draft
+ */
+{template .menu_mode}
+  <p><a href="/admin/{$language}/{$feed}/overview">Back to overview</a></p>
+
+  <div id="status-message">&nbsp;</div>
+
+  <h3 id="caption">
+    {if $status == 'new'}
+      Add Navigation Menu
+    {else}
+    Edit Navigation Menu
+    {/if}
+  </h3>
+
+  <div class="document-fields-row">
+    <label for="title" id="title-label">Title:</label>
+    <input type="text" id="title" name="title" class="input-field"
+           value="{$title}" />
+    <input type="checkbox" id="draft" name="draft" class="checkbox-field"
+           {if $draft}
+             checked="checked"
+           {/if} />
+    <label for="draft">Draft</label>
+  </div>
+
+  <div class="document-fields-row">
+    <label for="slug" id="slug-label"
+           {if $status == 'edit'}
+             class="disabled"
+           {/if}>Slug:</label>
+    <input type="text" id="slug" name="slug" class="input-field disabled"
+           disabled="disabled" value="{$slug}" />
+    <input type="checkbox" id="custom-slug" name="custom-slug"
+           {if $status == 'edit'}
+             disabled="disabled"
+           {/if}
+           class="checkbox-field" />
+    <label for="custom-slug" id="custom-slug-label"
+           {if $status == 'edit'}
+             class="disabled"
+           {/if}>Custom</label>
+  </div>
+
+  <div style="clear: both;">&nbsp;</div>
+
+  <div id="menu-builder">
+    <div id="menu-top-level-drop-zone" class="invisible">
+      Drag here to move to top level.
+    </div>
+    <ul id="menu-container"></ul>
+    <p>
+      <a href="#" id="add-menu-item">Add Item</a>
+    </p>
+    <p>
+      Tip: elements can be repositioned by dragging and dropping them
+      into a new place.
+    </p>
+  </div>
+
+  <p><button id="save-document">Save</button></p>
+{/template}
+
+
+/**
+ * @param label
+ * @param uri
+ * @param children
+ * @param nested
+ */
+{template .menu_item_li}
+  <li>
+    <span class="link-label">{$label}</span>:
+    <span class="link-uri">{$uri}</span>
+    &nbsp;
+    <a href="#" class="delete-link">(delete)</a>
+    &nbsp;
+    
+    {if not $nested}
+      {if not $children}
+        <a href="#" class="add-sub-item">(add item)</a>
+      {/if}
+    {/if}
+
+    {if $children}
+      <ul>
+        {call .menu_items}
+          {param links: $children /}
+          {param new: false /}
+          {param nested: true /}
+        {/call}
+      </ul>
+    {/if}
+  </li>
+{/template}
+
+/**
+ *
+ * @param links
+ * @param new
+ * @param nested
+ */
+{template .menu_items}
+  {foreach $item in $links}
+    {call .menu_item_li}
+      {param label: $item.label /}
+      {param uri: $item.uri /}
+      {param children: $item.children /}
+      {param nested: $nested /}
+    {/call}
+  {/foreach}
+
+  {if $new}
+    {call .menu_item_li}
+      {param label: $new.label /}
+      {param uri: $new.uri /}
+      {param nested: $nested /}
+    {/call}
+  {/if}
+
+  {if $nested}
+    <li class="fixed add-item-node">
+      <a href="#" class="add-item-to-nested-menu fixed">Add Item</a>
+    </li>
+  {/if}
+{/template}
+
+/**
+ * @param label
+ * @param uri
+ * @param children
+ */
+{template .rendered_menu_li}
+  <li>
+    <a href="{$uri}">{$label}</a>
+    {if $children}     
+      {call .rendered_menu}
+        {param links: $children /}
+      {/call}
+    {/if}
+  </li>
+{/template}
+
+/**
+ *
+ * @param links
+ */
+{template .rendered_menu}
+  <ul>
+    {foreach $item in $links}
+      {call .rendered_menu_li}
+        {param label: $item.label /}
+        {param uri: $item.uri /}
+        {param children: $item.children /}
+      {/call}
+    {/foreach}
+  </ul>
+{/template}
+
+/**
+ *
  * @param hasPrev
  * @param feeds
  * @param feed
