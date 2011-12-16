@@ -217,21 +217,23 @@
  * @param nested
  */
 {template .menu_item_li}
-  <li>
-    <span class="link-label">{$label}</span>:
-    <span class="link-uri">{$uri}</span>
-    &nbsp;
-    <a href="#" class="delete-link">(delete)</a>
-    &nbsp;
+  <li draggable="true" class="draggable">
+    <span class="item-details">
+      <span class="link-label">{$label}</span>:
+      <span class="link-uri">{$uri}</span>
+      &nbsp;
+      <a href="#" class="delete-link">(delete)</a>
+      &nbsp;
     
-    {if not $nested}
-      {if not $children}
-        <a href="#" class="add-sub-item">(add item)</a>
+      {if not $nested}
+        {if not $children}
+          <a href="#" class="add-sub-item">(add item)</a>
+        {/if}
       {/if}
-    {/if}
+    </span>
 
     {if $children}
-      <ul>
+      <ul draggable="false">
         {call .menu_items}
           {param links: $children /}
           {param new: false /}
@@ -267,7 +269,7 @@
   {/if}
 
   {if $nested}
-    <li class="fixed add-item-node">
+    <li class="fixed add-item-node drop-on-grandparent" draggable="false">
       <a href="#" class="add-item-to-nested-menu fixed">Add Item</a>
     </li>
   {/if}

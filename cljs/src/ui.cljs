@@ -111,6 +111,7 @@
   (doseq [el elements]
     (classes/remove el class)))
 
+; TODO: remove
 (defn inside-coordinates? [el x y]
   (and el
        (>= x (.offsetLeft el))
@@ -118,6 +119,7 @@
        (>= y (.offsetTop el))
        (< y (+ (.offsetTop el) (.offsetHeight el)))))
 
+; TODO: remove
 (defn get-target-from-position [candidate-elements x y]
   (loop [elements candidate-elements]
     (if (and (first elements) (inside-coordinates? (first elements) x y))
@@ -128,7 +130,8 @@
 (defn not-fixed? [el]
   (not (classes/has el "fixed")))
 
-(defn get-li-children-by-nesting-level [el]
+;; TODO: remove
+(defn get-li-children-sorted-by-nesting-level [el]
   (let [li-elements (filter not-fixed? (util/get-children-by-tag el "li"))
         get-distance (partial util/get-distance-to-ancestor el)]
     (map
@@ -140,7 +143,163 @@
         2
         (interleave (map get-distance li-elements) li-elements)))))))
 
+(def active-el (atom nil))
+
+(defn get-draggable-item
+  "Returns the actual draggable item starting from a (possibly nested)
+   event target element and going up the tree recursively (up to 5 times).
+   The event's target object refers to the element that was clicked on,
+   which might be a nested node (e.g. a span or a element inside the li
+   node that is the intended draggable item)."
+  [el]
+  (loop [current-el el
+         times-called 0]
+    (if (and (= (.tagName current-el) "LI")
+             (. current-el (hasAttribute "draggable")))
+      (cond
+       (= (.draggable current-el) false)
+       (if (classes/has current-el "drop-on-grandparent")
+         (util/get-parent (util/get-parent current-el))
+         nil)
+       (= (.draggable current-el) true)
+       current-el)
+      (if (<= times-called 5)
+        (recur (util/get-parent current-el) (inc times-called))
+        nil))))
+
+(defn can-add-to-nested-ul? [el-dragged el-dropped-on]
+  (not (or (dom/contains el-dragged el-dropped-on)
+           (dom/contains el-dropped-on el-dragged))))
+
+(defn get-item-details-el [el]
+  (first (util/get-children-by-class el "item-details")))
+
+(defn remove-highlight-from-add-link-elements [elements]
+  (doseq [add-link-el elements]
+    (when (classes/has add-link-el "highlight-add-link-el")
+      (classes/remove add-link-el "highlight-add-link-el")
+      (set! (.textContent add-link-el)
+            (. (.textContent add-link-el) (substr 2))))))
+
 (defn to-sortable-tree [parent-el after-drop-fn]
+  (let [top-level-drop-zone-el (dom/getElement "menu-top-level-drop-zone")
+        li-elements (filter not-fixed?
+                            (util/get-children-by-tag parent-el "li"))
+        add-link-elements (util/get-elements-by-tag-and-class
+                           "a"
+                           "add-item-to-nested-menu")]
+
+    ;; required to make the top-level-drop-zone a valid drop target
+    (. top-level-drop-zone-el
+       (addEventListener
+        "dragover"
+        (fn [e]
+          (. e (stopPropagation))
+          (. e (preventDefault)))))
+
+    (. top-level-drop-zone-el
+       (addEventListener
+        "drop"
+        (fn [e]
+          (. e (stopPropagation))
+          (. e (preventDefault))
+          (dom/appendChild parent-el @active-el))))
+    
+    (doseq [el li-elements]
+      ;; not using Google's events/listen because it strips .dataTransfer
+      (. el (addEventListener
+             "dragstart"
+             (fn [e]
+               (when-let [dragged-el (get-draggable-item (.target e))]
+                 (reset! active-el dragged-el)
+                 (classes/add dragged-el "dragging")
+                 (comment
+                   (set! (.effectAllowed (.dataTransfer e)) "move"))
+                 (. (.dataTransfer e)
+                    (setData "text/html" (.innerHTML dragged-el)))
+
+                 ;; show the top level drop zone (if relevant)
+                 (when-not (= (util/get-parent dragged-el) parent-el)
+                   (classes/remove top-level-drop-zone-el "invisible"))
+                 
+                 ;; highlight add link buttons that can be dropped on
+                 (doseq [add-link-el add-link-elements]
+                   (when-not (or (classes/has add-link-el
+                                              "highlight-add-link-el")
+                                 (dom/contains dragged-el add-link-el)
+                                 (util/is-sibling? dragged-el
+                                                   (util/get-parent
+                                                    add-link-el)))
+                     (classes/add add-link-el "highlight-add-link-el")
+                     (set! (.textContent add-link-el)
+                           (str "\u21fe " (.textContent add-link-el)))))))))
+      
+      ;; required to make the node a valid drop target  
+      (. el (addEventListener
+             "dragover"
+             (fn [e]
+               (. e (stopPropagation))
+               (. e (preventDefault)))))
+
+      (. el (addEventListener
+             "drop"
+             (fn [e]
+               (. e (stopPropagation))
+               (. e (preventDefault))
+               
+               (remove-highlight-from-add-link-elements add-link-elements)
+               
+               (when-let [drop-target (get-draggable-item (.target e))]
+                 (cond
+                  ;; when dropped on an add-item node of a nested ul
+                  (classes/has (.target e) "add-item-to-nested-menu")
+                  (when (can-add-to-nested-ul? @active-el drop-target)
+                    (dom/insertSiblingBefore @active-el
+                                             (util/get-parent (.target e))))
+                  :default
+                  ;; when dropped on another node
+                  (when-not (= @active-el drop-target)
+                    (if
+                        ;; when dropped on an ancestor or descendant node
+                        (or (dom/contains drop-target @active-el)
+                            (dom/contains @active-el drop-target))
+                      (let [dt-item-details-el (get-item-details-el
+                                                drop-target)
+                            data-dummy-el (dom/createElement "div")]
+                        (do
+                          ;; use dummy el to access the item-details
+                          ;; child node of the dragged element
+                          (set! (.innerHTML data-dummy-el)
+                                (. (.dataTransfer e) (getData "text/html")))
+                          (set! (.innerHTML (get-item-details-el @active-el))
+                                (.innerHTML dt-item-details-el))
+                          (set! (.innerHTML dt-item-details-el)
+                                (.innerHTML (first
+                                             (util/get-children
+                                              data-dummy-el))))))
+                      ;; when dropped on an unrelated node
+                      (do
+                        (set! (.innerHTML @active-el)
+                              (.innerHTML drop-target))
+                        (set! (.innerHTML drop-target)
+                              (. (.dataTransfer e)
+                                 (getData "text/html"))))))))
+               (after-drop-fn))))
+
+      (. el (addEventListener
+             "dragend"
+             (fn [e]
+               (. e (stopPropagation))
+               (. e (preventDefault))
+               
+               (classes/remove @active-el "dragging")
+               (classes/add top-level-drop-zone-el "invisible")
+               
+               (remove-highlight-from-add-link-elements
+                add-link-elements)))))))
+
+(comment ;; TODO: remove
+  (defn to-sortable-tree [parent-el after-drop-fn]
   (let [top-level-drop-zone (dom/getElement "menu-top-level-drop-zone")
         tldz-drag-drop-button (new goog.fx.DragDrop top-level-drop-zone
                                                 :add-to-top-level)
@@ -263,7 +422,7 @@
           (events/listen group
                          "drop"
                          drop-fn))))))
-
+)
 ; TODO: this function is still a work-in-progress
 (comment
   (defn fx!

@@ -491,11 +491,11 @@
 (defn get-link-data-from-li [el]
   (when-not (classes/has el "add-item-node") ; ignore "Add Item" in nested ul
     (let [children (util/get-children el)
-          last-child (last children)]
-      {:label (.textContent (nth children 0))
-       :uri (.textContent (nth children 1))
-       :children (when (= (.tagName last-child) "UL")
-                   (get-links-from-ul last-child))})))
+          item-detail-elements (util/get-children (first children))]
+      {:label (.textContent (nth item-detail-elements 0))
+       :uri (.textContent (nth item-detail-elements 1))
+       :children (when (= (.tagName (last children)) "UL")
+                   (get-links-from-ul (last children)))})))
 
 (defn get-links-from-ul [el]
   (filter #(not (nil? %))
@@ -516,13 +516,6 @@
   (let [dummy-list-el (dom/createElement "ul")]
     (set! (.innerHTML dummy-list-el) (subs s 4 (- (count s) 5)))
     (parse-menu-data-ul dummy-list-el)))
-
-(defn update-menu-builder-from-data [s]
-  (display-fresh-menu-builder (parse-menu-content-string s))
-  
-  (call-with-feeds-and-documents
-    (fn [feeds documents]
-      (create-menu-builder-events feeds documents))))
 
 (defn validate-link-label! [label]
   (let [error-message (cond
@@ -565,19 +558,44 @@
                         tpl/document-link-options
                         {:documents documents})))
 
-(defn update-menu-builder [el links new nested]
+(defn call-with-feeds-and-documents [f]    
+  (document/get-feeds-list
+   (fn [e]
+     (let [feeds (filter #(not (= "menu"
+                                  ("default-document-type" (js->clj %))))
+                         (. (.target e) (getResponseJson)))
+           first-feed (first feeds)]
+       (document/get-documents-for-feed
+        (.language first-feed)
+        (.name first-feed)
+        (fn [e]
+          (let [documents (.documents (. (.target e) (getResponseJson)))]
+            (do
+              (f feeds documents)))))))))
+
+(defn update-menu-builder [el links new nested feeds documents]
   (ui/render-template el
                       tpl/menu-items
                       {:links links
                        :new new
                        :nested nested})
-  (make-menu-builder-sortable))
+  (create-menu-builder-events feeds documents)
+  (make-menu-builder-sortable feeds documents))
 
-(defn display-fresh-menu-builder [links]
+(defn display-fresh-menu-builder [links feeds documents]
   (update-menu-builder (dom/getElement "menu-container")
                         links
                         nil
-                        false))
+                        false
+                        feeds
+                        documents))
+
+(defn update-menu-builder-from-data [s]
+  (call-with-feeds-and-documents
+    (fn [feeds documents]
+      (display-fresh-menu-builder (parse-menu-content-string s)
+                                  feeds
+                                  documents))))
 
 (defn create-menu-builder-events [feeds documents]                  
   (ui/trigger-on-class
@@ -585,10 +603,9 @@
    "click"
    (fn [e]
      (. e (preventDefault))
-     (let [parent-li (util/get-parent (.target e))
+     (let [parent-li (util/get-parent (util/get-parent (.target e)))
            grandparent (util/get-parent parent-li)]
        (dom/removeNode parent-li)
-
        ;; remove ul and re-render menu-container on empty nested lists
        (when (and grandparent
                   (= (.tagName grandparent) "UL")
@@ -596,8 +613,9 @@
                   (= (count (util/get-children grandparent)) 1))
          (dom/removeNode grandparent)
          (display-fresh-menu-builder
-          (get-links-from-ul (dom/getElement "menu-container")))
-         (create-menu-builder-events feeds documents)))))
+          (get-links-from-ul (dom/getElement "menu-container"))
+          feeds
+          documents)))))
   
   (ui/trigger-on-class
    "add-sub-item"
@@ -606,7 +624,10 @@
      (. e (preventDefault))
                      
      (let [new-ul (dom/createElement "ul")]
-       (dom/appendChild (util/get-parent (.target e)) new-ul)
+       (classes/add new-ul "new-node")
+       (set! (.draggable new-ul) false)
+       (dom/appendChild (util/get-parent (util/get-parent (.target e)))
+                        new-ul)
        (ui/display-dialog
         "Add Menu Item"
         (ui/render-template-as-string
@@ -635,18 +656,22 @@
                documents
                (util/get-parent (util/get-parent (.target e))))))))
 
+
+
 (defn menu-container-el? [el]
   (= (.id el) "menu-container"))
 
-(defn make-menu-builder-sortable []
+(defn make-menu-builder-sortable [feeds documents]
   (let [menu-container-el (dom/getElement "menu-container")]
     (ui/to-sortable-tree (dom/getElement menu-container-el)
                          #(display-fresh-menu-builder
-                           (get-links-from-ul menu-container-el)))))
+                           (get-links-from-ul menu-container-el)
+                           feeds
+                           documents))))
   
 (defn menu-item-dialog-callback [feeds documents parent-el e]
   (if (= "ok" (.key e))
-    (let [nested (if parent-el true false)
+    (let [nested (classes/has parent-el "new-node")
           new-link-details (menu-item-link-details-from-dialog!)
           menu-container-el (dom/getElement "menu-container")
           active-el (or parent-el menu-container-el)]
@@ -657,36 +682,25 @@
           (when-not (menu-container-el? active-el)
             (dom/removeNode active-el)))
         (do
-          ;; the template displays the existing menu with the new item added
-          (update-menu-builder active-el
-                               (get-links-from-ul active-el)
-                               new-link-details
-                               nested)
+          (classes/remove parent-el "new-node")
+          (let [dummy-el (dom/createElement "ul")]
+            (set! (.innerHTML dummy-el)
+                  (ui/render-template-as-string tpl/menu-item-li
+                                                new-link-details))
+
+            (dom/appendChild parent-el (.firstChild dummy-el))
           
-          ;; re-render whole menu-container after ul is added
-          (when-not (menu-container-el? active-el)
+            ;; re-render whole menu-container after ul is added
             (display-fresh-menu-builder
-             (get-links-from-ul menu-container-el)))
-
-          (create-menu-builder-events feeds documents)
-          (ui/remove-dialog))))
+             (get-links-from-ul menu-container-el)
+             feeds
+             documents)
+            
+            (ui/remove-dialog)))))
     (do
+      (when (classes/has parent-el "new-node")
+        (dom/removeNode parent-el))
       (ui/remove-dialog))))
-
-(defn call-with-feeds-and-documents [f]    
-  (document/get-feeds-list
-   (fn [e]
-     (let [feeds (filter #(not (= "menu"
-                                  ("default-document-type" (js->clj %))))
-                         (. (.target e) (getResponseJson)))
-           first-feed (first feeds)]
-       (document/get-documents-for-feed
-        (.language first-feed)
-        (.name first-feed)
-        (fn [e]
-          (let [documents (.documents (. (.target e) (getResponseJson)))]
-            (do
-              (f feeds documents)))))))))
 
 (defn add-menu-item-callback [evt]
   (call-with-feeds-and-documents
@@ -699,7 +713,7 @@
                          (partial menu-item-dialog-callback
                                   feeds
                                   documents
-                                  nil))
+                                  (dom/getElement "menu-container")))
       
       (let [feed-el (dom/getElement "internal-link-feed")]
         (events/listen feed-el

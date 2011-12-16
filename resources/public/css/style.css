@@ -245,6 +245,10 @@ footer {
     -webkit-border-radius: 8px;
 }
 
+.highlight-add-link-el {
+    color: green !important;
+}
+
 .draggable {
     cursor: move;
 }
@@ -254,7 +258,7 @@ footer {
 }
 
 .dragging {
-    background-color: #0ae !important;
+    opacity: 0.4;
 }
 
 #add-menu-item {

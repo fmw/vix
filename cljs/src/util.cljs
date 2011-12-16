@@ -65,6 +65,9 @@
 (defn get-elements-by-class [class-name]
   (goog.array/toArray (dom/getElementsByClass class-name)))
 
+(defn get-elements-by-tag-and-class [tag class-name]
+  (goog.array/toArray (dom/getElementsByTagNameAndClass tag class-name)))
+
 (defn get-children-by-class [el class-name]
   (goog.array/toArray (dom/getElementsByClass class-name el)))
 
@@ -91,6 +94,9 @@
          (when (<= distance max-distance)
            distance)
          (recur (inc distance) (get-parent current-node))))))
+
+(defn is-sibling? [el-x el-y]
+  (= (get-parent el-x) (get-parent el-y)))
 
 (defn date-now! []
   (let [d (new date/Date)]
