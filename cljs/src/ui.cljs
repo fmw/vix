@@ -1,3 +1,19 @@
+;; cljs/src/ui.cljs: utility functions related to the user interface.
+;;
+;; Copyright 2011, F.M. (Filip) de Waard <fmw@vix.io>.
+;;
+;; Licensed under the Apache License, Version 2.0 (the "License");
+;; you may not use this file except in compliance with the License.
+;; You may obtain a copy of the License at
+;; 
+;; http://www.apache.org/licenses/LICENSE-2.0
+;; 
+;; Unless required by applicable law or agreed to in writing, software
+;; distributed under the License is distributed on an "AS IS" BASIS,
+;; WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+;; See the License for the specific language governing permissions and
+;; limitations under the License.
+
 (ns vix.ui
   (:require [vix.util :as util]
             [clojure.string :as string]
@@ -111,37 +127,8 @@
   (doseq [el elements]
     (classes/remove el class)))
 
-; TODO: remove
-(defn inside-coordinates? [el x y]
-  (and el
-       (>= x (.offsetLeft el))
-       (< x (+ (.offsetLeft el) (.offsetWidth el)))
-       (>= y (.offsetTop el))
-       (< y (+ (.offsetTop el) (.offsetHeight el)))))
-
-; TODO: remove
-(defn get-target-from-position [candidate-elements x y]
-  (loop [elements candidate-elements]
-    (if (and (first elements) (inside-coordinates? (first elements) x y))
-      (first elements)
-      (when (pos? (count elements))
-        (recur (rest elements))))))
-
 (defn not-fixed? [el]
   (not (classes/has el "fixed")))
-
-;; TODO: remove
-(defn get-li-children-sorted-by-nesting-level [el]
-  (let [li-elements (filter not-fixed? (util/get-children-by-tag el "li"))
-        get-distance (partial util/get-distance-to-ancestor el)]
-    (map
-     last
-     (reverse
-      (sort-by
-       first
-       (partition
-        2
-        (interleave (map get-distance li-elements) li-elements)))))))
 
 (def active-el (atom nil))
 
@@ -298,131 +285,6 @@
                (remove-highlight-from-add-link-elements
                 add-link-elements)))))))
 
-(comment ;; TODO: remove
-  (defn to-sortable-tree [parent-el after-drop-fn]
-  (let [top-level-drop-zone (dom/getElement "menu-top-level-drop-zone")
-        tldz-drag-drop-button (new goog.fx.DragDrop top-level-drop-zone
-                                                :add-to-top-level)
-        li-elements (get-li-children-by-nesting-level parent-el)
-        ul-and-groups (cons [(new goog.fx.DragDropGroup) parent-el]
-                            (map #(vector (new goog.fx.DragDropGroup) %)
-                                 (util/get-children-by-tag parent-el "ul")))
-        drop-fn
-        (fn [e]
-          (let [src-el (.data (.dragSourceItem e))
-                tar-el (get-target-from-position
-                        (cons top-level-drop-zone li-elements)
-                        (.clientX e)
-                        (.clientY e))]
-
-            (when tar-el
-                (classes/remove tar-el "dragover")
-                (classes/remove src-el "dragging")
-
-                (dom/removeNode src-el)
-
-                (if (= tar-el top-level-drop-zone)
-                  ;; insert the element at top level
-                  (dom/insertChildAt parent-el
-                                     src-el
-                                     0)
-                  ;; insert the element wherever dragged
-                  (let [tar-parent (util/get-parent tar-el)
-                    src-parent-ul (util/get-parent
-                                   (util/get-parent src-el))
-                    to-position (util/get-position-in-parent
-                                 tar-el
-                                 tar-parent)]
-                    (classes/remove src-parent-ul "dragging")
-                    (dom/insertChildAt tar-parent
-                                       src-el
-                                       to-position)))
-
-                ;; avoid duplicate events
-                (doseq [[g el-] ul-and-groups]
-                  (. g (dispose)))
-                ;; run after-drop-fn (typically re-renders)
-                (after-drop-fn)
-                ;; refresh the sortable structure
-                (to-sortable-tree
-                 (nth (first ul-and-groups) 1)
-                 after-drop-fn))))]
-
-    (when (pos? (count ul-and-groups))
-      (events/listen tldz-drag-drop-button
-                     "drop"
-                     drop-fn))
-    
-    (doseq [[group el] ul-and-groups]
-      (let [children (filter not-fixed? (util/get-children el))]
-        (when (> (count children) 1)
-          (doseq [child children]
-            (classes/add child "draggable")
-            (. group (addItem child child)))
-
-          (doto group
-            ;; add self as drop target
-            (.addTarget group)
-            ;; add top level box as target
-            (.addTarget tldz-drag-drop-button))
-          
-          ;; add other groups as drop target
-          (doseq [[other-group other-el] ul-and-groups]
-            (. group (addTarget other-group)))
-
-          (. group (init))
-
-          ;; apply css class on dragstart
-          (events/listen group
-                         "dragstart"
-                         (fn [e]
-                           (classes/remove top-level-drop-zone "invisible")
-
-                           (let [src-el (.data (.dragSourceItem e))]
-                             (classes/add src-el "dragging")
-
-                             ;; hack around parent getting actived
-                             (when (pos? (count (util/get-children-by-class
-                                                 src-el
-                                                 "dragging")))
-                               (classes/remove src-el "dragging")))))
-
-          ;; remove css class on dragend
-          (events/listen group
-                         "dragend"
-                         (fn [e]
-                           (classes/add top-level-drop-zone "invisible")
-                           (classes/remove (.data (.dragSourceItem e))
-                                        "dragging")))
-          ;; apply css class on dragover
-          (events/listen group
-                         "dragover"
-                         (fn [e]
-                           ;; get rid of existing dragover flags
-                           (remove-class-from-elements "dragover" li-elements)
-                           ;; hack in a temporary event to access cursor
-                           (events/listenOnce
-                              parent-el
-                              "mouseover"
-                              (fn [e]
-                                (if-let [tar-el (get-target-from-position
-                                                 li-elements
-                                                 (.clientX e) 
-                                                 (.clientY e))]
-                                  (classes/add tar-el "dragover"))))))
-
-          ;; remove css class on dragout
-          (events/listen group
-                         "dragout"
-                         (partial remove-class-from-elements
-                                  "dragover"
-                                  li-elements))
-
-          ;; move node on drop
-          (events/listen group
-                         "drop"
-                         drop-fn))))))
-)
 ; TODO: this function is still a work-in-progress
 (comment
   (defn fx!
