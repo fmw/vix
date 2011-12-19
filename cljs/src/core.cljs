@@ -15,7 +15,7 @@
 ;; limitations under the License.
 
 (ns vix.core
-  (:require-macros [vix.macros :as macros])
+  (:use-macros [vix.macros :only [routes]])
   (:require [vix.views.editor :as editor]
             [vix.views.feed :as feed]
             [goog.global :as global]
@@ -56,15 +56,7 @@
   (events/listen @*h*
                  event-type/NAVIGATE
                  (fn [e]
-                   (routes global/document.location.pathname))))
-
-; FIXME: get rid!
-(defn get-feed-from-uri []
-  (let [parts (re-find #"/admin/([^/]+)/(.*?)"
-                       global/document.location.pathname)]
-    ;; TODO: throw error if feed isn't found
-    (when (= 3 (count parts))
-      (nth parts 1))))
+                   (execute-routes! global/document.location.pathname))))
 
 (defn chop-path [path]
   (rest (string/split path #"/")))
@@ -112,30 +104,29 @@
         false))
     true))
 
-(defn routes [uri-path]
-  (macros/routes uri-path
-                 ["admin" ""]
-                 (feed/list-feeds)
-                 ["admin" "new-feed"]
-                 (feed/display-new-feed-form)
-                 ["admin" "edit-feed" :language :feed-name]
-                 (feed/display-edit-feed-form (:language params)
-                                              (:feed-name params))
-                 ["admin" :language :feed-name "new"]
-                 (editor/start (:language params)
-                               (:feed-name params)
-                               nil
-                               :new)
-                 ["admin" :language :feed-name "edit" :*]
-                 (editor/start (:language params)
-                               (:feed-name params)
-                               (str "/" (:* params))
-                               :edit)
-                 ["admin" :language :feed-name "overview"]
-                 (feed/list-documents (:language params) (:feed-name params))
-                 :fallback
-                 (navigate-replace-state "" "Vix overview")
-                 ))
+(defn execute-routes! [uri-path]
+  (routes uri-path
+          ["admin" ""]
+          (feed/list-feeds)
+          ["admin" "new-feed"]
+          (feed/display-new-feed-form)
+          ["admin" "edit-feed" :language :feed-name]
+          (feed/display-edit-feed-form (:language params)
+                                       (:feed-name params))
+          ["admin" :language :feed-name "new"]
+          (editor/start (:language params)
+                        (:feed-name params)
+                        nil
+                        :new)
+          ["admin" :language :feed-name "edit" :*]
+          (editor/start (:language params)
+                        (:feed-name params)
+                        (str "/" (:* params))
+                        :edit)
+          ["admin" :language :feed-name "overview"]
+          (feed/list-documents (:language params) (:feed-name params))
+          :fallback
+          (navigate-replace-state "" "Vix overview")))
 
 (defn navigate [token title]
   (. @*h* (setToken token title)))
@@ -146,4 +137,4 @@
 (defn ^:export start-app [uri-path]
   (start-history!) ; in Chrome this triggers an event,
                    ; leading to a (routes) call
-  (routes uri-path))
+  (execute-routes! uri-path))
