@@ -1,17 +1,18 @@
-; test/vix/test/db.clj tests for db namespace.
-; Copyright 2011, F.M. (Filip) de Waard <fmw@vix.io>.
-;
-; Licensed under the Apache License, Version 2.0 (the "License");
-; you may not use this file except in compliance with the License.
-; You may obtain a copy of the License at
-;
-; http://www.apache.org/licenses/LICENSE-2.0
-;
-; Unless required by applicable law or agreed to in writing, software
-; distributed under the License is distributed on an "AS IS" BASIS,
-; WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-; See the License for the specific language governing permissions and
-; limitations under the License.
+;; test/vix/test/db.clj tests for db namespace.
+;;
+;; Copyright 2011-2012, F.M. (Filip) de Waard <fmw@vix.io>.
+;;
+;; Licensed under the Apache License, Version 2.0 (the "License");
+;; you may not use this file except in compliance with the License.
+;; You may obtain a copy of the License at
+;;
+;; http://www.apache.org/licenses/LICENSE-2.0
+;;
+;; Unless required by applicable law or agreed to in writing, software
+;; distributed under the License is distributed on an "AS IS" BASIS,
+;; WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+;; See the License for the specific language governing permissions and
+;; limitations under the License.
 
 (ns vix.test.db
   (:use [vix.db] :reload)
@@ -35,8 +36,8 @@
    s))
 
 (defn random-lower-case-string [length]
-  ; to include uppercase
-  ; (let [ascii-codes (concat (range 48 58) (range 66 91) (range 97 123))]
+  ;; to include uppercase
+  ;; (let [ascii-codes (concat (range 48 58) (range 66 91) (range 97 123))])
   (let [ascii-codes (concat (range 48 58) (range 97 123))]
     (apply str (repeatedly length #(char (rand-nth ascii-codes))))))
 
@@ -96,7 +97,6 @@
              (str "function(key, v, rereduce) {\n"
                   "    return sum(v);\n"
                   "}\n"))))))
-
 
 (deftest test-create-views
   (create-views +test-server+ +test-db+ "views" views)
@@ -220,6 +220,14 @@
 
         (is (some #{doc-1} feed))
         (is (some #{doc-2} feed))))))
+
+(deftest test-datetime-string-to-long
+  (is (= (datetime-string-to-long "2011-11-04T09:16:52.253Z")
+         1320398212253))
+  (is (= (datetime-string-to-long "2012-01-12T15:40:07+01:00")
+         1326379207000))
+  (is (= (datetime-string-to-long nil) nil))
+  (is (= (datetime-string-to-long 10) nil)))
 
 (deftest test-get-document
   (do

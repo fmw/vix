@@ -1,18 +1,18 @@
-; src/vix/db.clj functionality that provides database interaction
-;
-; Copyright 2011, F.M. (Filip) de Waard <fmw@vix.io>.
-;
-; Licensed under the Apache License, Version 2.0 (the "License");
-; you may not use this file except in compliance with the License.
-; You may obtain a copy of the License at
-;
-; http://www.apache.org/licenses/LICENSE-2.0
-;
-; Unless required by applicable law or agreed to in writing, software
-; distributed under the License is distributed on an "AS IS" BASIS,
-; WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-; See the License for the specific language governing permissions and
-; limitations under the License.
+;; src/vix/db.clj functionality that provides database interaction
+;;
+;; Copyright 2011-2012 , F.M. (Filip) de Waard <fmw@vix.io>.
+;;
+;; Licensed under the Apache License, Version 2.0 (the "License");
+;; you may not use this file except in compliance with the License.
+;; You may obtain a copy of the License at
+;;
+;; http://www.apache.org/licenses/LICENSE-2.0
+;;
+;; Unless required by applicable law or agreed to in writing, software
+;; distributed under the License is distributed on an "AS IS" BASIS,
+;; WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+;; See the License for the specific language governing permissions and
+;; limitations under the License.
 
 (ns vix.db
   (:use vix.core)
@@ -21,8 +21,8 @@
             [couchdb [client :as couchdb]]
             [clj-http.client :as http]
             [clojure.data.json :as json]
-            [clj-time.core]
-            [clj-time.format])
+            [clj-time.coerce :as time-coerce]
+            [clj-time.format :as time-format])
   (:import [java.net URLEncoder]
            [org.apache.commons.codec.binary Base64]))
 
@@ -33,17 +33,18 @@
                                         "database-views/"
                                         "map_document_by_slug.js"))}
             :by_username  {:map (slurp (str "/home/fmw/clj/vix/src/"
-                                        "database-views/"
-                                        "map_user_by_username.js"))}
+                                            "database-views/"
+                                            "map_user_by_username.js"))}
             :feeds {:map (slurp (str "/home/fmw/clj/vix/src/"
-                                          "database-views/"
-                                          "map_feeds.js"))}
+                                     "database-views/"
+                                     "map_feeds.js"))}
             :feeds_by_default_document_type {:map
-                                             (slurp (str "/home/fmw/clj/vix/"
-                                                         "src/database-views/"
-                                                         "map_feeds_by_"
-                                                         "default_document_"
-                                                         "type.js"))}})
+                                             (slurp
+                                              (str "/home/fmw/clj/vix/"
+                                                   "src/database-views/"
+                                                   "map_feeds_by_"
+                                                   "default_document_"
+                                                   "type.js"))}})
 
 (defn #^{:rebind true} view-sync
   [server db design-doc view-name view-functions]
@@ -101,6 +102,13 @@
             (create-views db-server db-name "views" views)
             (view-get db-server db-name design-doc view-name view-options))
           (.printStackTrace e)))))
+
+(defn datetime-string-to-long
+  [s]
+  "Converts RFC3339 formatted date string to microseconds since UNIX epoch.
+   Throws NullPointerException on incorrect input."
+  (when (string? s)
+    (time-coerce/to-long (time-format/parse s))))
 
 (defn list-feeds [db-server db-name]
   (if-let [feeds (:rows (view-get db-server

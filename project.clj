@@ -1,5 +1,5 @@
 (defproject vix "1.0.0-SNAPSHOT"
-  :description "FIXME: write"
+  :description "Vix is a document repository and management system."
   :dependencies [[org.clojure/clojure "1.2.0"]
                  [org.clojure/clojure-contrib "1.2.0"]
                  [org.clojure/data.json "0.1.0"]
@@ -10,8 +10,9 @@
                  [clj-time "0.3.0"]
                  [clj-http "0.1.3"]
                  [org.clojars.pieterbreed/clojure-couchdb "0.4.7"]
-                 [commons-codec/commons-codec "1.5"]]
+                 [commons-codec/commons-codec "1.5"]
+                 [org.apache.lucene/lucene-core "3.5.0"]
+                 [org.apache.lucene/lucene-queries "3.5.0"]]
   :dev-dependencies [[lein-ring "0.4.5"]
-                     [org.clojars.autre/lein-vimclojure "1.0.0"]
                      [swank-clojure "1.3.2"]]
   :ring {:handler vix.routes/app})
