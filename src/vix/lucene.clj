@@ -107,6 +107,7 @@
   (let [{:keys [feed
                 slug
                 title
+                draft
                 language
                 published
                 updated
@@ -125,7 +126,16 @@
           
           (.add (create-field "feed" feed :indexed-not-analyzed :stored))
           (.add (create-field "slug" slug :indexed-not-analyzed :stored ))
+
           (.add (create-field "title" title :analyzed :stored))
+
+          (.add (create-field "draft"
+                              (if draft
+                                "1"
+                                "0")
+                              :indexed-not-analyzed
+                              :stored))
+          
           (.add (create-field "language"
                               language
                               :indexed-not-analyzed
@@ -202,8 +212,9 @@
                 updated-between
                 language
                 feed
-                slug]} filters
-        bq (BooleanQuery.)]
+                slug
+                draft]} filters
+                bq (BooleanQuery.)]
 
     (when (and (string? (:min published-between))
                (string? (:max published-between)))
@@ -234,6 +245,11 @@
     (when (string? slug)
       (.add bq
             (TermQuery. (Term. "slug" slug))
+            BooleanClause$Occur/MUST))
+
+    (when-not (nil? draft)
+      (.add bq
+            (TermQuery. (Term. "draft" (if draft "1" "0")))
             BooleanClause$Occur/MUST))
     
     (when (pos? (alength (.getClauses bq)))
@@ -302,6 +318,9 @@
    :title (.get document "title")
    :feed (.get document "feed")
    :language (.get document "language")
+   :draft (if (= (.get document "draft") "1")
+            true
+            false)
    :published (let [pub-long (read-string (.get document "published"))]
                 (if (and (number? pub-long) (pos? pub-long))
                   (time-coerce/from-long pub-long)

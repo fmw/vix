@@ -254,6 +254,13 @@
         (is (.isTokenized field))
         (is (= (.stringValue field) "bar")))
 
+      (let [field (.getField document "draft")]
+        (is (= (.name field) "draft"))
+        (is (.isIndexed field))
+        (is (.isStored field))
+        (is (not (.isTokenized field)))
+        (is (= (.stringValue field) "0")))
+
       (let [field (.getField document "language")]
         (is (= (.name field) "language"))
         (is (.isIndexed field))
@@ -285,13 +292,25 @@
         (is (.isIndexed field))
         (is (.isStored field))
         (is (not (.isTokenized field)))
-        (is (= (.stringValue field) "/2011/11/4/bar"))))))
+        (is (= (.stringValue field) "/2011/11/4/bar")))))
+
+  (testing "test if draft field is set correctly"
+    (let [document (create-document (second dummy-docs))]
+      (is (= (class document) org.apache.lucene.document.Document))
+
+      (let [field (.getField document "draft")]
+        (is (= (.name field) "draft"))
+        (is (.isIndexed field))
+        (is (.isStored field))
+        (is (not (.isTokenized field)))
+        (is (= (.stringValue field) "1"))))))
 
 (deftest test-document-to-map
   (is (= (document-to-map (create-document (first dummy-docs)))
          {:slug "/2011/11/4/bar"
           :feed "blog"
           :title "bar"
+          :draft false
           :language "en"
           :published (time-coerce/from-long 1320398212253)
           :updated (time-coerce/from-long 1320408934590)}))
@@ -300,6 +319,7 @@
          {:slug "/2012/1/15/hic-sunt-dracones"
           :feed "blog"
           :title "Hic sunt dracones"
+          :draft true
           :language "en"
           :published (time-coerce/from-long 1326638932253)
           :updated nil})))
@@ -543,6 +563,42 @@
            language-term "en"
            feed-term "blog")))
 
+  (testing "test draft filter"
+    (let [draft-true-filter (create-filter {:draft true})
+          draft-false-filter (create-filter {:draft false})
+          draft-true-bq (get-field
+                         org.apache.lucene.search.QueryWrapperFilter
+                         "query"
+                         draft-true-filter)
+          draft-false-bq (get-field
+                          org.apache.lucene.search.QueryWrapperFilter
+                          "query"
+                          draft-false-filter)
+          draft-true-query (.getQuery (first (.getClauses draft-true-bq)))
+          draft-false-query (.getQuery (first (.getClauses draft-false-bq)))
+          draft-true-term (.getTerm draft-true-query)
+          draft-false-term (.getTerm draft-false-query)]
+
+      (are [filter]
+           (= (class filter) org.apache.lucene.search.QueryWrapperFilter)
+           draft-true-filter
+           draft-false-filter)
+
+      (are [query]
+           (= (class query) org.apache.lucene.search.TermQuery)
+           draft-true-query
+           draft-false-query)
+
+      (are [term field-name]
+           (= (.field term) "draft")
+           draft-true-term
+           draft-false-term)
+      
+      (are [term value]
+           (= (.text term) value)
+           draft-true-term "1"
+           draft-false-term "0")))
+    
   (testing "test a composite filter with all filters included"
     (let [filter (create-filter {:published-between
                                  {:min "2011-08-04T09:00:00.0Z"
@@ -697,6 +753,19 @@
               docs (get-docs reader (:docs result))]
           (is (= (:total-hits result) 1))
           (is (= (.get (first docs) "title") "bar"))))
+
+      (testing "test with a draft-based filters"
+        (let [filter (create-filter {:draft true})
+              result (search "whisky" filter 15 reader analyzer)
+              docs (get-docs reader (:docs result))]
+          (is (= (:total-hits result) 11))
+          (is (= (.get (first docs) "title") "Caol Ila")))
+
+        (let [filter (create-filter {:draft false})
+              result (search "whisky" filter 15 reader analyzer)
+              docs (get-docs reader (:docs result))]
+          (is (= (:total-hits result) 1))
+          (is (= (.get (first docs) "title") "Brora!"))))
 
       (testing "test with a language-based filter"
         (let [filter (create-filter {:language "en"})
