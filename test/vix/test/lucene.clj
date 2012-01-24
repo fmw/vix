@@ -21,7 +21,7 @@
         [clojure.contrib.reflect :only (get-field)]
         [vix.db :only (datetime-string-to-long)])
   (:import [org.apache.lucene.search QueryWrapperFilter]
-           [org.apache.lucene.index IndexWriter]
+           [org.apache.lucene.index IndexWriter IndexWriterConfig$OpenMode]
            [org.apache.lucene.search ScoreDoc])
   (:require [couchdb [client :as couchdb]]
             [clj-time.coerce :as time-coerce]))
@@ -125,7 +125,7 @@
     (testing "test if Lucene IndexReaders are created correctly."
       (let [dir (create-directory :RAM)]
         ;; write to index to avoid no segments file error
-        (do (write-index! dir dummy-docs))
+        (do (add-documents-to-index! dir dummy-docs))
         (is (= (class (create-index-reader dir)) 
                org.apache.lucene.index.ReadOnlyDirectoryReader)))))
 
@@ -282,7 +282,7 @@
       
       (let [field (.getField document "slug")]
         (is (= (.name field) "slug"))
-        (is (not (.isIndexed field)))
+        (is (.isIndexed field))
         (is (.isStored field))
         (is (not (.isTokenized field)))
         (is (= (.stringValue field) "/2011/11/4/bar"))))))
@@ -308,27 +308,44 @@
   (testing "test if index writers are created correctly"
     (let [directory (create-directory :RAM)
           analyzer (create-analyzer)
-          writer (create-index-writer analyzer directory)]
+          writer (create-index-writer analyzer directory :create)
+          config (.getConfig writer)]
       
       (is (= (class writer) IndexWriter))
       (is (= (.getAnalyzer writer) analyzer))
       (is (= (.getDirectory writer) directory))
 
-      (is (= (.getRAMBufferSizeMB (.getConfig writer)) 49.0)))))
+      (is (= (.getRAMBufferSizeMB config) 49.0))
+
+      (is (= (.getOpenMode config) IndexWriterConfig$OpenMode/CREATE))
+
+      (close-index-writer writer)
+      
+      (let [writer (create-index-writer analyzer directory :append)
+            config (.getConfig writer)]
+        (is (= (.getOpenMode config) IndexWriterConfig$OpenMode/APPEND))
+        (close-index-writer writer))
+      
+      (let [writer (create-index-writer analyzer directory :create-or-append)
+            config (.getConfig writer)]
+        (is (= (.getOpenMode config)
+               IndexWriterConfig$OpenMode/CREATE_OR_APPEND))
+        (close-index-writer writer)))))
 
 (deftest test-close-index-writer
   (testing "test if index writers are really closed"
   
     (let [writer (create-index-writer (create-analyzer)
-                                      (create-directory :RAM))]
+                                      (create-directory :RAM)
+                                      :create)]
       (is (not (get-field IndexWriter "closed" writer)))
       (is (get-field IndexWriter "closed" (close-index-writer writer))))))
 
-(deftest test-write-index!
+(deftest test-add-documents-to-index!
   (testing "test passing all documents at once to an encapsulated writer"
     (let [directory (create-directory :RAM)]
       (do
-        (write-index! directory dummy-docs-extended))
+        (add-documents-to-index! directory dummy-docs-extended))
       
       (let [reader (create-index-reader directory)]
         (is (= (map #(.get % "title")
@@ -350,15 +367,22 @@
 
   (testing "test passing documents in batches to the same writer"
     (let [directory (create-directory :RAM)
-          writer (create-index-writer (create-analyzer) directory)]
+          writer (create-index-writer (create-analyzer) directory :create)]
       (do
-        (write-index! writer (subvec (vec dummy-docs-extended) 0 2))
-        (write-index! writer (subvec (vec dummy-docs-extended) 2 4))
-        (write-index! writer (subvec (vec dummy-docs-extended) 4 6))
-        (write-index! writer (subvec (vec dummy-docs-extended) 6 8))
-        (write-index! writer (subvec (vec dummy-docs-extended) 8 10))
-        (write-index! writer (subvec (vec dummy-docs-extended) 10 12))
-        (write-index! writer (subvec (vec dummy-docs-extended) 12 14))
+        (add-documents-to-index! writer
+                                 (subvec (vec dummy-docs-extended) 0 2))
+        (add-documents-to-index! writer
+                                 (subvec (vec dummy-docs-extended) 2 4))
+        (add-documents-to-index! writer
+                                 (subvec (vec dummy-docs-extended) 4 6))
+        (add-documents-to-index! writer
+                                 (subvec (vec dummy-docs-extended) 6 8))
+        (add-documents-to-index! writer
+                                 (subvec (vec dummy-docs-extended) 8 10))
+        (add-documents-to-index! writer
+                                 (subvec (vec dummy-docs-extended) 10 12))
+        (add-documents-to-index! writer
+                                 (subvec (vec dummy-docs-extended) 12 14))
 
         (close-index-writer writer))
       
@@ -379,6 +403,56 @@
                 "Caol Ila 7"
                 "Caol Ila 8"
                 "Caol Ila 9"]))))))
+
+(deftest test-delete-document-from-index!
+  (testing "test if document is deleted correctly."
+    (let [directory (create-directory :RAM)
+          analyzer (create-analyzer)]
+      (do
+        (add-documents-to-index! directory dummy-docs-extended))
+
+      (let [reader (create-index-reader directory)
+            filter (create-filter {:slug "/2011/11/4/bar"})
+            result (search "me" filter 15 reader analyzer)
+            docs (get-docs reader (:docs result))]
+        (is (= (:total-hits result) 1))
+        (is (= (.get (first docs) "title") "bar")))
+        
+      (do
+        (delete-document-from-index! directory "/2011/11/4/bar"))
+
+      (let [reader (create-index-reader directory)
+            filter (create-filter {:slug "/2011/11/4/bar"})
+            result (search "me" filter 15 reader analyzer)
+            docs (get-docs reader (:docs result))]
+        (is (= (:total-hits result) 0))))))
+
+(deftest test-update-document-in-index!
+  (testing "test if document is updated correctly."
+    (let [directory (create-directory :RAM)
+          analyzer (create-analyzer)]
+      (do
+        (add-documents-to-index! directory dummy-docs-extended))
+
+      (let [reader (create-index-reader directory)
+            filter (create-filter {:slug "/2011/11/4/bar"})
+            result (search "me" filter 15 reader analyzer)
+            docs (get-docs reader (:docs result))]
+        (is (= (:total-hits result) 1))
+        (is (= (.get (first docs) "title") "bar")))
+        
+      (do
+        (update-document-in-index! directory
+                                   "/2011/11/4/bar"
+                                   (assoc (first dummy-docs-extended)
+                                     :title "baz")))
+
+      (let [reader (create-index-reader directory)
+            filter (create-filter {:slug "/2011/11/4/bar"})
+            result (search "me" filter 15 reader analyzer)
+            docs (get-docs reader (:docs result))]
+        (is (= (:total-hits result) 1))
+        (is (= (.get (first docs) "title") "baz"))))))
 
 (deftest test-create-date-range-query
   (let [query (create-date-range-query "42"
@@ -477,16 +551,19 @@
                                  {:min "2011-01-01T09:00:00.0Z"
                                   :max "2012-01-01T09:00:00.0Z"}
                                  :language "en"
-                                 :feed "blog"})
+                                 :feed "blog"
+                                 :slug "/2011/11/4/bar"})
           bq (get-field org.apache.lucene.search.QueryWrapperFilter
                         "query"
                         filter)
           published-query (.getQuery (first (.getClauses bq)))
           updated-query (.getQuery (second (.getClauses bq)))
           language-query (.getQuery (nth (.getClauses bq) 2))
-          feed-query (.getQuery (last (.getClauses bq)))
+          feed-query (.getQuery (nth (.getClauses bq) 3))
+          slug-query (.getQuery (last (.getClauses bq)))
           language-term (.getTerm language-query)
-          feed-term (.getTerm feed-query)]
+          feed-term (.getTerm feed-query)
+          slug-term (.getTerm slug-query)]
 
       (is (= (class filter)
              org.apache.lucene.search.QueryWrapperFilter))
@@ -496,7 +573,8 @@
            published-query org.apache.lucene.search.NumericRangeQuery
            updated-query org.apache.lucene.search.NumericRangeQuery
            language-query org.apache.lucene.search.TermQuery
-           feed-query org.apache.lucene.search.TermQuery)
+           feed-query org.apache.lucene.search.TermQuery
+           slug-query org.apache.lucene.search.TermQuery)
 
       (are [query min]
            (= (.getMin query) (datetime-string-to-long min))
@@ -506,7 +584,8 @@
       (are [term field-name]
            (= (.field term) field-name)
            language-term "language"
-           feed-term "feed")
+           feed-term "feed"
+           slug-term "slug")
       
       (are [query max]
            (= (.getMax query) (datetime-string-to-long max))
@@ -516,14 +595,15 @@
       (are [term value]
            (= (.text term) value)
            language-term "en"
-           feed-term "blog"))))
+           feed-term "blog"
+           slug-term "/2011/11/4/bar"))))
 
 (deftest test-search
   (let [dir (create-directory :RAM)
         analyzer (create-analyzer)
-        writer (create-index-writer analyzer dir)]
+        writer (create-index-writer analyzer dir :create)]
     (do
-      (write-index! writer dummy-docs-extended)
+      (add-documents-to-index! writer dummy-docs-extended)
       (close-index-writer writer))
 
     (let [reader (create-index-reader dir)]
@@ -611,6 +691,13 @@
           (is (= (:total-hits result) 1))
           (is (= (.get (first docs) "title") "Brora!"))))
 
+      (testing "test with a slug-based filter"
+        (let [filter (create-filter {:slug "/2011/11/4/bar"})
+              result (search "me" filter 15 reader analyzer)
+              docs (get-docs reader (:docs result))]
+          (is (= (:total-hits result) 1))
+          (is (= (.get (first docs) "title") "bar"))))
+
       (testing "test with a language-based filter"
         (let [filter (create-filter {:language "en"})
               result (search "whisky" filter 15 reader analyzer)
@@ -647,9 +734,9 @@
 (deftest test-search-jump-to-page
   (let [dir (create-directory :RAM)
         analyzer (create-analyzer)
-        writer (create-index-writer analyzer dir)]
+        writer (create-index-writer analyzer dir :create)]
     (do
-      (write-index! writer dummy-docs-extended)
+      (add-documents-to-index! writer dummy-docs-extended)
       (close-index-writer writer))
 
     (let [reader (create-index-reader dir)]
@@ -696,13 +783,13 @@
 
 (deftest test-get-doc
   (let [dir (create-directory :RAM)]
-    (do (write-index! dir dummy-docs))
+    (do (add-documents-to-index! dir dummy-docs))
     (let [reader (create-index-reader dir)]
       (is (= (.get (get-doc reader 0) "title") "bar")))))
 
 (deftest test-get-docs
   (let [dir (create-directory :RAM)]
-    (do (write-index! dir dummy-docs))
+    (do (add-documents-to-index! dir dummy-docs))
     (let [reader (create-index-reader dir)]
       (is (= (map #(.get % "title")
                   (get-docs reader [(ScoreDoc. 1 1.0)

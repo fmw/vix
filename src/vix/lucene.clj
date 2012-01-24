@@ -32,7 +32,7 @@
             TermQuery BooleanQuery BooleanClause$Occur ScoreDoc]
            [org.apache.lucene.queryParser QueryParser]
            [org.apache.lucene.index IndexWriter IndexWriterConfig
-            IndexReader Term]
+            IndexWriterConfig$OpenMode IndexReader Term]
            [org.apache.lucene.util Version]
            [java.io File]))
 
@@ -124,7 +124,7 @@
                               :analyzed))
           
           (.add (create-field "feed" feed :indexed-not-analyzed :stored))
-          (.add (create-field "slug" slug :stored))
+          (.add (create-field "slug" slug :indexed-not-analyzed :stored ))
           (.add (create-field "title" title :analyzed :stored))
           (.add (create-field "language"
                               language
@@ -139,11 +139,18 @@
                                       :stored
                                       :indexed)))))
 
-(defn #^IndexWriter create-index-writer [analyzer directory]
+(defn #^IndexWriter create-index-writer [analyzer directory mode]
   (let [config (IndexWriterConfig. (Version/LUCENE_35) analyzer)]
 
     (doto config
-      (.setRAMBufferSizeMB 49))
+      (.setRAMBufferSizeMB 49)
+      (.setOpenMode (cond
+                     (= mode :create)
+                     (IndexWriterConfig$OpenMode/CREATE)
+                     (= mode :append)
+                     (IndexWriterConfig$OpenMode/APPEND)
+                     (= mode :create-or-append)
+                     (IndexWriterConfig$OpenMode/CREATE_OR_APPEND))))
     
     (IndexWriter. directory config)))
 
@@ -151,17 +158,32 @@
   (doto writer
     (.close)))
 
-(defmulti write-index!
+(defmulti add-documents-to-index!
   (fn [x documents] [(class x) (class documents)]))
 
-(defmethod write-index! [Directory Object] [directory documents]
-  (let [writer (create-index-writer (create-analyzer) directory)]
-    (write-index! writer documents)
+(defmethod add-documents-to-index! [Directory Object] [directory documents]
+  (let [writer (create-index-writer (create-analyzer)
+                                    directory
+                                    :create-or-append)]
+    (add-documents-to-index! writer documents)
     (close-index-writer writer)))
 
-(defmethod write-index! [IndexWriter Object] [writer documents]
+(defmethod add-documents-to-index! [IndexWriter Object] [writer documents]
   (doseq [document documents]
     (.addDocument writer (create-document document))))
+
+(defn delete-document-from-index! [directory slug]
+  (doto (create-index-writer (create-analyzer) directory :append)
+    (.deleteDocuments (Term. "slug" slug))
+    (.close)))
+
+(defn update-document-in-index! [directory slug document]
+  (let [analyzer (create-analyzer)]
+    (doto (create-index-writer analyzer directory :append)
+      (.updateDocument (Term. "slug" slug)
+                       (create-document document)
+                       analyzer)
+      (.close))))
 
 (defn #^NumericRangeQuery create-date-range-query
   [field-name start-date-rfc3339 end-date-rfc3339]
@@ -176,7 +198,11 @@
 
 (defn #^QueryWrapperFilter create-filter [filters]
   "Creates a filter for the category, which is wrapped in double quotes."
-  (let [{:keys [published-between updated-between language feed]} filters
+  (let [{:keys [published-between
+                updated-between
+                language
+                feed
+                slug]} filters
         bq (BooleanQuery.)]
 
     (when (and (string? (:min published-between))
@@ -203,6 +229,11 @@
     (when (string? feed)
       (.add bq
             (TermQuery. (Term. "feed" feed))
+            BooleanClause$Occur/MUST))
+
+    (when (string? slug)
+      (.add bq
+            (TermQuery. (Term. "slug" slug))
             BooleanClause$Occur/MUST))
     
     (when (pos? (alength (.getClauses bq)))
