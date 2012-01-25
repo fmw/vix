@@ -233,7 +233,10 @@
           "6\n"
           "7\n"
           "8\n"
-          "9"))))
+          "9")))
+
+  (is (= (distill-plaintext "Caol Ila is a whisky distillery on Islay.")
+         "Caol Ila is a whisky distillery on Islay.")))
 
 (deftest test-create-document
   (testing "Check if the document is correctly tranlated to a Lucene doc"

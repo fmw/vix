@@ -36,6 +36,8 @@
            [org.apache.lucene.util Version]
            [java.io File]))
 
+(def index-path "/var/lucene/vix")
+
 (defn #^StandardAnalyzer create-analyzer []
   (StandardAnalyzer. (. Version LUCENE_35)))
 
@@ -43,6 +45,10 @@
   (if (= path :RAM)
     (RAMDirectory.)
     (NIOFSDirectory. (File. path))))
+
+
+(def directory (create-directory index-path))
+(def analyzer (create-analyzer))
 
 (defn #^IndexReader create-index-reader [#^Directory directory]
   (. IndexReader open directory))
@@ -91,16 +97,18 @@
    The value of each node is returned on a new line, followed by the
    values of the title attributes of all img nodes"
   [html]
-  (let [resource (html/html-resource (java.io.StringReader. html))]
-    (apply str
-           (interpose
-            "\n"
-            (concat
-             (map html/text
-                  (html/select
-                   resource
-                   [:body :* (html/text-pred #(not (empty? %)))]))
-             (map #(:title (:attrs %)) (html/select resource [:img])))))))
+  (if (some #{\< \>} html)
+    (let [resource (html/html-resource (java.io.StringReader. html))]
+      (apply str
+             (interpose
+              "\n"
+              (concat
+               (map html/text
+                    (html/select
+                     resource
+                     [:body :* (html/text-pred #(not (empty? %)))]))
+               (map #(:title (:attrs %)) (html/select resource [:img]))))))
+    html))
 
 (defn #^Document create-document
   [vix-doc]

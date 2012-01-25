@@ -23,6 +23,7 @@
         [clojure.contrib.duck-streams :only [slurp*]]
         [ring.util.response :only [redirect]])
   (:require [vix.db :as db]
+            [vix.lucene :as lucene]
             [clojure.contrib [error-kit :as kit]]
             [couchdb [client :as couchdb]]
             [compojure.route :as route]
@@ -127,9 +128,9 @@
   (POST "/json/new-feed" request
         (when (authorize (:session request) nil :* :POST)
           (json-response (db/create-feed
-                           db-server
-                           database
-                           (read-json (slurp* (:body request))))
+                          db-server
+                          database
+                          (read-json (slurp* (:body request))))
                          :status 201)))
   (GET "/json/feed/:language/:name"
        {{language :language feed-name :name} :params session :session}
@@ -166,12 +167,13 @@
          session :session
          body :body}
         (when (authorize session language feed-name :POST)
-          (json-response (db/create-document db-server
+          (let [document (db/create-document db-server
                                              database
                                              language
                                              feed-name
-                                             (read-json (slurp* body)))
-                         :status 201)))
+                                             (read-json (slurp* body)))]
+            (lucene/add-documents-to-index! lucene/directory [document])
+            (json-response document :status 201))))
   (GET "/json/document/*" {{slug :*} :params session :session}
        (if-let [document (db/get-document db-server
                                           database
@@ -186,12 +188,14 @@
                             (:language document)
                             (:feed document)
                             :PUT)
-             (json-response 
-               (db/update-document
-                 db-server
-                 database
-                 slug
-                 (read-json (slurp* body)))))
+             (let [document (db/update-document db-server
+                                                database
+                                                slug
+                                                (read-json (slurp* body)))]
+               (lucene/update-document-in-index! lucene/directory
+                                                 slug
+                                                 document)
+               (json-response document)))
            (json-response nil))))
   (DELETE "/json/document/*" {{slug :*} :params session :session}
           (let [slug (force-initial-slash slug)]
@@ -200,11 +204,11 @@
                                (:language document)
                                (:feed document)
                                :DELETE)
-                (json-response 
-                  (db/delete-document
-                    db-server
-                    database
-                    slug)))
+                (let [document (db/delete-document db-server
+                                                   database
+                                                   slug)]
+                  (lucene/delete-document-from-index! lucene/directory slug)
+                  (json-response document)))
               (json-response nil))))
   (route/resources "/static/")
   (GET "/*" {{slug :*} :params}
