@@ -46,7 +46,6 @@
     (RAMDirectory.)
     (NIOFSDirectory. (File. path))))
 
-
 (def directory (create-directory index-path))
 (def analyzer (create-analyzer))
 
@@ -283,15 +282,18 @@
                                       (ScoreDoc. after-doc-id after-score)
                                       q
                                       filter
-                                      limit)))
-           last-doc (last (.scoreDocs top-docs))]
+                                      limit)))]
 
        (. searcher close)
-
+       
        {:total-hits (.totalHits top-docs)
-        :docs (.scoreDocs top-docs)
-        :last-doc (when last-doc
-                    {:id (.doc last-doc) :score (.score last-doc)})})))
+        :docs (map #(assoc (document-to-map (second %))
+                      :index {:doc-id (.doc (first %))
+                              :score (.score (first %))})
+                   (partition 2
+                              (interleave
+                               (.scoreDocs top-docs)
+                               (get-docs reader (.scoreDocs top-docs)))))})))
 
 (defn search-jump-to-page
   "This function performs a search and drops results from the unwanted

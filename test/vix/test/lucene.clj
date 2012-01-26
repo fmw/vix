@@ -436,18 +436,16 @@
 
       (let [reader (create-index-reader directory)
             filter (create-filter {:slug "/2011/11/4/bar"})
-            result (search "me" filter 15 reader analyzer)
-            docs (get-docs reader (:docs result))]
+            result (search "me" filter 15 reader analyzer)]
         (is (= (:total-hits result) 1))
-        (is (= (.get (first docs) "title") "bar")))
+        (is (= (:title (first (:docs result))) "bar")))
         
       (do
         (delete-document-from-index! directory "/2011/11/4/bar"))
 
       (let [reader (create-index-reader directory)
             filter (create-filter {:slug "/2011/11/4/bar"})
-            result (search "me" filter 15 reader analyzer)
-            docs (get-docs reader (:docs result))]
+            result (search "me" filter 15 reader analyzer)]
         (is (= (:total-hits result) 0))))))
 
 (deftest test-update-document-in-index!
@@ -459,10 +457,9 @@
 
       (let [reader (create-index-reader directory)
             filter (create-filter {:slug "/2011/11/4/bar"})
-            result (search "me" filter 15 reader analyzer)
-            docs (get-docs reader (:docs result))]
+            result (search "me" filter 15 reader analyzer)]
         (is (= (:total-hits result) 1))
-        (is (= (.get (first docs) "title") "bar")))
+        (is (= (:title (first (:docs result))) "bar")))
         
       (do
         (update-document-in-index! directory
@@ -472,10 +469,9 @@
 
       (let [reader (create-index-reader directory)
             filter (create-filter {:slug "/2011/11/4/bar"})
-            result (search "me" filter 15 reader analyzer)
-            docs (get-docs reader (:docs result))]
+            result (search "me" filter 15 reader analyzer)]
         (is (= (:total-hits result) 1))
-        (is (= (.get (first docs) "title") "baz"))))))
+        (is (= (:title (first (:docs result))) "baz"))))))
 
 (deftest test-create-date-range-query
   (let [query (create-date-range-query "42"
@@ -672,12 +668,12 @@
       
       (testing "test a simple query without filters"
         (let [result (search "whisky" nil 15 reader analyzer)
-              docs (get-docs reader (:docs result))]
+              docs (:docs result)]
 
           (is (= (:total-hits result) 12))
 
           (are [doc title]
-               (= (.get doc "title") title)
+               (= (:title doc) title)
                (first docs) "Brora!"
                (nth docs 1) "Caol Ila"
                (nth docs 2) "Caol Ila 0"
@@ -689,37 +685,51 @@
                (nth docs 8) "Caol Ila 6"
                (nth docs 9) "Caol Ila 7"
                (nth docs 10) "Caol Ila 8"
-               (nth docs 11)  "Caol Ila 9")))
+               (nth docs 11)  "Caol Ila 9")
+
+          (are [doc doc-id score]
+               (and (= (:doc-id (:index doc)) doc-id)
+                    (= (:score (:index doc)) (float score)))
+               (first docs) 2 0.20139524
+               (nth docs 1) 3 0.18987726
+               (nth docs 2) 4 0.18987726
+               (nth docs 3) 5 0.18987726
+               (nth docs 4) 6 0.18987726
+               (nth docs 5) 7 0.18987726
+               (nth docs 6) 8 0.18987726
+               (nth docs 7) 9 0.18987726
+               (nth docs 8) 10 0.18987726
+               (nth docs 9) 11 0.18987726
+               (nth docs 10) 12 0.18987726
+               (nth docs 11) 13 0.18987726)))
 
       (testing "test pagination"
         (let [first-page-result (search "whisky" nil 5 reader analyzer)
-              first-page-docs (get-docs reader (:docs first-page-result))]
+              first-page-docs (:docs first-page-result)]
 
           (are [doc title]
-               (= (.get doc "title") title)
+               (= (:title doc) title)
                (first first-page-docs) "Brora!"
                (nth first-page-docs 1) "Caol Ila"
                (nth first-page-docs 2) "Caol Ila 0"
                (nth first-page-docs 3) "Caol Ila 1"
                (last first-page-docs) "Caol Ila 2")
 
-          (is (= (:last-doc first-page-result)
-                 {:id 6 :score (float 0.18987726)}))
-          
           (let [second-page-result (search "whisky"
                                            nil
                                            5
-                                           (:id
-                                            (:last-doc first-page-result))
+                                           (:doc-id
+                                            (:index
+                                             (last first-page-docs)))
                                            (:score
-                                            (:last-doc first-page-result))
+                                            (:index
+                                             (last first-page-docs)))
                                            reader
                                            analyzer)
-                second-page-docs (get-docs reader
-                                           (:docs second-page-result))]
+                second-page-docs (:docs second-page-result)]
 
             (are [doc title]
-                 (= (.get doc "title") title)
+                 (= (:title doc) title)
                  (first second-page-docs) "Caol Ila 3"
                  (nth second-page-docs 1) "Caol Ila 4"
                  (nth second-page-docs 2) "Caol Ila 5"
@@ -729,56 +739,51 @@
             (let [third-page-result (search "whisky"
                                             nil
                                             5
-                                            (:id
-                                             (:last-doc second-page-result))
+                                            (:doc-id
+                                             (:index
+                                              (last second-page-docs)))
                                             (:score
-                                             (:last-doc second-page-result))
+                                             (:index
+                                              (last second-page-docs)))
                                             reader
                                             analyzer)
-                  third-page-docs (get-docs reader
-                                            (:docs third-page-result))]
+                  third-page-docs (:docs third-page-result)]
 
               (are [doc title]
-                   (= (.get doc "title") title)
+                   (= (:title doc) title)
                    (first third-page-docs) "Caol Ila 8"
                    (last third-page-docs) "Caol Ila 9")))))
 
       (testing "test with a feed-based filter"
         (let [filter (create-filter {:feed "blog"})
-              result (search "whisky" filter 15 reader analyzer)
-              docs (get-docs reader (:docs result))]
+              result (search "whisky" filter 15 reader analyzer)]
           (is (= (:total-hits result) 1))
-          (is (= (.get (first docs) "title") "Brora!"))))
+          (is (= (:title (first (:docs result))) "Brora!"))))
 
       (testing "test with a slug-based filter"
         (let [filter (create-filter {:slug "/2011/11/4/bar"})
-              result (search "me" filter 15 reader analyzer)
-              docs (get-docs reader (:docs result))]
+              result (search "me" filter 15 reader analyzer)]
           (is (= (:total-hits result) 1))
-          (is (= (.get (first docs) "title") "bar"))))
+          (is (= (:title (first (:docs result))) "bar"))))
 
       (testing "test with a draft-based filters"
         (let [filter (create-filter {:draft true})
-              result (search "whisky" filter 15 reader analyzer)
-              docs (get-docs reader (:docs result))]
+              result (search "whisky" filter 15 reader analyzer)]
           (is (= (:total-hits result) 11))
-          (is (= (.get (first docs) "title") "Caol Ila")))
+          (is (= (:title (first (:docs result))) "Caol Ila")))
 
         (let [filter (create-filter {:draft false})
-              result (search "whisky" filter 15 reader analyzer)
-              docs (get-docs reader (:docs result))]
+              result (search "whisky" filter 15 reader analyzer)]
           (is (= (:total-hits result) 1))
-          (is (= (.get (first docs) "title") "Brora!"))))
+          (is (= (:title (first (:docs result))) "Brora!"))))
 
       (testing "test with a language-based filter"
         (let [filter (create-filter {:language "en"})
-              result (search "whisky" filter 15 reader analyzer)
-              docs (get-docs reader (:docs result))]
+              result (search "whisky" filter 15 reader analyzer)]
           (is (= (:total-hits result) 12)))
 
         (let [filter (create-filter {:language "nl"})
-              result (search "whisky" filter 15 reader analyzer)
-              docs (get-docs reader (:docs result))]
+              result (search "whisky" filter 15 reader analyzer)]
           (is (= (:total-hits result) 0))))
 
       (testing "test with a time-based filter"
@@ -787,10 +792,9 @@
                                       "2012-01-16T11:00:00.0Z"
                                       :max
                                       "2012-01-16T12:00:00.0Z"}})
-              result (search "whisky" filter 15 reader analyzer)
-              docs (get-docs reader (:docs result))]
+              result (search "whisky" filter 15 reader analyzer)]
           (is (= (:total-hits result) 1))
-          (is (= (.get (first docs) "title") "Brora!")))
+          (is (= (:title (first (:docs result))) "Brora!")))
 
         (let [filter (create-filter {:published-between
                                      {:min "2012-01-16T11:00:00.0Z"
@@ -815,25 +819,22 @@
       
       (testing "test what happens when the first page is requested"
         (let [result (search-jump-to-page "whisky" nil 5 1 reader analyzer)
-              docs (get-docs reader (:docs result))]
+              docs (:docs result)]
 
           (are [doc title]
-               (= (.get doc "title") title)
+               (= (:title doc) title)
                (first docs) "Brora!"
                (nth docs 1) "Caol Ila"
                (nth docs 2) "Caol Ila 0"
                (nth docs 3) "Caol Ila 1"
-               (last docs) "Caol Ila 2")
-
-          (is (= (:last-doc result)
-                 {:id 6 :score (float 0.18987726)})))
+               (last docs) "Caol Ila 2"))
     
         (testing "test what happens when the second page is requested"
           (let [result (search-jump-to-page "whisky" nil 5 2 reader analyzer)
-                docs (get-docs reader (:docs result))]
+                docs (:docs result)]
 
             (are [doc title]
-                 (= (.get doc "title") title)
+                 (= (:title doc) title)
                  (first docs) "Caol Ila 3"
                  (nth docs 1) "Caol Ila 4"
                  (nth docs 2) "Caol Ila 5"
@@ -842,10 +843,10 @@
     
         (testing "test what happens when the third page is requested"
           (let [result (search-jump-to-page "whisky" nil 5 3 reader analyzer)
-                docs (get-docs reader (:docs result))]
+                docs (:docs result)]
 
             (are [doc title]
-                 (= (.get doc "title") title)
+                 (= (:title doc) title)
                  (first docs) "Caol Ila 8"
                  (last docs) "Caol Ila 9")))
 
