@@ -39,9 +39,11 @@
 (def index-path "/var/lucene/vix")
 
 (defn #^StandardAnalyzer create-analyzer []
+  "Creates a StandardAnalyzer that tokenizes fulltext fields."
   (StandardAnalyzer. (. Version LUCENE_35)))
 
 (defn create-directory [path]
+  "Create a directory with either :RAM or a directory as the path argument."
   (if (= path :RAM)
     (RAMDirectory.)
     (NIOFSDirectory. (File. path))))
@@ -50,6 +52,7 @@
 (def analyzer (create-analyzer))
 
 (defn #^IndexReader create-index-reader [#^Directory directory]
+  "Create IndexReader for the specified directory."
   (. IndexReader open directory))
 
 (defn #^Field create-field
@@ -91,7 +94,7 @@
      (= (class value) java.lang.Long) (.setLongValue field value)
      :default (.setIntValue field -1))))
 
-(defn distill-plaintext
+(defn #^String distill-plaintext
   "Distills the text values from an HTML string.
    The value of each node is returned on a new line, followed by the
    values of the title attributes of all img nodes"
@@ -109,8 +112,9 @@
                (map #(:title (:attrs %)) (html/select resource [:img]))))))
     html))
 
-(defn #^Document create-document
-  [vix-doc]
+(defn #^Document create-document [vix-doc]
+  "Creates a Lucene Document object representing the Vix document that
+   is passed as a map (e.g. directly from the database).."
   (let [{:keys [feed
                 slug
                 title
@@ -157,6 +161,8 @@
                                       :indexed)))))
 
 (defn #^IndexWriter create-index-writer [analyzer directory mode]
+  "Creates an IndexWriter with the provided analyzer and directory.
+   The mode has three options: :create, :append or :create-or-append."
   (let [config (IndexWriterConfig. (Version/LUCENE_35) analyzer)]
 
     (doto config
@@ -172,13 +178,17 @@
     (IndexWriter. directory config)))
 
 (defn #^IndexWriter close-index-writer [writer]
+  "Closes the provided IndexWriter and writes the changes to disk (or RAM)."
   (doto writer
     (.close)))
 
 (defmulti add-documents-to-index!
+  "Supports adding documents to either a provided IndexWriter or
+   through an IndexWriter created for the provided documents specifically."
   (fn [x documents] [(class x) (class documents)]))
 
 (defmethod add-documents-to-index! [Directory Object] [directory documents]
+  "Adds the documents to the index for the provided directory."
   (let [writer (create-index-writer (create-analyzer)
                                     directory
                                     :create-or-append)]
@@ -186,15 +196,23 @@
     (close-index-writer writer)))
 
 (defmethod add-documents-to-index! [IndexWriter Object] [writer documents]
+  "Adds the documents to the provided IndexWriter, but doesn't close it
+   (i.e. the IndexWriter needs to be closed externally to write the
+   changes to disk or memory)."
   (doseq [document documents]
     (.addDocument writer (create-document document))))
 
 (defn delete-document-from-index! [directory slug]
+  "Deletes the document with the provided slug from the provided Lucene
+   Directory object."
   (doto (create-index-writer (create-analyzer) directory :append)
     (.deleteDocuments (Term. "slug" slug))
     (.close)))
 
 (defn update-document-in-index! [directory slug document]
+  "Deletes the existing document with the provided slug from the
+   provided Lucene Directory object and creates a new document using
+   the provided document map."
   (let [analyzer (create-analyzer)]
     (doto (create-index-writer analyzer directory :append)
       (.updateDocument (Term. "slug" slug)
@@ -214,7 +232,18 @@
       (NumericRangeQuery/newLongRange field-name min max true true))))
 
 (defn #^QueryWrapperFilter create-filter [filters]
-  "Creates a filter for the category, which is wrapped in double quotes."
+  "Creates a Lucene BooleanQuery wrapped in a QueryWrapperFilter with one
+   or more filter queries (if zero this function returns nil).
+
+   The following filters are possible:
+   :published-between {:min rfc3339-date-string :max rfc-3339-date-string}
+   :updated-between {:min rfc3339-date-string :max rfc-3339-date-string}
+   :language String (literal)
+   :feed String (literal)
+   :slug String (literal)
+   :draft Boolean
+
+   See the unit tests for examples."
   (let [{:keys [published-between
                 updated-between
                 language
@@ -263,6 +292,10 @@
       (QueryWrapperFilter. bq))))
 
 (defn search
+  "Runs a query (with or without a filter) and returns the result.
+   Also able to paginate when after-doc-id and after-score are provided.
+   See the unit tests for examples. The return value is a map with
+   :total-hits and :docs."
   ([query filter limit reader analyzer]
      (search query filter limit nil nil reader analyzer))
   ([query filter limit after-doc-id after-score reader analyzer]
@@ -318,12 +351,16 @@
           (drop (* per-page (- target-page 1)) (:docs result)))))))
 
 (defn #^Document get-doc [reader doc-id]
+  "Reads the document with the provided doc-id from the index."
   (.document reader doc-id))
 
-(defn get-docs [reader docs]
-  (map #(get-doc reader (.doc %)) docs))
+(defn get-docs [reader score-docs]
+  "Returns a sequence of the individual documents for a Lucene ScoreDoc[]
+   array."
+  (map #(get-doc reader (.doc %)) score-docs))
 
 (defn document-to-map [document]
+  "Converts a Lucene document to a Vix document map."
   {:slug (.get document "slug")
    :title (.get document "title")
    :feed (.get document "feed")
