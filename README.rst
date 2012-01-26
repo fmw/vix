@@ -66,8 +66,8 @@ you can skip those commands). They are meant to be entered in the
 order listed. If you're using a different operating system and need
 help installing the application you can contact the author for support
 (see below for contact information). Note that the Microsoft Windows
-operating system is not officially supported, but stubborn Windows
-users might have some success using Cygwin.
+operating system is not officially supported, but Windows users might
+have some success using Cygwin.
 
 Install and configure the Sun JDK (instead of the OpenJDK, which doesn't work
 as well with ClojureScript at the moment)::
