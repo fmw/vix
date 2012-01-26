@@ -105,6 +105,12 @@ Install ClojureScript::
     cd clojurescript/
     script/bootstrap
 
+Create a directory to store Apache Lucene indexes (you can change the
+path in src/vix/lucene.clj)::
+
+    sudo mkdir /var/lucene
+    sudo chown yourusername:yourusergroup /var/lucene
+
 Install Vix::
 
     cd ~/clj
