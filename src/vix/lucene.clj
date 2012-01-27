@@ -291,6 +291,33 @@
     (when (pos? (alength (.getClauses bq)))
       (QueryWrapperFilter. bq))))
 
+(defn #^Document get-doc [reader doc-id]
+  "Reads the document with the provided doc-id from the index."
+  (.document reader doc-id))
+
+(defn get-docs [reader score-docs]
+  "Returns a sequence of the individual documents for a Lucene ScoreDoc[]
+   array."
+  (map #(get-doc reader (.doc %)) score-docs))
+
+(defn document-to-map [document]
+  "Converts a Lucene document to a Vix document map."
+  {:slug (.get document "slug")
+   :title (.get document "title")
+   :feed (.get document "feed")
+   :language (.get document "language")
+   :draft (if (= (.get document "draft") "1")
+            true
+            false)
+   :published (let [pub-long (read-string (.get document "published"))]
+                (if (and (number? pub-long) (pos? pub-long))
+                  (time-coerce/from-long pub-long)
+                  nil))
+   :updated (let [pub-long (read-string (.get document "updated"))]
+              (if (and (number? pub-long) (pos? pub-long))
+                (time-coerce/from-long pub-long)
+                nil))})
+
 (defn search
   "Runs a query (with or without a filter) and returns the result.
    Also able to paginate when after-doc-id and after-score are provided.
@@ -349,30 +376,3 @@
         (assoc result
           :docs
           (drop (* per-page (- target-page 1)) (:docs result)))))))
-
-(defn #^Document get-doc [reader doc-id]
-  "Reads the document with the provided doc-id from the index."
-  (.document reader doc-id))
-
-(defn get-docs [reader score-docs]
-  "Returns a sequence of the individual documents for a Lucene ScoreDoc[]
-   array."
-  (map #(get-doc reader (.doc %)) score-docs))
-
-(defn document-to-map [document]
-  "Converts a Lucene document to a Vix document map."
-  {:slug (.get document "slug")
-   :title (.get document "title")
-   :feed (.get document "feed")
-   :language (.get document "language")
-   :draft (if (= (.get document "draft") "1")
-            true
-            false)
-   :published (let [pub-long (read-string (.get document "published"))]
-                (if (and (number? pub-long) (pos? pub-long))
-                  (time-coerce/from-long pub-long)
-                  nil))
-   :updated (let [pub-long (read-string (.get document "updated"))]
-              (if (and (number? pub-long) (pos? pub-long))
-                (time-coerce/from-long pub-long)
-                nil))})
