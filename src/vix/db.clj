@@ -15,14 +15,12 @@
 ;; limitations under the License.
 
 (ns vix.db
-  (:use vix.core)
   (:require [clojure.contrib [error-kit :as kit]]
             [clojure.contrib.base64 :as base64]
             [couchdb [client :as couchdb]]
             [clj-http.client :as http]
             [clojure.data.json :as json]
-            [clj-time.coerce :as time-coerce]
-            [clj-time.format :as time-format])
+            [vix.util :as util])
   (:import [java.net URLEncoder]
            [org.apache.commons.codec.binary Base64]))
 
@@ -49,7 +47,7 @@
 (defn #^{:rebind true} view-sync
   [server db design-doc view-name view-functions]
   "Reimplementation of clojure-couchdb's view-add function."
-  (log-hide!)
+  (util/log-hide!)
   (let [doc-path (str "_design/" design-doc)]
     (kit/with-handler
       (let [document (couchdb/document-get server db doc-path)]
@@ -65,7 +63,7 @@
             doc-path
             {:language "javascript"
              :views {(keyword view-name) view-functions}}))))
-  (log-restore!))
+  (util/log-restore!))
 
 (defn create-views [db-server db-name design-doc views]
   (doseq [view views]
@@ -103,13 +101,6 @@
             (view-get db-server db-name design-doc view-name view-options))
           (.printStackTrace e)))))
 
-(defn datetime-string-to-long
-  [s]
-  "Converts RFC3339 formatted date string to microseconds since UNIX epoch.
-   Throws NullPointerException on incorrect input."
-  (when (string? s)
-    (time-coerce/to-long (time-format/parse s))))
-
 (defn list-feeds [db-server db-name]
   (if-let [feeds (:rows (view-get db-server
                                   db-name
@@ -118,7 +109,8 @@
                                   {:descending true}))]
     (map #(:value %) feeds)))
 
-(defn list-feeds-by-default-document-type [db-server db-name default-document-type]
+(defn list-feeds-by-default-document-type
+  [db-server db-name default-document-type]
   (if-let [feeds (:rows (view-get db-server
                                   db-name
                                   "views"
@@ -142,7 +134,7 @@
     db-name
     (assoc data-map
            :type "feed"
-           :created (now-rfc3339))))
+           :created (util/now-rfc3339))))
 
 (defn update-feed [db-server db-name language feed-name data-map]
   (if-let [feed (get-feed db-server db-name language feed-name)]
@@ -151,7 +143,7 @@
       db-name
       (:_id feed)
       (assoc feed
-             :feed-updated (now-rfc3339)
+             :feed-updated (util/now-rfc3339)
              :title (:title data-map)
              :subtitle (:subtitle data-map)
              :language (:language data-map)
@@ -232,7 +224,7 @@
   (loop [slug slug]
     (let [document (get-document db-server db-name slug)]
       (if document
-        (recur (increment-slug slug))
+        (recur (util/increment-slug slug))
         slug))))
 
 (defn create-document [db-server db-name language feed-name document]
@@ -244,7 +236,7 @@
                                        :feed feed-name
                                        :language language
                                        :slug slug
-                                       :published (now-rfc3339)))]
+                                       :published (util/now-rfc3339)))]
 
     (if-not (and (nil? (:data (:attachment document)))
                    (nil? (:type (:attachment document))))
@@ -268,7 +260,7 @@
                db-name
                (:_id document)
                (assoc (dissoc document :attachment)
-                 :updated (now-rfc3339)
+                 :updated (util/now-rfc3339)
                  :title (:title new-document)
                  :content (:content new-document)
                  :draft (:draft new-document)))]

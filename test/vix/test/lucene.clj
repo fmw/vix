@@ -18,13 +18,13 @@
   (:use [vix.lucene] :reload)
   (:use [clojure.test]
         [clojure.contrib.java-utils :only (delete-file-recursively)]
-        [clojure.contrib.reflect :only (get-field)]
-        [vix.db :only (datetime-string-to-long)])
+        [clojure.contrib.reflect :only (get-field)])
+  (:require [couchdb [client :as couchdb]]
+            [clj-time.coerce :as time-coerce]
+            [vix.util :as util])
   (:import [org.apache.lucene.search QueryWrapperFilter]
            [org.apache.lucene.index IndexWriter IndexWriterConfig$OpenMode]
-           [org.apache.lucene.search ScoreDoc])
-  (:require [couchdb [client :as couchdb]]
-            [clj-time.coerce :as time-coerce]))
+           [org.apache.lucene.search ScoreDoc]))
 
 (def dummy-docs [{:_id "7a26ec145efeb5768e102c85a710cd1c",
                   :_rev "29-9477bcea8056b447bb16591ca866f36a",
@@ -481,9 +481,9 @@
            org.apache.lucene.search.NumericRangeQuery))
 
     (is (= (.getMin query)
-           (datetime-string-to-long "1985-08-04T09:00:00.0Z")))
+           (util/rfc3339-to-long "1985-08-04T09:00:00.0Z")))
     (is (= (.getMax query)
-           (datetime-string-to-long "2012-01-15T17:54:45.0Z"))))
+           (util/rfc3339-to-long "2012-01-15T17:54:45.0Z"))))
 
   (is (thrown? Exception (create-date-range-query "error" "foo" "bar"))))
 
@@ -522,9 +522,9 @@
       (are [query]
            (and
             (= (.getMin query)
-               (datetime-string-to-long "2011-08-04T09:00:00.0Z"))
+               (util/rfc3339-to-long "2011-08-04T09:00:00.0Z"))
             (= (.getMax query)
-               (datetime-string-to-long "2012-08-04T09:00:00.0Z")))
+               (util/rfc3339-to-long "2012-08-04T09:00:00.0Z")))
            published-query
            updated-query)))
 
@@ -561,6 +561,24 @@
            (= (.text term) value)
            language-term "en"
            feed-term "blog")))
+  
+  (testing "test a filter with multiple feeds"
+    (let [filter (create-filter {:feed ["images" "blog"]})
+          bq (get-field org.apache.lucene.search.QueryWrapperFilter
+                        "query"
+                        filter)
+          query (.getQuery (first (.getClauses bq)))]
+
+      (is (= (class filter) org.apache.lucene.search.QueryWrapperFilter))
+      (is (= (class query) org.apache.lucene.search.BooleanQuery))
+      
+      (let [images-term (.getTerm (.getQuery (first (.getClauses query))))]
+        (is  (= (.field images-term) "feed"))
+        (is (= (.text images-term) "images")))
+
+      (let [blog-term (.getTerm (.getQuery (second (.getClauses query))))]
+        (is  (= (.field blog-term) "feed"))
+        (is (= (.text blog-term) "blog")))))
 
   (testing "test draft filter"
     (let [draft-true-filter (create-filter {:draft true})
@@ -632,7 +650,7 @@
            slug-query org.apache.lucene.search.TermQuery)
 
       (are [query min]
-           (= (.getMin query) (datetime-string-to-long min))
+           (= (.getMin query) (util/rfc3339-to-long min))
            published-query "2011-08-04T09:00:00.0Z"
            updated-query "2011-01-01T09:00:00.0Z")
 
@@ -643,7 +661,7 @@
            slug-term "slug")
       
       (are [query max]
-           (= (.getMax query) (datetime-string-to-long max))
+           (= (.getMax query) (util/rfc3339-to-long max))
            published-query "2012-08-04T09:00:00.0Z"
            updated-query "2012-01-01T09:00:00.0Z")
 

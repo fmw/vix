@@ -1,0 +1,46 @@
+<!doctype html> 
+<html lang=en> 
+    <head> 
+        <title>Vix Demo</title> 
+        <link rel="stylesheet" href="/static/blog.css" type="text/css" /> 
+
+        <!--[if lt IE 9]>
+        <script
+            src="http://html5shim.googlecode.com/svn/trunk/html5.js"></script>
+        <![endif]-->
+   </head> 
+<body> 
+    <div id="wrapper"> 
+
+        <header id="header"> 
+            <h1 id="logo">Vix Demo</h1>
+        </header>
+        
+        <div id="search-bar">
+          <form action="/en/search" method="GET">
+            <label for="q">Search:</label>
+            <input type="text" name="q" id="q" />
+            <input type="submit" value="Go" />
+          </form>
+        </div>
+
+        <nav> 
+            <ul id="menu"> 
+                <li><a href="/" title="Home">Home</a></li>
+            </ul> 
+        </nav> 
+        
+        <div id="main-page">
+          <h3 id="page-title">Page title</h3>
+          <div id="main-content">
+            This is where the content goes.
+          </div>
+        </div>
+    </div>
+    <footer id="footer">
+      <p>
+        Powered by <a href="http://vix.io">vix.io</a>.
+      </p>
+    </footer> 
+</body> 
+</html>

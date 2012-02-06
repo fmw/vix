@@ -16,14 +16,14 @@
 
 (ns vix.routes
   (:use compojure.core
-        vix.core
-        vix.views
         vix.auth
         [clojure.contrib.json :only [read-json json-str]]
         [clojure.contrib.duck-streams :only [slurp*]]
         [ring.util.response :only [redirect]])
   (:require [vix.db :as db]
             [vix.lucene :as lucene]
+            [vix.views :as views]
+            [vix.util :as util]
             [clojure.contrib [error-kit :as kit]]
             [couchdb [client :as couchdb]]
             [compojure.route :as route]
@@ -31,6 +31,11 @@
 
 (def db-server "http://localhost:5984/")
 (def database "vix")
+
+(def default-timezone "Europe/Amsterdam")
+
+(def search-results-per-page 10)
+(def search-allowed-feeds ["blog" "images"])
 
 ; FIXME: test character encoding issues
 (defn response [body & {:keys [status content-type]}]
@@ -55,7 +60,7 @@
                                                     (:_id document)
                                                     "original")))
                 :content-type (:content_type original))
-      (response (blog-article-template document)))
+      (response (views/blog-article-view document default-timezone)))
     (response "<h1>Page not found</h1>" :status 404)))
 
 (defn logout [session]
@@ -77,7 +82,7 @@
     (kit/handle UserDoesNotExist []
       (redirect "/login"))
     (kit/handle UsernamePasswordMismatch []
-      (redirect "/login"))))
+                (redirect "/login"))))
 
 ;; FIXME: change order of authorize/json-response calls, so attackers
 ;; can't get a 404 from an unauthorized request to mine for existing docs
@@ -85,21 +90,84 @@
 ;; consider escaping json calls (e.g. /json/document/_new
 ;; instead of just /new)
 (defroutes main-routes
-  (GET "/" [] (response (blog-frontpage-template
-                         (db/get-documents-for-feed db-server
-                                                    database
-                                                    ;; FIXME: make configurable
-                                                    "en"
-                                                    "blog"))))
-  (GET "/admin*" {session :session {feed "feed"} :params}
+  (GET "/test"
+       {{a :a} :params}
+       (json-str a))
+  (GET "/"
+       []
+       (response (views/blog-frontpage-view
+                  (db/get-documents-for-feed db-server
+                                             database
+                                             ;; FIXME: make configurable
+                                             "en"
+                                             "blog")
+                  default-timezone)))
+  (GET "/:language/search"
+       {{language :language
+         q :q
+         after-doc-id :after-doc-id
+         after-score :after-score
+         pp-after-doc-id :pp-aid
+         pp-after-score :pp-as}
+        :params}
+       (let [after-doc-id-int (util/read-int after-doc-id)
+             after-score-float (util/read-float after-score)]
+         (response
+          (if (and after-doc-id-int after-score-float)
+            (views/search-results-view
+             language
+             search-results-per-page
+             (lucene/search q
+                            (lucene/create-filter
+                             {:language language
+                              :draft false
+                              :feed search-allowed-feeds})
+                            (inc search-results-per-page)
+                            after-doc-id-int
+                            after-score-float
+                            (lucene/create-index-reader
+                             lucene/directory)
+                            lucene/analyzer)
+             q
+             pp-after-doc-id
+             pp-after-score
+             after-doc-id-int
+             after-score-float
+             false)
+            (views/search-results-view
+             language
+             search-results-per-page
+             (lucene/search q
+                            (lucene/create-filter
+                             {:language language
+                              :draft false
+                              :feed search-allowed-feeds})
+                            (inc search-results-per-page)
+                            after-doc-id-int
+                            after-score-float
+                            (lucene/create-index-reader
+                             lucene/directory)
+                            lucene/analyzer)
+             q
+             pp-after-doc-id
+             pp-after-score
+             after-doc-id-int
+             after-score-float
+             true)))))
+  (GET "/admin*"
+       {session :session {feed "feed"} :params}
        (when (authorize session nil :* :DELETE)
-         (response (admin-template {}))))
-  (GET "/login" [] (response (login-page-template "")))
+         (response (views/admin-template {}))))
+  (GET "/login"
+       []
+       (response (views/login-page-template "")))
   (POST "/login"
         {session :session
          {username "username" password "password"} :form-params}
         (login session username password))
-  (GET "/logout" {session :session} (logout session))
+  (GET "/logout"
+       {session :session}
+       (logout session))
   (GET "/json/:language/:feed/list-documents"
        {{language :language
          feed-name :feed
@@ -125,7 +193,8 @@
                                                                    database
                                                                    ddt)
                            (db/list-feeds db-server database)))))
-  (POST "/json/new-feed" request
+  (POST "/json/new-feed"
+        request
         (when (authorize (:session request) nil :* :POST)
           (json-response (db/create-feed
                           db-server
@@ -174,15 +243,18 @@
                                              (read-json (slurp* body)))]
             (lucene/add-documents-to-index! lucene/directory [document])
             (json-response document :status 201))))
-  (GET "/json/document/*" {{slug :*} :params session :session}
+  (GET "/json/document/*"
+       {{slug :*} :params session :session}
        (if-let [document (db/get-document db-server
                                           database
-                                          (force-initial-slash slug) true)]
+                                          (util/force-initial-slash slug)
+                                          true)]
          (when (authorize session (:language document) (:feed document) :GET)
            (json-response document))
          (json-response nil)))
-  (PUT "/json/document/*" {{slug :*} :params body :body session :session}
-       (let [slug (force-initial-slash slug)]
+  (PUT "/json/document/*"
+       {{slug :*} :params body :body session :session}
+       (let [slug (util/force-initial-slash slug)]
          (if-let [document (db/get-document db-server database slug)]
            (when (authorize session
                             (:language document)
@@ -197,8 +269,9 @@
                                                  document)
                (json-response document)))
            (json-response nil))))
-  (DELETE "/json/document/*" {{slug :*} :params session :session}
-          (let [slug (force-initial-slash slug)]
+  (DELETE "/json/document/*"
+          {{slug :*} :params session :session}
+          (let [slug (util/force-initial-slash slug)]
             (if-let [document (db/get-document db-server database slug)]
               (when (authorize session
                                (:language document)
@@ -211,8 +284,9 @@
                   (json-response document)))
               (json-response nil))))
   (route/resources "/static/")
-  (GET "/*" {{slug :*} :params}
-       (catch-all db-server database (force-initial-slash slug))))
+  (GET "/*"
+       {{slug :*} :params}
+       (catch-all db-server database (util/force-initial-slash slug))))
 
 (defn handle-authentication-errors [handler]
   (fn [request]

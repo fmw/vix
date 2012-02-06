@@ -17,12 +17,12 @@
 (ns vix.lucene
   (:use [clojure.contrib.json :only [read-json json-str]]
         [clojure.contrib.duck-streams :only (read-lines)]
-        [clojure.string :only (trim blank?)]
-        [vix.db :only (datetime-string-to-long)])
+        [clojure.string :only (trim blank?)])
   (:require [couchdb [client :as couchdb]]
             [net.cgrand.enlive-html :as html]
             [clj-time.coerce :as time-coerce]
-            [clojure.contrib.math :as math])
+            [clojure.contrib.math :as math]
+            [vix.util :as util])
   (:import [org.apache.lucene.document
             Document Field Field$Store Field$Index NumericField]
            [org.apache.lucene.analysis.standard StandardAnalyzer]
@@ -152,11 +152,11 @@
                               :indexed-not-analyzed
                               :stored))
           (.add (create-numeric-field "published"
-                                      (datetime-string-to-long published)
+                                      (util/rfc3339-to-long published)
                                       :stored
                                       :indexed))
           (.add (create-numeric-field "updated"
-                                      (datetime-string-to-long updated)
+                                      (util/rfc3339-to-long updated)
                                       :stored
                                       :indexed)))))
 
@@ -224,8 +224,8 @@
   [field-name start-date-rfc3339 end-date-rfc3339]
   "Creates a NumericRangeQuery for field-name using start and end date
    string arguments."
-  (let [min (datetime-string-to-long start-date-rfc3339)
-        max (datetime-string-to-long end-date-rfc3339)]
+  (let [min (util/rfc3339-to-long start-date-rfc3339)
+        max (util/rfc3339-to-long end-date-rfc3339)]
     (when (and (= (class min) java.lang.Long)
                (= (class max) java.lang.Long)
                (>= max min))
@@ -239,7 +239,7 @@
    :published-between {:min rfc3339-date-string :max rfc-3339-date-string}
    :updated-between {:min rfc3339-date-string :max rfc-3339-date-string}
    :language String (literal)
-   :feed String (literal)
+   :feed String (literal) of vector of strings.
    :slug String (literal)
    :draft Boolean
 
@@ -273,9 +273,16 @@
             (TermQuery. (Term. "language" language))
             BooleanClause$Occur/MUST))
 
-    (when (string? feed)
+    (when (or (string? feed) (vector? feed))
       (.add bq
-            (TermQuery. (Term. "feed" feed))
+            (if (vector? feed)
+              (let [feed-bq (BooleanQuery.)]
+                (doseq [f feed]
+                  (.add feed-bq
+                        (TermQuery. (Term. "feed" f))
+                        BooleanClause$Occur/SHOULD))
+                feed-bq)
+              (TermQuery. (Term. "feed" feed)))
             BooleanClause$Occur/MUST))
 
     (when (string? slug)

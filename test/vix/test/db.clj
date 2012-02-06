@@ -16,11 +16,11 @@
 
 (ns vix.test.db
   (:use [vix.db] :reload)
-  (:use [vix.core]
-        [clojure.test]
+  (:use [clojure.test]
         [clojure.contrib.json :only [read-json]])
   (:require [couchdb [client :as couchdb]]
-            [clj-http.client :as http])
+            [clj-http.client :as http]
+            [vix.util :as util])
   (:import [org.apache.commons.codec.binary Base64]))
 
 (defn couchdb-id? [s]
@@ -220,14 +220,6 @@
 
         (is (some #{doc-1} feed))
         (is (some #{doc-2} feed))))))
-
-(deftest test-datetime-string-to-long
-  (is (= (datetime-string-to-long "2011-11-04T09:16:52.253Z")
-         1320398212253))
-  (is (= (datetime-string-to-long "2012-01-12T15:40:07+01:00")
-         1326379207000))
-  (is (= (datetime-string-to-long nil) nil))
-  (is (= (datetime-string-to-long 10) nil)))
 
 (deftest test-get-document
   (do
@@ -489,7 +481,7 @@
                                   ; mix identical and unique dates
                                   :published (if (< n 7)
                                                now
-                                               (now-rfc3339))})))
+                                               (util/now-rfc3339))})))
     
     (is (= (count (:documents (get-documents-for-feed +test-server+
                                                       +test-db+
