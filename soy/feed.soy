@@ -81,6 +81,7 @@
  * @param subtitle
  * @param default_slug_format
  * @param default_document_type
+ * @param searchable
  */
 {template .manage_feed}
   <p><a href="/admin/">Back to overview</a></p>
@@ -403,6 +404,13 @@
                 {if $default_document_type == 'menu'}
                 selected="selected"{/if}>Navigation menu</option>
     </select>
+  </div>
+
+  <div class="feed-fields-row">
+    <label for="searchable" id="searchable-label"
+        >Searchable?</label>
+    <input type="checkbox" {if $searchable}checked="checked"{/if}
+           id="searchable" name="searchable" />
   </div>
   <p><button id="save-feed">Save</button></p>
 {/template}

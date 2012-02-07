@@ -692,7 +692,8 @@
                                 :language "en"
                                 :default-slug-format
                                 "/{feed-name}/{document-title}"
-                                :default-document-type "with-description"})
+                                :default-document-type "with-description"
+                                :searchable false})
         blog-feed-updated (update-feed +test-server+
                                        +test-db+
                                        "en"
@@ -703,7 +704,8 @@
                                         :language "nl"
                                         :default-slug-format
                                         "/{document-title}"
-                                        :default-document-type "standard"})]
+                                        :default-document-type "standard"
+                                        :searchable true})]
 
     (is (nil? (update-feed +test-server+
                            +test-db+
@@ -725,7 +727,8 @@
     (is (= (:language blog-feed-updated) "nl"))
     (is (= (:name blog-feed-updated) "blog")) ; NB: not updated!
     (is (= (:default-slug-format blog-feed-updated) "/{document-title}"))
-    (is (= (:default-document-type blog-feed-updated) "standard"))))
+    (is (= (:default-document-type blog-feed-updated) "standard"))
+    (is (= (:searchable blog-feed-updated) true))))
 
 (deftest test-delete-document
   (do
@@ -774,3 +777,76 @@
 
   (is (nil? (get-feed +test-server+ +test-db+ "en" "blog"))
       "Assure the feed is truly removed."))
+
+(deftest test-get-languages
+  (do
+    (create-feed +test-server+
+                 +test-db+
+                 {:title "Weblog"
+                  :subtitle "Vix Weblog!"
+                  :name "blog"
+                  :language "en"
+                  :searchable true})
+
+    (create-feed +test-server+
+                 +test-db+
+                 {:title "Images"
+                  :subtitle "Images"
+                  :name "images"
+                  :language "en"
+                  :searchable true})
+
+    (create-feed +test-server+
+                 +test-db+
+                 {:title "Menu"
+                  :subtitle "Menu"
+                  :name "menu"
+                  :language "en"
+                  :searchable false})
+
+    (create-feed +test-server+
+                 +test-db+
+                 {:title "Weblog"
+                  :name "blog"
+                  :language "nl"
+                  :searchable true}))
+
+  (is (= (get-languages (list-feeds +test-server+ +test-db+))
+         #{"en" "nl"})))
+
+(deftest test-get-searchable-feeds
+  (do
+    (create-feed +test-server+
+                 +test-db+
+                 {:title "Weblog"
+                  :subtitle "Vix Weblog!"
+                  :name "blog"
+                  :language "en"
+                  :searchable true})
+
+    (create-feed +test-server+
+                 +test-db+
+                 {:title "Images"
+                  :subtitle "Images"
+                  :name "images"
+                  :language "en"
+                  :searchable true})
+
+    (create-feed +test-server+
+                 +test-db+
+                 {:title "Menu"
+                  :subtitle "Menu"
+                  :name "menu"
+                  :language "en"
+                  :searchable false})
+
+    (create-feed +test-server+
+                 +test-db+
+                 {:title "Weblog"
+                  :name "blog"
+                  :language "nl"
+                  :searchable true}))
+
+  (is (= (get-searchable-feeds (list-feeds +test-server+ +test-db+))
+         {"nl" ["blog"]
+          "en" ["images" "blog"]})))

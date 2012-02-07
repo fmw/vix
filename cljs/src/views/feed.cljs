@@ -253,6 +253,7 @@
      :language-full (last language)
      :default-slug-format (ui/get-form-value "default-slug-format")
      :default-document-type (ui/get-form-value "default-document-type")
+     :searchable (string? (ui/get-form-value "searchable"))
      }))
 
 ; FIXME: avoid duplication between this and the other 3 xhr callback fns
@@ -343,7 +344,8 @@
                      :language "['en','English']"
                      :default_slug_format
                      "/{language}/{feed-name}/{document-title}"
-                     :default_document_type "standard"})
+                     :default_document_type "standard"
+                     :searchable true})
   (create-feed-form-events :new nil nil))
 
 (defn display-edit-feed-xhr-callback [language feed-name e]
@@ -364,7 +366,8 @@
                                           "']")
                            :default_slug_format ("default-slug-format" json)
                            :default_document_type
-                           ("default-document-type" json)})
+                           ("default-document-type" json)
+                           :searchable ("searchable" json)})
         (preview-slug!)
         (let [dsf ("default-slug-format" json)
               select-option (partial ui/set-form-value

@@ -35,7 +35,8 @@
 (def default-timezone "Europe/Amsterdam")
 
 (def search-results-per-page 10)
-(def search-allowed-feeds ["blog" "images"])
+(def search-allowed-feeds
+  (atom (db/get-searchable-feeds (db/list-feeds db-server database))))
 
 ; FIXME: test character encoding issues
 (defn response [body & {:keys [status content-type]}]
@@ -121,7 +122,7 @@
                             (lucene/create-filter
                              {:language language
                               :draft false
-                              :feed search-allowed-feeds})
+                              :feed (get @search-allowed-feeds language)})
                             (inc search-results-per-page)
                             after-doc-id-int
                             after-score-float
@@ -141,7 +142,7 @@
                             (lucene/create-filter
                              {:language language
                               :draft false
-                              :feed search-allowed-feeds})
+                              :feed (get @search-allowed-feeds language)})
                             (inc search-results-per-page)
                             after-doc-id-int
                             after-score-float
@@ -196,11 +197,14 @@
   (POST "/json/new-feed"
         request
         (when (authorize (:session request) nil :* :POST)
-          (json-response (db/create-feed
-                          db-server
-                          database
-                          (read-json (slurp* (:body request))))
-                         :status 201)))
+          (let [feed (db/create-feed db-server
+                                     database
+                                     (read-json (slurp* (:body request))))]
+            (compare-and-set! search-allowed-feeds
+                              @search-allowed-feeds
+                              (db/get-searchable-feeds
+                               (db/list-feeds db-server database)))
+            (json-response feed :status 201))))
   (GET "/json/feed/:language/:name"
        {{language :language feed-name :name} :params session :session}
        (if-let [feed (db/get-feed db-server database language feed-name)]
@@ -212,13 +216,16 @@
         :params body :body session :session}
        (if-let [feed (db/get-feed db-server database language feed-name)]
          (when (authorize session language feed-name :PUT)
-           (json-response 
-            (db/update-feed
-             db-server
-             database
-             language
-             feed-name
-             (read-json (slurp* body)))))
+           (let [feed (db/update-feed db-server
+                                      database
+                                      language
+                                      feed-name
+                                      (read-json (slurp* body)))]
+             (compare-and-set! search-allowed-feeds
+                               @search-allowed-feeds
+                               (db/get-searchable-feeds
+                                (db/list-feeds db-server database)))
+             (json-response feed)))
          (json-response nil)))
   (DELETE "/json/feed/:language/:name"
           {{language :language feed-name :name} :params session :session}

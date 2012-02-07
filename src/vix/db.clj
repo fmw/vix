@@ -148,7 +148,8 @@
              :subtitle (:subtitle data-map)
              :language (:language data-map)
              :default-slug-format (:default-slug-format data-map)
-             :default-document-type (:default-document-type data-map)))))
+             :default-document-type (:default-document-type data-map)
+             :searchable (:searchable data-map)))))
 
 ; TODO: delete/flag feed content
 (defn delete-feed [db-server db-name language feed-name]
@@ -288,3 +289,21 @@
                 nil)
     (kit/handle couchdb/ResourceConflict []
                 nil)))
+
+(defn get-languages [feeds]
+  "Returns a set of languages from the provided feeds"
+  (set (map :language feeds)))
+
+(defn get-searchable-feeds [feeds]
+  "Returns a map with language strings as keys and the feeds for those
+   languages as values."
+  (let [languages (get-languages feeds)]
+    (zipmap languages
+            (map (fn [language]
+                   (vec ; has to be a vector because of lucene/create-filter
+                    (map :name
+                         (filter (fn [feed]
+                                   (and (= (:language feed) language)
+                                        (true? (:searchable feed))))
+                                 feeds))))
+                 languages))))

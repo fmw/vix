@@ -15,7 +15,7 @@
 
 (ns vix.test.routes
   (:use [vix.routes] :reload
-        [vix.db :only [create-document create-feed get-document]]
+        [vix.db :only [create-document create-feed get-document list-feeds]]
         [vix.auth :only [add-user]]
         [clojure.contrib.json :only [json-str read-json]]
         [vix.test.db :only [database-fixture +test-server+ +test-db+]])
@@ -167,6 +167,16 @@
 
 (deftest ^{:integration true} test-routes
   (do
+    (create-feed +test-server+
+                 +test-db+
+                 {:title "Pages"
+                  :subtitle "Test Pages"
+                  :name "pages"
+                  :default-slug-format "/{feed-name}/{document-title}"
+                  :default-document-type "standard"
+                  :language "en"
+                  :searchable true})
+    
     (create-document +test-server+
                      +test-db+
                      "en"
@@ -177,7 +187,7 @@
                       :draft false}))
 
   (let [directory (lucene/create-directory :RAM)]
-    (with-redefs [search-allowed-feeds ["pages"]
+    (with-redefs [search-allowed-feeds (atom {"en" ["pages"]})
                   search-results-per-page 10
                   database +test-db+
                   lucene/directory directory]
@@ -342,7 +352,7 @@
           (is (= (first
                   (html/attr-values
                    (first (html/select third-page
-                                     [[:ol#search-results] [:li] [:a]]))
+                                       [[:ol#search-results] [:li] [:a]]))
                    :href))
                  "/pages/doc-20"))
 
@@ -447,10 +457,14 @@
                                           :subtitle "Vix Weblog..."
                                           :default-slug-format
                                           "/{document-title}"
-                                          :default-document-type "standard"})
+                                          :default-document-type "standard"
+                                          :searchable true})
                                main-routes)]
         (is (= (:status post-feed-request) 201))
 
+        (is (= @search-allowed-feeds {"en" ["pages" "blog"]})
+            "Test if search-allowed-feeds is updated when feed is added")
+        
         (let [all-feeds (read-json
                          (:body
                           (request :get "/json/list-feeds" main-routes)))]
@@ -466,20 +480,22 @@
                                 :default-document-type "image"})
                      main-routes))
 
-          (is (= (count all-feeds) 1))
+          (is (= (count all-feeds) 2))
           (is (= (count (read-json
                          (:body (request :get
                                          "/json/list-feeds"
                                          main-routes))))
-                 2))
-          (is (= all-feeds (read-json
-                            (:body (request
-                                    :get
-                                    "/json/list-feeds"
-                                    nil
-                                    main-routes
-                                    {:default-document-type
-                                     "standard"})))))))
+                 3))
+          (is (= (sort-by :name all-feeds)
+                 (sort-by :name
+                          (read-json
+                           (:body (request
+                                   :get
+                                   "/json/list-feeds"
+                                   nil
+                                   main-routes
+                                   {:default-document-type
+                                    "standard"}))))))))
 
       (let [get-feed-request (request :get "/json/feed/en/blog" main-routes)
             json-body (read-json (:body get-feed-request))]
@@ -490,12 +506,16 @@
         (let [put-feed-request (request :put
                                         "/json/feed/en/blog"
                                         (json-str (assoc json-body
-                                                    :title "Vix!"))
+                                                    :title "Vix!"
+                                                    :searchable false))
                                         main-routes)
               json-put-body (read-json (:body put-feed-request))]
           (is (= (:status put-feed-request) 200))
           (is (= (:name json-put-body) "blog"))
-          (is (= (:title json-put-body) "Vix!"))))
+          (is (= (:title json-put-body) "Vix!"))
+          
+          (is (= @search-allowed-feeds {"en" ["pages"]})
+              "Make sure search-allowed-feeds is updated when feeds are")))
     
       (is (:status (request :get "/json/feed/en/blog" main-routes)) 200)
       (is (:status (request :delete "/json/feed/en/blog" main-routes)) 200)
