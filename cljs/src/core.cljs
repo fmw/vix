@@ -32,7 +32,7 @@
   (. (new goog.Uri uri false) (getPath)))
 
 (defn get-internal-links! []
-  (filter #(= (.substr (get-path (.href %)) 0 7) "/admin/")
+  (filter #(= (.substr (get-path (.-href %)) 0 7) "/admin/")
           (cljs.core.Vector/fromArray
            (. global/document (getElementsByTagName "a")))))
 
@@ -45,8 +45,8 @@
                    "click"
                    (fn [e]
                      (. e (preventDefault))
-                     (navigate (.substr (get-path (.href (.target e))) 7)
-                               (.title (.target e)))))))
+                     (navigate (.substr (get-path (.-href (.-target e))) 7)
+                               (.-title (.-target e)))))))
 
 (defn start-history! [uri-path]
   (compare-and-set! *h* nil (new goog.history.Html5History))

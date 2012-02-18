@@ -264,7 +264,8 @@
                  :updated (util/now-rfc3339)
                  :title (:title new-document)
                  :content (:content new-document)
-                 :draft (:draft new-document)))]
+                 :draft (:draft new-document)
+                 :related-pages (:related-pages new-document)))]
       
       (if-not (and (nil? (:data (:attachment new-document)))
                    (nil? (:type (:attachment new-document))))

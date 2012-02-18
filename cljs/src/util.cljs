@@ -111,6 +111,11 @@
            distance)
          (recur (inc distance) (get-parent current-node))))))
 
+(defn get-select-option-name-by-value [el value]
+  (.-textContent
+   (first
+    (filter #(= (.-value %) value) (goog.array/toArray (.-options el))))))
+
 (defn is-sibling? [el-x el-y]
   (= (get-parent el-x) (get-parent el-y)))
 

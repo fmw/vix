@@ -86,7 +86,7 @@
    feed-name
    (fn [e]
      (let [main-el (dom/getElement "main-page")
-           xhr (.target e)
+           xhr (.-target e)
            status (. xhr (getStatus))]
        (if (= status 200)
          (do
@@ -96,7 +96,7 @@
 
 (defn list-feeds-callback [e]
   (let [main-el (dom/getElement "main-page")
-        xhr (.target e)
+        xhr (.-target e)
         status (. xhr (getStatus))]
     (if (= status 200)
       (do
@@ -124,7 +124,8 @@
                        (fn [e]
                          (. e (preventDefault))
                          (let [slug (nth
-                                     (string/split (.id (.target e)) "_") 2)]
+                                     (string/split (.-id (.-target e)) "_")
+                                     2)]
                            (document/delete-doc slug
                                                 (partial delete-doc-callback
                                                          language
@@ -143,7 +144,7 @@
                    "click"
                    (fn [e]
                      (. e (preventDefault))
-                     (let [id-segments (string/split (.id (.target e)) ":")
+                     (let [id-segments (string/split (.-id (.-target e)) ":")
                            language (nth id-segments 1)
                            feed-name (nth id-segments 2)]
                        (document/delete-feed language
@@ -167,8 +168,8 @@
 
 (defn validate-default-slug [e]
   (let [status-el (dom/getElement "status-message")
-        slug-el (.target e)
-        slug (.value slug-el)
+        slug-el (.-target e)
+        slug (.-value slug-el)
         slug-label-el (dom/getElement "default-slug-format-select-label")
         err #(ui/display-error status-el % slug-el slug-label-el)
         invalid-tokens (get-invalid-tokens slug)]
@@ -190,8 +191,8 @@
 
 
 (defn validate-feed-name-and-preview-in-slug [e]
-  (let [name-el (.target e)
-        name-val (.value name-el)
+  (let [name-el (.-target e)
+        name-val (.-value name-el)
         name-label-el (dom/getElement "name-label")
         status-el (dom/getElement "status-message")
         dsfs-el (dom/getElement "default-slug-format-select")
@@ -216,7 +217,7 @@
         select-opts (cljs.core.Vector/fromArray (dom/getChildren dsfs-el))]
     (when-not (classes/has (dom/getElement "name") "error")
       (doseq [opt select-opts]
-        (dom/setTextContent opt (util/create-slug (.value opt)
+        (dom/setTextContent opt (util/create-slug (.-value opt)
                                                   "document-title"
                                                   (get-feed-value-map!)
                                                   (util/date-now!)
@@ -231,11 +232,11 @@
         status-el (dom/getElement "status-message")
         err (partial ui/display-error status-el)]
     (cond
-     (string/blank? (.value name-el))
+     (string/blank? (.-value name-el))
        (err feed-name-required-err
             name-el
             (dom/getElement "name-label"))
-     (string/blank? (.value title-el))
+     (string/blank? (.-value title-el))
        (err feed-title-required-err
             (dom/getElement "title")
             (dom/getElement "title-label"))
@@ -258,7 +259,7 @@
 
 ; FIXME: avoid duplication between this and the other 3 xhr callback fns
 (defn save-new-feed-xhr-callback [e]
-  (let [xhr (.target e)]
+  (let [xhr (.-target e)]
     (if (= (. xhr (getStatus)) 201)
       (let [json (js->clj (. xhr (getResponseJson)))]
         (core/navigate-replace-state (str "edit-feed/"
@@ -273,7 +274,7 @@
 
 ; FIXME: avoid duplication between this and the other 3 xhr callback fns
 (defn save-existing-feed-xhr-callback [e]
-  (let [xhr (.target e)]
+  (let [xhr (.-target e)]
     (if (= (. xhr (getStatus)) 200)
       (let [json (js->clj (. xhr (getResponseJson)))]
         (core/navigate-replace-state (str "edit-feed/"
@@ -292,7 +293,7 @@
     (events/listen (dom/getElement "default-slug-format-select")
                    event-type/CHANGE
                    (fn [e]
-                     (let [val (.value (.target e))]
+                     (let [val (.-value (.-target e))]
                        (if (= val "custom")
                          (do
                            (ui/enable-element dsf-el))
@@ -310,7 +311,7 @@
     (events/listen title-el
                    event-type/INPUT
                    (fn [e]
-                     (when-not (string/blank? (.value title-el))
+                     (when-not (string/blank? (.-value title-el))
                        (ui/remove-error (dom/getElement "status-message")
                                         (dom/getElement "title-label")
                                         title-el))))
@@ -349,7 +350,7 @@
   (create-feed-form-events :new nil nil))
 
 (defn display-edit-feed-xhr-callback [language feed-name e]
-  (let [xhr (.target e)
+  (let [xhr (.-target e)
         status (. xhr (getStatus))]
     (if (= status 200)
       (let [json (js->clj (. xhr (getResponseJson)))]

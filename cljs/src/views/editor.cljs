@@ -110,11 +110,11 @@
 (defn display-image-feeds []
   (document/get-feeds-list
    (fn [e]
-     (let [xhr (.target e)
+     (let [xhr (.-target e)
            json (. xhr (getResponseJson))
            first-feed (first json)]
        (if (pos? (count json))
-         (display-images (.language first-feed) (.name first-feed) json)
+         (display-images (.-language first-feed) (.-name first-feed) json)
          (ui/render-template (dom/getElement "editor-images")
                              tpl/no-image-feeds-found))))
    "image"))
@@ -125,24 +125,24 @@
   ([language feed-name all-feeds current-page previous-pages]
      (let [display-images-xhr-callback
            (fn [e]
-             (let [xhr (.target e)
+             (let [xhr (.-target e)
                    json (. xhr (getResponseJson))
-                   docs (when (pos? (count (.documents json)))
-                          (.documents json))
+                   docs (when (pos? (count (.-documents json)))
+                          (.-documents json))
                    first-doc (when docs
                                (first docs))
                    current-page (when docs
                                   (or current-page
                                       {:startkey-published
-                                       (.published first-doc)
-                                       :startkey_docid (._id first-doc)}))
+                                       (.-published first-doc)
+                                       :startkey_docid (.-_id first-doc)}))
                    next-page (when docs
-                               {:startkey-published (when (.next json)
-                                                      (.published
-                                                       (.next json)))
-                                :startkey_docid (when (.next json)
-                                                  (.startkey_docid
-                                                   (.next json)))})]
+                               {:startkey-published (when (.-next json)
+                                                      (.-published
+                                                       (.-next json)))
+                                :startkey_docid (when (.-next json)
+                                                  (.-startkey_docid
+                                                   (.-next json)))})]
 
                (ui/render-template (dom/getElement "editor-images")
                                    tpl/editor-images
@@ -156,7 +156,7 @@
                                 event-type/CHANGE
                                 (fn [evt]
                                   (let [chunks (string/split
-                                                (.value
+                                                (.-value
                                                  image-feeds-select-el)
                                                 ":")
                                         language (nth chunks 0)
@@ -184,7 +184,7 @@
                                                             (butlast
                                                              previous-pages)
                                                             [])))))
-               (when (.next json)
+               (when (.-next json)
                  (events/listen
                   (dom/getElement "editor-images-pagination-next-link")
                   event-type/CLICK
@@ -249,16 +249,16 @@
     (str slug "-2")))
 
 (defn handle-duplicate-slug-callback [e]
-  (let [status (. (.target e) (getStatus))
+  (let [status (. (.-target e) (getStatus))
         slug-el (dom/getElement "slug")]
     (when (= status 200) 
       (ui/set-form-value slug-el
                          (increment-slug
-                          (document/add-initial-slash (.value slug-el))))
-      (document/get-doc (.value slug-el) handle-duplicate-slug-callback))))
+                          (document/add-initial-slash (.-value slug-el))))
+      (document/get-doc (.-value slug-el) handle-duplicate-slug-callback))))
 
 (defn handle-duplicate-custom-slug-callback [e]
-  (let [status (. (.target e) (getStatus))
+  (let [status (. (.-target e) (getStatus))
         slug-el (dom/getElement "slug")
         slug-label-el (dom/getElement "slug-label")
         status-el (dom/getElement "status-message")]
@@ -267,7 +267,7 @@
                                       slug-not-unique-err
                                       slug-el
                                       slug-label-el)
-     :else (when (= (. status-el textContent) slug-not-unique-err)
+     :else (when (= (. status-el -textContent) slug-not-unique-err)
              (ui/remove-error status-el slug-el slug-label-el)))))
 
 (defn create-slug! [title feed]
@@ -281,15 +281,15 @@
                       "html")))
 
 (defn sync-slug-with-title [feed]
-  (when-not (.checked (dom/getElement "custom-slug"))
-    (let [title (.value (dom/getElement "title"))
+  (when-not (.-checked (dom/getElement "custom-slug"))
+    (let [title (.-value (dom/getElement "title"))
           slug-el (dom/getElement "slug")]
       (ui/set-form-value slug-el (create-slug! title feed))
-      (document/get-doc (.value slug-el) handle-duplicate-slug-callback))))
+      (document/get-doc (.-value slug-el) handle-duplicate-slug-callback))))
 
 (defn toggle-custom-slug [feed]
   (let [slug-el (dom/getElement "slug")]
-    (if (.checked (dom/getElement "custom-slug"))
+    (if (.-checked (dom/getElement "custom-slug"))
       (ui/enable-element slug-el)
       (do
         (ui/disable-element slug-el)
@@ -302,7 +302,7 @@
   (let [status-el (dom/getElement "status-message")
         title-el (dom/getElement "title")
         title-label-el (dom/getElement "title-label")]
-    (if (string/blank? (.value title-el))
+    (if (string/blank? (.-value title-el))
       (ui/display-error status-el
                         document-title-required-err
                         title-el
@@ -312,11 +312,11 @@
                        title-label-el))))
 
 (defn validate-slug []
-  (if (.checked (dom/getElement "custom-slug"))
+  (if (.-checked (dom/getElement "custom-slug"))
     (let [status-el (dom/getElement "status-message")
           slug-el (dom/getElement "slug")
           slug-label-el (dom/getElement "slug-label")
-          slug (.value slug-el)
+          slug (.-value slug-el)
           err #(ui/display-error status-el % slug-el slug-label-el)
           dash-slash-err slug-has-consecutive-dashes-or-slashes-err]
       (cond
@@ -327,7 +327,7 @@
        :else (ui/remove-error status-el slug-el slug-label-el))
 
       (when (and (not (string/blank? slug)) (= (first slug) "/"))
-        (document/get-doc (.value slug-el)
+        (document/get-doc (.-value slug-el)
                           handle-duplicate-custom-slug-callback)))))
 
 (def editor-field (atom nil))
@@ -337,15 +337,18 @@
      (get-document-value-map! language feed-name nil))
   ([language feed-name content]
      {:feed [language feed-name]
-      :title (.value (dom/getElement "title"))
-      :slug (.value (dom/getElement "slug"))
-      :draft (.checked (dom/getElement "draft"))
+      :title (.-value (dom/getElement "title"))
+      :slug (.-value (dom/getElement "slug"))
+      :draft (.-checked (dom/getElement "draft"))
       :content (or content (html-with-clean-image-uris
                              (.getCleanContents @editor-field
-                                                @editor-field)))}))
+                                                @editor-field)))
+      :related-pages (vec
+                      (get-related-pages
+                       (dom/getElement "related-pages-container")))}))
 
 (defn save-new-document-xhr-callback [e]
-  (let [xhr (.target e)]
+  (let [xhr (.-target e)]
     (if (= (.getStatus xhr e) 201)
       (let [json (js->clj (. xhr (getResponseJson)))]
         (core/navigate-replace-state (str ("language" json)
@@ -373,20 +376,19 @@
                         (render-menu-content-string!))))
 
 (defn save-existing-document-xhr-callback [e]
-  (let [xhr (.target
-             e)]
+  (let [xhr (.-target e)]
     (if (= (. xhr (getStatus)) 200)
       nil ; TODO: display status message
       (ui/display-error (dom/getElement "status-message")
                         could-not-save-document-err))))
 
 (defn save-existing-document-click-callback [language feed-name e]
-  (document/update-doc (.value (dom/getElement "slug"))
+  (document/update-doc (.-value (dom/getElement "slug"))
                        save-existing-document-xhr-callback
                        (get-document-value-map! language feed-name)))
 
 (defn save-existing-menu-document-click-callback [language feed-name e]
-  (document/update-doc (.value (dom/getElement "slug"))
+  (document/update-doc (.-value (dom/getElement "slug"))
                        save-existing-document-xhr-callback
                        (get-document-value-map!
                         language
@@ -403,24 +405,24 @@
 
 (defn display-image-preview [file title]
   (let [reader (new (js* "FileReader"))]
-    (set! (.onload reader)
+    (set! (.-onload reader)
           (fn [e]
             (ui/render-template (dom/getElement "image-preview")
                                 tpl/image
                                 {:title title
-                                 :src (.result (.target e))})))
+                                 :src (.-result (.-target e))})))
     (. reader (readAsDataURL file))))
 
 (defn save-image-document-click-callback [create? language feed-name]
   (let [file (:obj @*file*)]
     (if file
       (let [reader (new (js* "FileReader"))]
-        (set! (.onload reader)
+        (set! (.-onload reader)
               (fn [e]
                 (let [image-data (util/map-to-obj
-                                  {:type (.type file)
+                                  {:type (.-type file)
                                    :data (base64/encodeString
-                                          (.result (.target e)))})]
+                                          (.-result (.-target e)))})]
                   (if create?
                     (document/create-doc save-new-document-xhr-callback
                                          language
@@ -431,7 +433,7 @@
                                               feed-name)
                                            :attachment
                                            image-data))
-                    (document/update-doc (.value (dom/getElement "slug"))
+                    (document/update-doc (.-value (dom/getElement "slug"))
                                          save-existing-document-xhr-callback
                                          (assoc
                                              (get-document-value-map!
@@ -442,7 +444,7 @@
         (. reader (readAsBinaryString file)))
       (if-not create?
         ;; update without changing image
-        (document/update-doc (.value (dom/getElement "slug"))
+        (document/update-doc (.-value (dom/getElement "slug"))
                              save-existing-document-xhr-callback
                              (get-document-value-map! language feed-name))
         (ui/display-error (dom/getElement "status-message")
@@ -455,16 +457,16 @@
   
   (let [status-el (dom/getElement "status-message")
         image-information-el (dom/getElement "image-information")
-        file (aget (.files (.dataTransfer e)) 0)
+        file (aget (.-files (.-dataTransfer e)) 0)
         title (string/join " "
                            (filter #(not (string/blank? %))
                                    (.split (strip-filename-extension
-                                            (.name file))
+                                            (.-name file))
                                            #"[^a-zA-Z0-9]")))
         extension (cond
-                   (= (.type file) "image/png") "png"
-                   (= (.type file) "image/gif") "gif"
-                   (= (.type file) "image/jpeg") "jpg")]
+                   (= (.-type file) "image/png") "png"
+                   (= (.-type file) "image/gif") "gif"
+                   (= (.-type file) "image/jpeg") "jpg")]
     (if extension
       (do
         (swap! *file* assoc :obj file :data {:extension extension})
@@ -474,9 +476,9 @@
         (classes/remove image-information-el "hide")
         (ui/render-template image-information-el
                             tpl/image-information
-                            {:filename (.name file)
-                             :filetype (.type file)
-                             :size (/ (.size file) 1024)})
+                            {:filename (.-name file)
+                             :filetype (.-type file)
+                             :size (/ (.-size file) 1024)})
         
         (when (= status "new")
           (sync-slug-with-title feed)))
@@ -508,9 +510,9 @@
   (when-not (classes/has el "add-item-node") ; ignore "Add Item" in nested ul
     (let [children (util/get-children el)
           item-detail-elements (util/get-children (first children))]
-      {:label (.textContent (nth item-detail-elements 0))
-       :uri (.textContent (nth item-detail-elements 1))
-       :children (when (= (.tagName (last children)) "UL")
+      {:label (.-textContent (nth item-detail-elements 0))
+       :uri (.-textContent (nth item-detail-elements 1))
+       :children (when (= (.-tagName (last children)) "UL")
                    (get-links-from-ul (last children)))})))
 
 (defn get-links-from-ul [el]
@@ -520,9 +522,9 @@
 (defn parse-menu-data-li [el]
   (let [children (util/get-children el)
         last-child (last children)]
-    {:label (.textContent (first children))
+    {:label (.-textContent (first children))
      :uri (. (first children) (getAttribute "href"))
-     :children (when (= (.tagName last-child) "UL")
+     :children (when (= (.-tagName last-child) "UL")
                  (parse-menu-data-ul last-child))}))
 
 (defn parse-menu-data-ul [el]
@@ -530,7 +532,7 @@
 
 (defn parse-menu-content-string [s]
   (let [dummy-list-el (dom/createElement "ul")]
-    (set! (.innerHTML dummy-list-el) (subs s 4 (- (count s) 5)))
+    (set! (.-innerHTML dummy-list-el) (subs s 4 (- (count s) 5)))
     (parse-menu-data-ul dummy-list-el)))
 
 (defn validate-link-label! [label]
@@ -549,10 +551,10 @@
                        (dom/getElement "link-label")))))
 
 (defn menu-item-link-details-from-dialog! []
-  {:label (.value (dom/getElement "link-label"))
+  {:label (.-value (dom/getElement "link-label"))
    :uri (if (menu-item-is-internal!)
-          (.value (dom/getElement "internal-link"))
-          (.value (dom/getElement "external-link")))})
+          (.-value (dom/getElement "internal-link"))
+          (.-value (dom/getElement "external-link")))})
 
 (defn menu-item-is-internal! []
   (= (ui/get-form-value-by-name "add-menu-item-dialog-form"
@@ -569,7 +571,7 @@
       (classes/add (dom/getElement "internal-link-row") "hide"))))
 
 (defn menu-dialog-upd-link-mode-xhr-callback [e]
-  (let [documents (.documents (. (.target e) (getResponseJson)))]
+  (let [documents (.-documents (. (.-target e) (getResponseJson)))]
     (ui/render-template (dom/getElement "internal-link")
                         tpl/document-link-options
                         {:documents documents})))
@@ -579,13 +581,13 @@
    (fn [e]
      (let [feeds (filter #(not (= "menu"
                                   ("default-document-type" (js->clj %))))
-                         (. (.target e) (getResponseJson)))
+                         (. (.-target e) (getResponseJson)))
            first-feed (first feeds)]
        (document/get-documents-for-feed
-        (.language first-feed)
-        (.name first-feed)
+        (.-language first-feed)
+        (.-name first-feed)
         (fn [e]
-          (let [documents (.documents (. (.target e) (getResponseJson)))]
+          (let [documents (.-documents (. (.-target e) (getResponseJson)))]
             (do
               (f feeds documents)))))))))
 
@@ -598,7 +600,7 @@
   (create-menu-builder-events feeds documents)
   (make-menu-builder-sortable feeds documents))
 
-(defn display-fresh-menu-builder [links feeds documents]
+(defn display-menu-builder [links feeds documents]
   (update-menu-builder (dom/getElement "menu-container")
                         links
                         nil
@@ -606,29 +608,27 @@
                         feeds
                         documents))
 
-(defn update-menu-builder-from-data [s]
-  (call-with-feeds-and-documents
-    (fn [feeds documents]
-      (display-fresh-menu-builder (parse-menu-content-string s)
-                                  feeds
-                                  documents))))
+(defn update-menu-builder-from-data [content-string feeds documents]
+  (display-menu-builder (parse-menu-content-string content-string)
+                        feeds
+                        documents))
 
 (defn create-menu-builder-events [feeds documents]                  
   (ui/trigger-on-class
-   "delete-link"
+   "menu-item-delete-link"
    "click"
    (fn [e]
      (. e (preventDefault))
-     (let [parent-li (util/get-parent (util/get-parent (.target e)))
+     (let [parent-li (util/get-parent (util/get-parent (.-target e)))
            grandparent (util/get-parent parent-li)]
        (dom/removeNode parent-li)
        ;; remove ul and re-render menu-container on empty nested lists
        (when (and grandparent
-                  (= (.tagName grandparent) "UL")
-                  (not (= (.id grandparent) "menu-container"))
+                  (= (.-tagName grandparent) "UL")
+                  (not (= (.-id grandparent) "menu-container"))
                   (= (count (util/get-children grandparent)) 1))
          (dom/removeNode grandparent)
-         (display-fresh-menu-builder
+         (display-menu-builder
           (get-links-from-ul (dom/getElement "menu-container"))
           feeds
           documents)))))
@@ -641,8 +641,8 @@
                      
      (let [new-ul (dom/createElement "ul")]
        (classes/add new-ul "new-node")
-       (set! (.draggable new-ul) false)
-       (dom/appendChild (util/get-parent (util/get-parent (.target e)))
+       (set! (.-draggable new-ul) false)
+       (dom/appendChild (util/get-parent (util/get-parent (.-target e)))
                         new-ul)
        (ui/display-dialog
         "Add Menu Item"
@@ -670,23 +670,21 @@
       (partial menu-item-dialog-callback
                feeds
                documents
-               (util/get-parent (util/get-parent (.target e))))))))
-
-
+               (util/get-parent (util/get-parent (.-target e))))))))
 
 (defn menu-container-el? [el]
-  (= (.id el) "menu-container"))
+  (= (.-id el) "menu-container"))
 
 (defn make-menu-builder-sortable [feeds documents]
   (let [menu-container-el (dom/getElement "menu-container")]
     (ui/to-sortable-tree (dom/getElement menu-container-el)
-                         #(display-fresh-menu-builder
+                         #(display-menu-builder
                            (get-links-from-ul menu-container-el)
                            feeds
                            documents))))
   
 (defn menu-item-dialog-callback [feeds documents parent-el e]
-  (if (= "ok" (.key e))
+  (if (= "ok" (.-key e))
     (let [nested (classes/has parent-el "new-node")
           new-link-details (menu-item-link-details-from-dialog!)
           menu-container-el (dom/getElement "menu-container")
@@ -700,60 +698,138 @@
         (do
           (classes/remove parent-el "new-node")
           (let [dummy-el (dom/createElement "ul")]
-            (set! (.innerHTML dummy-el)
+            (set! (.-innerHTML dummy-el)
                   (ui/render-template-as-string tpl/menu-item-li
                                                 new-link-details))
 
-            (dom/appendChild parent-el (.firstChild dummy-el))
+            (dom/appendChild parent-el (.-firstChild dummy-el))
           
             ;; re-render whole menu-container after ul is added
-            (display-fresh-menu-builder
+            (display-menu-builder
              (get-links-from-ul menu-container-el)
              feeds
              documents)
-            
             (ui/remove-dialog)))))
     (do
       (when (classes/has parent-el "new-node")
         (dom/removeNode parent-el))
       (ui/remove-dialog))))
 
-(defn add-menu-item-callback [evt]
-  (call-with-feeds-and-documents
-    (fn [feeds documents]
-      (ui/display-dialog "Add Menu Item"
-                         (ui/render-template-as-string
-                          tpl/add-menu-item-dialog
-                          {:feeds feeds
-                           :documents documents})
-                         (partial menu-item-dialog-callback
-                                  feeds
-                                  documents
-                                  (dom/getElement "menu-container")))
+(defn update-related-pages [related-pages]
+  (when (not-empty related-pages)
+    (let [related-pages-el (dom/getElement "related-pages-container")]
+      (ui/render-template related-pages-el
+                          tpl/related-page-list-items
+                          {:pages related-pages})
+
+      (ui/trigger-on-class
+       "related-page-delete-link"
+       "click"
+       (fn [e]
+         (. e (preventDefault))
+         (let [parent-li (util/get-parent (.-target e))]
+           (dom/removeNode parent-li)
+           (update-related-pages (get-related-pages related-pages-el))))))))
+
+(defn remove-already-related-pages-from-documents
+  [related-page-el documents]
+  (let [existing-slugs (map :slug (get-related-pages related-page-el))]
+    (util/col-to-js
+     (remove
+      #(some #{("slug" %)} existing-slugs)
+      (js->clj documents)))))
+
+(defn remove-self-from-documents [self-slug documents]
+  (util/col-to-js (remove #(= ("slug" %) self-slug) (js->clj documents))))
+
+(defn related-pages-dialog-upd-link-mode-xhr-callback [self-slug e]
+  (let [documents (.-documents (. (.-target e) (getResponseJson)))]
+    (ui/render-template (dom/getElement "internal-link")
+                        tpl/document-link-options
+                        {:documents
+                         (remove-already-related-pages-from-documents
+                          (dom/getElement "related-pages-container")
+                          (remove-self-from-documents self-slug
+                                                      documents))})))
+
+(defn add-menu-item-callback [feeds documents evt]
+  (ui/display-dialog "Add Menu Item"
+                     (ui/render-template-as-string
+                      tpl/add-menu-item-dialog
+                      {:feeds feeds
+                       :documents documents})
+                     (partial menu-item-dialog-callback
+                              feeds
+                              documents
+                              (dom/getElement "menu-container")))
       
-      (let [feed-el (dom/getElement "internal-link-feed")]
-        (events/listen feed-el
-                       "change"
-                       (fn []
-                         (let [feed-pair (util/pair-from-string
-                                          (.value feed-el))]
-                           (document/get-documents-for-feed
-                            (first feed-pair)
-                            (last feed-pair)
-                            menu-dialog-upd-link-mode-xhr-callback)))))
+  (let [feed-el (dom/getElement "internal-link-feed")]
+    (events/listen feed-el
+                   "change"
+                   (fn []
+                     (let [feed-pair (util/pair-from-string
+                                      (.-value feed-el))]
+                       (document/get-documents-for-feed
+                        (first feed-pair)
+                        (last feed-pair)
+                        menu-dialog-upd-link-mode-xhr-callback)))))
       
-      (events/listen (dom/getElement "link-type-external")
-                     "change"
-                     menu-link-type-change-callback)
+  (events/listen (dom/getElement "link-type-external")
+                 "change"
+                 menu-link-type-change-callback)
       
-      (events/listen (dom/getElement "link-type-internal")
-                     "change"
-                     menu-link-type-change-callback))))
+  (events/listen (dom/getElement "link-type-internal")
+                 "change"
+                 menu-link-type-change-callback))
+
+(defn add-related-page-link-callback [self-slug feeds documents evt]
+  (ui/display-dialog "Add Related Page"
+                     (ui/render-template-as-string
+                      tpl/add-related-page-dialog
+                      {:feeds feeds
+                       :documents documents})
+                     (partial add-related-page-dialog-callback
+                              feeds
+                              documents
+                              (dom/getElement "related-pages-container")))
+      
+  (let [feed-el (dom/getElement "internal-link-feed")]
+    (events/listen feed-el
+                   "change"
+                   (fn []
+                     (let [feed-pair (util/pair-from-string
+                                      (.-value feed-el))]
+                       (document/get-documents-for-feed
+                        (first feed-pair)
+                        (last feed-pair)
+                        (partial
+                         related-pages-dialog-upd-link-mode-xhr-callback
+                         self-slug)))))))
+
+(defn get-related-pages [related-page-el]
+  (map (fn [li-el]
+         (let [slug-el (first (util/get-children-by-tag li-el "input"))
+               title-el (first (util/get-children-by-tag li-el "span"))]
+           {:slug (.-value slug-el)
+            :title (.-textContent title-el)}))
+       (util/get-children related-page-el)))
+
+(defn add-related-page-dialog-callback [feeds documents related-pages-el e]
+  (when (= "ok" (.-key e))
+    (let [link-el (dom/getElement "internal-link")
+          slug (.-value link-el)]
+      (if (pos? (count slug))
+        (let [title (util/get-select-option-name-by-value link-el slug)]
+          (update-related-pages (conj
+                                 (get-related-pages related-pages-el)
+                                 {:slug slug :title title}))))))
+  (ui/remove-dialog))
 
 ;; FIX: fully refactor into something more modular and condensed
 (defn render-editor
-  ([feed tpl-map] (render-editor feed tpl-map nil))
-  ([feed tpl-map content]
+  ([feed feeds documents tpl-map]
+     (render-editor feed feeds documents tpl-map nil))
+  ([feed feeds documents tpl-map content]
      (let [new? (= "new" (:status tpl-map))
            mode (cond
                  (= (:default-document-type feed) "image") :image
@@ -847,12 +923,24 @@
         (do
           (events/listen (dom/getElement "add-menu-item")
                          "click"
-                         add-menu-item-callback)))
+                         (partial add-menu-item-callback
+                                  feeds
+                                  documents))))
+
+       (when-let [add-related-page-link-element (dom/getElement
+                                                 "add-related-page-link")]
+         (update-related-pages (:related-pages tpl-map))
+         (events/listen add-related-page-link-element
+                        event-type/CLICK
+                        (partial add-related-page-link-callback
+                                 (:slug tpl-map)
+                                 feeds
+                                 documents)))
 
        (cond
         (= mode :menu)
         (when content
-          (update-menu-builder-from-data content))
+          (update-menu-builder-from-data content feeds documents))
         :default
         (let [editor (create-editor-field "content")
               toolbar (create-editor-toolbar "toolbar")]
@@ -871,56 +959,69 @@
                              (let [editor-images-el (dom/getElement
                                                      "editor-images")]
                                (if (. editor-images-el (hasChildNodes))
-                                 (set! (.innerHTML editor-images-el) "")
+                                 (set! (.-innerHTML editor-images-el) "")
                                  (display-image-feeds)))))))))))
 
-(defn start-default-mode! [feed slug status]
+(defn start-default-mode! [feed slug status feeds documents]
   (if (= :new status)
     (do
       (util/set-page-title! "New document")
       (render-editor feed
+                     feeds
+                     documents
                      {:status "new"
                       :feed (:name feed)
                       :language (:language feed)
                       :title ""
                       :slug ""
-                      :draft false}))
+                      :draft false
+                      :related-pages []}))
     (document/get-doc slug
                       (fn [e]
-                        (let [xhr (.target e)]
+                        (let [xhr (.-target e)]
                           (if (= (. xhr (getStatus)) 200)
-                            (let [json (js->clj (. xhr (getResponseJson)))]
+                            (let [json (js->clj (. xhr
+                                                   (getResponseJson)))]
                               (util/set-page-title!
                                (str "Edit \"" ("title" json) "\""))
                               (render-editor feed
+                                             feeds
+                                             documents
                                              {:status "edit"
                                               :feed ("feed" json)
                                               :language (:language feed)
                                               :title ("title" json)
                                               :slug ("slug" json)
-                                              :draft ("draft" json)}
+                                              :draft ("draft" json)
+                                              :related-pages
+                                              ("related-pages" json)}
                                              ("content" json)))
                             (render-document-not-found-template)))))))
 
-(defn start-image-mode! [feed slug status]
+(defn start-image-mode! [feed slug status feeds documents]
   (if (= :new status)
     (do
       (util/set-page-title! "New document")
       (render-editor feed
+                     feeds
+                     documents
                      {:status "new"
                       :feed (:name feed)
                       :language (:language feed)
                       :title ""
                       :slug ""
-                      :draft false}))
+                      :draft false
+                      :related-pages []}))
     (document/get-doc slug
                       (fn [e]
-                        (let [xhr (.target e)]
+                        (let [xhr (.-target e)]
                           (if (= (. xhr (getStatus)) 200)
                             (let [json (js->clj (. xhr (getResponseJson)))]
                               (util/set-page-title!
                                (str "Edit \"" ("title" json) "\""))
                               (render-editor feed
+                                             feeds
+                                             documents
                                              {:status "edit"
                                               :feed ("feed" json)
                                               :language (:language feed)
@@ -933,25 +1034,30 @@
                                                        json))
                                                :data ("data"
                                                       ("attachment"
-                                                       json))}}
+                                                       json))}
+                                              :related-pages
+                                              ("related-pages" json)}
                                              ("content" json)))
                             (render-document-not-found-template)))))))
 
-(defn start-mode-callback! [slug status e]
-  (let [xhr (.target e)]
+(defn start-mode-callback! [slug status event]
+  (let [xhr (.-target event)]
     (when (= (. xhr (getStatus)) 200)
       (let [json (js->clj (. xhr (getResponseJson)))
             feed {:language ("language" json)
                   :name ("name" json)
                   :default-slug-format ("default-slug-format" json)
                   :default-document-type ("default-document-type" json)}]
-        (cond
-         (= (:default-document-type feed) "image")
-           (start-image-mode! feed slug status)
-         (= (:default-document-type feed) "menu")
-           (start-default-mode! feed slug status)
-         :default
-           (start-default-mode! feed slug status))))))
+
+        (call-with-feeds-and-documents
+          (fn [feeds documents]
+            (cond
+             (= (:default-document-type feed) "image")
+             (start-image-mode! feed slug status feeds documents)
+             (= (:default-document-type feed) "menu")
+             (start-default-mode! feed slug status feeds documents)
+             :default
+             (start-default-mode! feed slug status feeds documents))))))))
 
 (defn start [language feed-name slug status]
   (swap! *file* dissoc :obj :data)

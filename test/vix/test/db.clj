@@ -619,17 +619,25 @@
                   {:title "foo"
                    :slug "/blog/bar"
                    :content "bar"
-                   :draft false})
+                   :draft false
+                   :related-pages []})
         updated-doc (update-document
                       +test-server+
                       +test-db+
                       "/blog/bar"
-                      (assoc new-doc :title "hic sunt dracones"))]
+                      (assoc new-doc
+                        :title "hic sunt dracones"
+                        :draft true
+                        :related-pages [{:title "foo" :slug "bar"}]))]
     (is (= (get-document +test-server+ +test-db+ "/blog/bar") updated-doc))
     (is (couchdb-rev? 2 (:_rev updated-doc)))
     (is (iso-date? (:updated updated-doc)))
     (is (= (:published new-doc) (:published updated-doc)))
-    (is (= (:title updated-doc) "hic sunt dracones")))
+    (is (not (:draft new-doc)))
+    (is (= (:related-pages new-doc) []))
+    (is (= (:title updated-doc) "hic sunt dracones"))
+    (is (true? (:draft updated-doc)))
+    (is (= (:related-pages updated-doc) [{:title "foo" :slug "bar"}])))
   
   (testing "Test if attachments are handled correctly."
     (let [black-pixel (str "R0lGODlhAQABA++/vQAAAAAAAAAA77+9AQIAAAAh77+9BAQU"

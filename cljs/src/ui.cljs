@@ -141,14 +141,14 @@
   [el]
   (loop [current-el el
          times-called 0]
-    (if (and (= (.tagName current-el) "LI")
-             (. current-el (hasAttribute "draggable")))
+    (if (and (= (.-tagName current-el) "LI")
+             (.hasAttribute current-el "draggable"))
       (cond
-       (= (.draggable current-el) false)
+       (= (.-draggable current-el) false)
        (if (classes/has current-el "drop-on-grandparent")
          (util/get-parent (util/get-parent current-el))
          nil)
-       (= (.draggable current-el) true)
+       (= (.-draggable current-el) true)
        current-el)
       (if (<= times-called 5)
         (recur (util/get-parent current-el) (inc times-called))
@@ -165,8 +165,8 @@
   (doseq [add-link-el elements]
     (when (classes/has add-link-el "highlight-add-link-el")
       (classes/remove add-link-el "highlight-add-link-el")
-      (set! (.textContent add-link-el)
-            (. (.textContent add-link-el) (substr 2))))))
+      (set! (.-textContent add-link-el)
+            (. (.-textContent add-link-el) (substr 2))))))
 
 (defn to-sortable-tree [parent-el after-drop-fn]
   (let [top-level-drop-zone-el (dom/getElement "menu-top-level-drop-zone")
@@ -197,13 +197,13 @@
       (. el (addEventListener
              "dragstart"
              (fn [e]
-               (when-let [dragged-el (get-draggable-item (.target e))]
+               (when-let [dragged-el (get-draggable-item (.-target e))]
                  (reset! active-el dragged-el)
                  (classes/add dragged-el "dragging")
                  (comment
-                   (set! (.effectAllowed (.dataTransfer e)) "move"))
-                 (. (.dataTransfer e)
-                    (setData "text/html" (.innerHTML dragged-el)))
+                   (set! (.effectAllowed (.-dataTransfer e)) "move"))
+                 (. (.-dataTransfer e)
+                    (setData "text/html" (.-innerHTML dragged-el)))
 
                  ;; show the top level drop zone (if relevant)
                  (when-not (= (util/get-parent dragged-el) parent-el)
@@ -218,8 +218,8 @@
                                                    (util/get-parent
                                                     add-link-el)))
                      (classes/add add-link-el "highlight-add-link-el")
-                     (set! (.textContent add-link-el)
-                           (str "\u21fe " (.textContent add-link-el)))))))))
+                     (set! (.-textContent add-link-el)
+                           (str "\u21fe " (.-textContent add-link-el)))))))))
       
       ;; required to make the node a valid drop target  
       (. el (addEventListener
@@ -236,13 +236,13 @@
                
                (remove-highlight-from-add-link-elements add-link-elements)
                
-               (when-let [drop-target (get-draggable-item (.target e))]
+               (when-let [drop-target (get-draggable-item (.-target e))]
                  (cond
                   ;; when dropped on an add-item node of a nested ul
-                  (classes/has (.target e) "add-item-to-nested-menu")
+                  (classes/has (.-target e) "add-item-to-nested-menu")
                   (when (can-add-to-nested-ul? @active-el drop-target)
                     (dom/insertSiblingBefore @active-el
-                                             (util/get-parent (.target e))))
+                                             (util/get-parent (.-target e))))
                   :default
                   ;; when dropped on another node
                   (when-not (= @active-el drop-target)
@@ -256,20 +256,21 @@
                         (do
                           ;; use dummy el to access the item-details
                           ;; child node of the dragged element
-                          (set! (.innerHTML data-dummy-el)
-                                (. (.dataTransfer e) (getData "text/html")))
-                          (set! (.innerHTML (get-item-details-el @active-el))
-                                (.innerHTML dt-item-details-el))
-                          (set! (.innerHTML dt-item-details-el)
-                                (.innerHTML (first
+                          (set! (.-innerHTML data-dummy-el)
+                                (. (.-dataTransfer e) (getData "text/html")))
+                          (set! (.-innerHTML (get-item-details-el
+                                              @active-el))
+                                (.-innerHTML dt-item-details-el))
+                          (set! (.-innerHTML dt-item-details-el)
+                                (.-innerHTML (first
                                              (util/get-children
                                               data-dummy-el))))))
                       ;; when dropped on an unrelated node
                       (do
-                        (set! (.innerHTML @active-el)
-                              (.innerHTML drop-target))
-                        (set! (.innerHTML drop-target)
-                              (. (.dataTransfer e)
+                        (set! (.-innerHTML @active-el)
+                              (.-innerHTML drop-target))
+                        (set! (.-innerHTML drop-target)
+                              (. (.-dataTransfer e)
                                  (getData "text/html"))))))))
                (after-drop-fn))))
 

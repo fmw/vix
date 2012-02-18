@@ -52,6 +52,11 @@
            {/if}>Custom</label>
   </div>
 
+  <div id="document-relations">
+    <p><a href="#" id="add-related-page-link">Add related page</a></p>
+    <ul id="related-pages-container"></ul>
+  </div>
+
   <div id="editor-images"></div>
   <div style="clear: both;">&nbsp;</div>
 
@@ -141,6 +146,62 @@
 /**
  * Displays the menu mode for the Vix Editor.
  *
+ * @param feeds
+ * @param documents
+ */
+{template .add_related_page_dialog}
+  <form name="add-related-page-dialog-form" id="add-related-page-dialog-form">
+  <p id="add-link-status" class="hide"></p>
+  <table id="add-related-page-dialog">
+    <tr id="internal-link-row">
+      <td>
+        <label for="internal-link">Link:</label>
+      </td>
+      <td>
+        <select name="internal-link-feed" id="internal-link-feed">
+          {foreach $feed in $feeds}
+            <option value="['{$feed.language}','{$feed.name}']"
+              >{$feed.name}</option>
+          {/foreach}
+        </select>
+        <select name="internal-link" id="internal-link">
+          {foreach $document in $documents}
+            <option value="{$document.slug}">{$document.title}</option>
+          {/foreach}
+        </select>
+      </td>
+    </tr>
+  </table>
+  </form>
+{/template}
+
+/**
+ *
+ * @param documents
+ */
+{template .related_pages}
+  {foreach $document in $documents}
+    <option value="{$document.slug}">{$document.title}</option>
+  {/foreach}
+{/template}
+
+/**
+ *
+ * @param pages
+ */
+{template .related_page_list_items}
+  {foreach $page in $pages}
+    <li>
+      <input type="hidden" value="{$page.slug}" />
+      <span>{$page.title}</span>
+      &nbsp; <a href="#" class="related-page-delete-link">(delete)</a>
+    </li>
+  {/foreach}
+{/template}
+
+/**
+ * Displays the menu mode for the Vix Editor.
+ *
  * @param status
  * @param feed
  * @param language
@@ -222,7 +283,7 @@
       <span class="link-label">{$label}</span>:
       <span class="link-uri">{$uri}</span>
       &nbsp;
-      <a href="#" class="delete-link">(delete)</a>
+      <a href="#" class="menu-item-delete-link">(delete)</a>
       &nbsp;
     
       {if not $nested}
