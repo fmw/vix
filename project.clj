@@ -7,6 +7,7 @@
                  [compojure "0.6.3"]
                  [ring/ring-core "0.3.8"]
                  [enlive "1.0.0-SNAPSHOT"]
+                 [org.jsoup/jsoup "1.6.1"]
                  [clj-time "0.3.0"]
                  [clj-http "0.1.3"]
                  [org.clojars.pieterbreed/clojure-couchdb "0.4.7"]

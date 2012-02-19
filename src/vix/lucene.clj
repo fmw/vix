@@ -34,6 +34,7 @@
            [org.apache.lucene.index IndexWriter IndexWriterConfig
             IndexWriterConfig$OpenMode IndexReader Term]
            [org.apache.lucene.util Version]
+           [org.jsoup Jsoup]
            [java.io File]))
 
 (def index-path "/var/lucene/vix")
@@ -95,22 +96,19 @@
      :default (.setIntValue field -1))))
 
 (defn #^String distill-plaintext
-  "Distills the text values from an HTML string.
-   The value of each node is returned on a new line, followed by the
-   values of the title attributes of all img nodes"
+  "Distills the text value from an HTML string, followed by the
+   values of any alt and title attributes of <img/> tags separated
+   by newlines."
   [html]
-  (if (some #{\< \>} html)
-    (let [resource (html/html-resource (java.io.StringReader. html))]
-      (apply str
-             (interpose
-              "\n"
-              (concat
-               (map html/text
-                    (html/select
-                     resource
-                     [:body :* (html/text-pred #(not (empty? %)))]))
-               (map #(:title (:attrs %)) (html/select resource [:img]))))))
-    html))
+  (let [jsoup-doc (Jsoup/parse html)
+        img-tags (.select jsoup-doc "img")]
+    (str (.text jsoup-doc)
+         "\n"
+         (apply str
+                (interpose
+                 "\n"
+                 (interleave (map #(.attr % "alt") img-tags)
+                             (map #(.attr % "title") img-tags)))))))
 
 (defn #^Document create-document [vix-doc]
   "Creates a Lucene Document object representing the Vix document that
@@ -124,6 +122,7 @@
                 updated
                 content]}
         vix-doc]
+
     (doto #^Document (Document.)
           ;; create a fulltext field with all the values to search on
           ;; mashed together in a single value. This field is not stored.

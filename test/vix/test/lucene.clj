@@ -203,13 +203,28 @@
     (is (= (class (.getNumericValue nil-field)) java.lang.Integer))))
 
 (deftest test-distill-plaintext
-  (is (= (distill-plaintext (str "<div><p>Hello, World!</p>"
-                                 "<img src=\"/images/globe.png\" "
-                                 "alt=\"The Globe\" "
-                                 "title=\"The Globe\">"
-                                 "</div>"))
+  (is (= (distill-plaintext
+          (str "<div><p>Hello, World!</p>"
+               "<img src=\"/images/globe.png\" "
+               "alt=\"A picture of the globe.\" "
+               "title=\"The Globe\">"
+               "<img src=\"/images/hey.png\" "
+               "alt=\"A picture of a waving hand.\" "
+               "title=\"Greetings!\">"
+               "<img src=\"/images/foo.png\" "
+               "alt=\"bar\" "
+               "title=\"bar\">"
+               "<img src=\"/images/foo.png\" "
+               "alt=\"foo\">"
+               "</div>"))
          (str "Hello, World!\n"
-              "The Globe")))
+              "A picture of the globe.\n"
+              "The Globe\n"
+              "A picture of a waving hand.\n"
+              "Greetings!\n"
+              "bar\n"
+              "bar\n"
+              "foo\n")))
   
   (is (= (distill-plaintext
           (str
@@ -223,20 +238,12 @@
            "<p>7</p>"
            "<p>8</p>"
            "<img src=\"nine.png\" title=\"9\"/>"))
-         (str
-          "0\n"
-          "1\n"
-          "2\n"
-          "3\n"
-          "4\n"
-          "5\n"
-          "6\n"
-          "7\n"
-          "8\n"
-          "9")))
+         "0 1 2 3 4 5 6 7 8\n\n9"))
 
   (is (= (distill-plaintext "Caol Ila is a whisky distillery on Islay.")
-         "Caol Ila is a whisky distillery on Islay.")))
+         "Caol Ila is a whisky distillery on Islay.\n"))
+
+  (is (= (distill-plaintext "whisky <br>") "whisky\n")))
 
 (deftest test-create-document
   (testing "Check if the document is correctly tranlated to a Lucene doc"
@@ -248,7 +255,7 @@
         (is (.isIndexed field))
         (is (not (.isStored field)))
         (is (.isTokenized field))
-        (is (= (.stringValue field) "bar\nffff\nme small")))
+        (is (= (.stringValue field) "bar\nffff\nme small\nme small")))
       
       (let [field (.getField document "title")]
         (is (= (.name field) "title"))
