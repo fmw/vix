@@ -97,32 +97,19 @@ Install git::
 
     sudo apt-get install git
 
-Install ClojureScript::
-
-    mkdir ~/clj
-    cd ~/clj
-    git clone git://github.com/clojure/clojurescript.git
-    cd clojurescript/
-    script/bootstrap
-
-Create a directory to store Apache Lucene indexes (you can change the
-path in src/vix/lucene.clj)::
-
-    sudo mkdir /var/lucene
-    sudo chown yourusername:yourusergroup /var/lucene
-
 Install Vix::
 
+    mkdir ~/clj
     cd ~/clj
     git clone  git://github.com/fmw/vix.git
     cd vix/
     lein deps
 
 If you chose a different database name earlier you should change the
-src/vix/db.clj script to reflect this. There are also some hardcoded
-references to "/home/fmw/clj/vix" in this file, which you should
-change to something appropriate to your system (this will be corrected
-in a later version).
+src/vix/routes.clj script to reflect this. There are also some
+hardcoded references to "/home/fmw/clj/vix" in the src/vix/db.clj
+file, which you should change to something appropriate to your system
+(this will be corrected in a later version).
 
 Start the REPL::
 
@@ -171,6 +158,25 @@ directory)::
 Create the output directory for the compiled JavaScript::
 
     mkdir ~/clj/vix/resources/public/js/vix
+
+Install ClojureScript::
+
+    cd ~/clj
+    git clone git://github.com/clojure/clojurescript.git
+    cd clojurescript/
+
+Now we need to apply a patch to ClojureScript, since the bundled
+version of the Google Closure library is rather outdated at the time
+of this writing::
+
+    patch script/bootstrap ~/clj/vix/closure-library-head.diff
+    script/bootstrap
+
+Create a directory to store Apache Lucene indexes (you can change the
+path in src/vix/lucene.clj)::
+
+    sudo mkdir /var/lucene
+    sudo chown yourusername:yourusergroup /var/lucene
 
 Start the ClojureScript REPL to compile the client-side code::
 
