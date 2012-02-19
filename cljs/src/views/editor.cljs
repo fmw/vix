@@ -508,10 +508,13 @@
 
 (defn get-link-data-from-li [el]
   (when-not (classes/has el "add-item-node") ; ignore "Add Item" in nested ul
-    (let [children (util/get-children el)
-          item-detail-elements (util/get-children (first children))]
-      {:label (.-textContent (nth item-detail-elements 0))
-       :uri (.-textContent (nth item-detail-elements 1))
+    ;; remove meta tag (sometimes added due to a bug in Chrome)
+    (let [children (remove #(= (.-tagName %) "meta") (util/get-children el))
+          item-detail-elements (vec (util/get-children (first children)))
+          label-el (nth item-detail-elements 0)
+          uri-el (nth item-detail-elements 1)]
+      {:label (. label-el -textContent)
+       :uri (. uri-el -textContent)
        :children (when (= (.-tagName (last children)) "UL")
                    (get-links-from-ul (last children)))})))
 
@@ -636,41 +639,25 @@
   (ui/trigger-on-class
    "add-sub-item"
    "click"
-   (fn [e]
-     (. e (preventDefault))
-                     
+   (fn [evt]                     
      (let [new-ul (dom/createElement "ul")]
        (classes/add new-ul "new-node")
        (set! (.-draggable new-ul) false)
-       (dom/appendChild (util/get-parent (util/get-parent (.-target e)))
+       (dom/appendChild (util/get-parent (util/get-parent (.-target evt)))
                         new-ul)
-       (ui/display-dialog
-        "Add Menu Item"
-        (ui/render-template-as-string
-         tpl/add-menu-item-dialog
-         {:feeds feeds
-          :documents documents})
-        (partial menu-item-dialog-callback
-                 feeds
-                 documents
-                 new-ul)))))
+       
+       (add-menu-item-callback feeds documents new-ul evt))))
 
   (ui/trigger-on-class
    "add-item-to-nested-menu"
    "click"
-   (fn [e]
-     (. e (preventDefault))
-             
-     (ui/display-dialog
-      "Add Menu Item"
-      (ui/render-template-as-string
-       tpl/add-menu-item-dialog
-       {:feeds feeds
-        :documents documents})
-      (partial menu-item-dialog-callback
-               feeds
-               documents
-               (util/get-parent (util/get-parent (.-target e))))))))
+   (fn [evt]
+     (add-menu-item-callback feeds
+                             documents
+                             (util/get-parent
+                              (util/get-parent
+                               (.-target evt)))
+                             evt))))
 
 (defn menu-container-el? [el]
   (= (.-id el) "menu-container"))
@@ -682,7 +669,7 @@
                            (get-links-from-ul menu-container-el)
                            feeds
                            documents))))
-  
+
 (defn menu-item-dialog-callback [feeds documents parent-el e]
   (if (= "ok" (.-key e))
     (let [nested (classes/has parent-el "new-node")
@@ -752,35 +739,43 @@
                           (remove-self-from-documents self-slug
                                                       documents))})))
 
-(defn add-menu-item-callback [feeds documents evt]
-  (ui/display-dialog "Add Menu Item"
-                     (ui/render-template-as-string
-                      tpl/add-menu-item-dialog
-                      {:feeds feeds
-                       :documents documents})
-                     (partial menu-item-dialog-callback
-                              feeds
-                              documents
-                              (dom/getElement "menu-container")))
+(defn add-menu-item-callback
+  ([feeds documents evt]
+     (add-menu-item-callback feeds
+                             documents
+                             (dom/getElement "menu-container")
+                             evt))
+  ([feeds documents el evt]
+     (. evt (preventDefault))
+     
+     (ui/display-dialog "Add Menu Item"
+                        (ui/render-template-as-string
+                         tpl/add-menu-item-dialog
+                         {:feeds feeds
+                          :documents documents})
+                        (partial menu-item-dialog-callback
+                                 feeds
+                                 documents
+                                 el))
       
-  (let [feed-el (dom/getElement "internal-link-feed")]
-    (events/listen feed-el
-                   "change"
-                   (fn []
-                     (let [feed-pair (util/pair-from-string
-                                      (.-value feed-el))]
-                       (document/get-documents-for-feed
-                        (first feed-pair)
-                        (last feed-pair)
-                        menu-dialog-upd-link-mode-xhr-callback)))))
+     (let [feed-el (dom/getElement "internal-link-feed")]
+       (events/listen feed-el
+                      "change"
+                      (fn []
+                        (let [feed-pair (util/pair-from-string
+                                         (.-value feed-el))]
+                          (document/get-documents-for-feed
+                           (first feed-pair)
+                           (last feed-pair)
+                           menu-dialog-upd-link-mode-xhr-callback)))))
       
-  (events/listen (dom/getElement "link-type-external")
-                 "change"
-                 menu-link-type-change-callback)
+     (events/listen (dom/getElement "link-type-external")
+                    "change"
+                    menu-link-type-change-callback)
       
-  (events/listen (dom/getElement "link-type-internal")
-                 "change"
-                 menu-link-type-change-callback))
+     (events/listen (dom/getElement "link-type-internal")
+                    "change"
+                    menu-link-type-change-callback)))
 
 (defn add-related-page-link-callback [self-slug feeds documents evt]
   (ui/display-dialog "Add Related Page"
@@ -807,12 +802,13 @@
                          self-slug)))))))
 
 (defn get-related-pages [related-page-el]
-  (map (fn [li-el]
-         (let [slug-el (first (util/get-children-by-tag li-el "input"))
-               title-el (first (util/get-children-by-tag li-el "span"))]
-           {:slug (.-value slug-el)
-            :title (.-textContent title-el)}))
-       (util/get-children related-page-el)))
+  (when related-page-el
+    (map (fn [li-el]
+           (let [slug-el (first (util/get-children-by-tag li-el "input"))
+                 title-el (first (util/get-children-by-tag li-el "span"))]
+             {:slug (.-value slug-el)
+              :title (.-textContent title-el)}))
+         (util/get-children related-page-el))))
 
 (defn add-related-page-dialog-callback [feeds documents related-pages-el e]
   (when (= "ok" (.-key e))
