@@ -55,13 +55,10 @@ download that you can find here: `download Soy`_. For production use
 you also need a web server like `Lighttpd`_ or `Apache`_ and an
 application server like `Apache Tomcat`_, but you don't need any of
 that if you just want to test the application. You will need a working
-Java environment, however. ClojureScript works best with the Sun Java
-distribution (the package name on Ubuntu is "sun-java6-jdk"), so
-GNU/Linux users are encouraged to install that as most distributions
-provide the OpenJDK by default.
+Java environment, however.
 
 This is the sequence of commands used to install Vix on a clean Ubuntu
-11.04 installation (if you already installed some of the dependencies
+11.10 installation (if you already installed some of the dependencies
 you can skip those commands). They are meant to be entered in the
 order listed. If you're using a different operating system and need
 help installing the application you can contact the author for support
@@ -69,13 +66,12 @@ help installing the application you can contact the author for support
 operating system is not officially supported, but Windows users might
 have some success using Cygwin.
 
-Install and configure the Sun JDK (instead of the OpenJDK, which doesn't work
-as well with ClojureScript at the moment)::
+Install Java::
 
-    sudo add-apt-repository "deb http://archive.canonical.com/ natty partner"
-    sudo apt-get update
-    sudo apt-get install sun-java6-jdk
-    sudo update-alternatives --config java
+    sudo apt-get install openjdk-6-jdk
+
+OpenJDK is the default Java version on Ubuntu, but it is also possible
+to install the Oracle Java distribution.
 
 Install Curl::
 
@@ -93,9 +89,10 @@ Install Leiningen::
     sudo mv lein /usr/local/bin/
     sudo chmod +x /usr/local/bin/lein 
 
-Install git::
+Install Git and Subversion::
 
     sudo apt-get install git
+    sudo apt-get install subversion
 
 Install Vix::
 
@@ -139,15 +136,22 @@ Download the Soy compiler::
     wget http://closure-templates.googlecode.com/files/closure-templates-for-javascript-latest.zip
     unzip closure-templates-for-javascript-latest.zip
 
+Install rlwrap::
+
+    sudo apt-get install rlwrap
+
 Add the following lines to your your ~/.bash_profile or ~/.bashrc file
 using your favorite text editor::
 
     export CLOJURESCRIPT_HOME="$HOME/clj/clojurescript"
 
     alias cotpl="java -jar SoyToJsSrcCompiler.jar --shouldProvideRequireSoyNamespaces --shouldGenerateJsdoc --outputPathFormat resources/public/js/soy/{INPUT_FILE_NAME_NO_EXT}.soy.js soy/editor.soy soy/feed.soy"
-    alias cljs="rlwrap java -cp
-    \"$CLOJURESCRIPT_HOME/lib/*:$CLOJURESCRIPT_HOME/src/clj:$CLOJURESCRIPT_HOME/src/cljs/:$CLOJURESCRIPT_HOME/test/cljs:cljs/macros\"
-    clojure.main"
+    alias cljs="rlwrap java -cp \"$CLOJURESCRIPT_HOME/lib/*:$CLOJURESCRIPT_HOME/src/clj:$CLOJURESCRIPT_HOME/src/cljs/:$CLOJURESCRIPT_HOME/test/cljs:cljs/macros\" clojure.main"
+
+If you don't want to restart your terminal emulator after creating
+this file you can run, e.g.::
+
+    source ~/.bash_profile
 
 Compile the templates (this command must be executed in the vix
 directory)::
