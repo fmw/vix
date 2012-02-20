@@ -265,7 +265,8 @@
                  :title (:title new-document)
                  :content (:content new-document)
                  :draft (:draft new-document)
-                 :related-pages (:related-pages new-document)))]
+                 :related-pages (:related-pages new-document)
+                 :related-images (:related-images new-document)))]
       
       (if-not (and (nil? (:data (:attachment new-document)))
                    (nil? (:type (:attachment new-document))))

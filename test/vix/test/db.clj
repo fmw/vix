@@ -620,7 +620,8 @@
                    :slug "/blog/bar"
                    :content "bar"
                    :draft false
-                   :related-pages []})
+                   :related-pages []
+                   :related-images []})
         updated-doc (update-document
                       +test-server+
                       +test-db+
@@ -628,16 +629,19 @@
                       (assoc new-doc
                         :title "hic sunt dracones"
                         :draft true
-                        :related-pages [{:title "foo" :slug "bar"}]))]
+                        :related-pages [{:title "foo" :slug "bar"}]
+                        :related-images [{:title "cat" :slug "cat.png"}]))]
     (is (= (get-document +test-server+ +test-db+ "/blog/bar") updated-doc))
     (is (couchdb-rev? 2 (:_rev updated-doc)))
     (is (iso-date? (:updated updated-doc)))
     (is (= (:published new-doc) (:published updated-doc)))
     (is (not (:draft new-doc)))
     (is (= (:related-pages new-doc) []))
+    (is (= (:related-images new-doc) []))
     (is (= (:title updated-doc) "hic sunt dracones"))
     (is (true? (:draft updated-doc)))
-    (is (= (:related-pages updated-doc) [{:title "foo" :slug "bar"}])))
+    (is (= (:related-pages updated-doc) [{:title "foo" :slug "bar"}]))
+    (is (= (:related-images updated-doc) [{:title "cat" :slug "cat.png"}])))
   
   (testing "Test if attachments are handled correctly."
     (let [black-pixel (str "R0lGODlhAQABA++/vQAAAAAAAAAA77+9AQIAAAAh77+9BAQU"

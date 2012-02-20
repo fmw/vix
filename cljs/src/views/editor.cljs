@@ -345,7 +345,10 @@
                                                 @editor-field)))
       :related-pages (vec
                       (get-related-pages
-                       (dom/getElement "related-pages-container")))}))
+                       (dom/getElement "related-pages-container")))
+      :related-images (vec
+                       (get-related-images
+                        (dom/getElement "related-images-container")))}))
 
 (defn save-new-document-xhr-callback [e]
   (let [xhr (.-target e)]
@@ -712,11 +715,58 @@
       (ui/trigger-on-class
        "related-page-delete-link"
        "click"
+       (fn [evt]
+         (. evt (preventDefault))
+         (let [parent-li (util/get-parent (.-target evt))]
+           (dom/removeNode parent-li)
+           (update-related-pages (get-related-pages related-pages-el))))))))
+
+(defn update-related-pages [related-pages]
+  (when (not-empty related-pages)
+    (let [related-pages-el (dom/getElement "related-pages-container")]
+      (ui/render-template related-pages-el
+                          tpl/related-page-list-items
+                          {:pages related-pages})
+
+      (ui/trigger-on-class
+       "related-page-delete-link"
+       "click"
        (fn [e]
          (. e (preventDefault))
          (let [parent-li (util/get-parent (.-target e))]
            (dom/removeNode parent-li)
            (update-related-pages (get-related-pages related-pages-el))))))))
+
+(defn update-related-images [related-images]
+  (when (not-empty related-images)
+    (let [related-images-el (dom/getElement "related-images-container")]
+      (ui/render-template related-images-el
+                          tpl/related-image-list-items
+                          {:images related-images})
+
+      (ui/trigger-on-class
+       "related-image-preview-link"
+       "click"
+       (fn [evt]
+         (. evt (preventDefault))
+         
+         (ui/display-dialog "Image Preview"
+                            (ui/render-template-as-string
+                             tpl/image-preview-dialog
+                             {:image (get-related-image
+                                      (util/get-parent (.-target evt)))})
+                            #(ui/remove-dialog)
+                            :ok)))
+            
+      (ui/trigger-on-class
+       "related-image-delete-link"
+       "click"
+       (fn [e]
+         (. e (preventDefault))
+         (let [parent-li (util/get-parent (.-target e))]
+           (dom/removeNode parent-li)
+           (update-related-images
+            (get-related-images related-images-el))))))))
 
 (defn remove-already-related-pages-from-documents
   [related-page-el documents]
@@ -726,10 +776,18 @@
       #(some #{("slug" %)} existing-slugs)
       (js->clj documents)))))
 
+(defn remove-already-related-images-from-documents
+  [related-images-el documents]
+  (let [existing-slugs (map :slug (get-related-images related-images-el))]
+    (util/col-to-js
+     (remove
+      #(some #{("slug" %)} existing-slugs)
+      (js->clj documents)))))
+
 (defn remove-self-from-documents [self-slug documents]
   (util/col-to-js (remove #(= ("slug" %) self-slug) (js->clj documents))))
 
-(defn related-pages-dialog-upd-link-mode-xhr-callback [self-slug e]
+(defn related-pages-dialog-change-feed-xhr-callback [self-slug e]
   (let [documents (.-documents (. (.-target e) (getResponseJson)))]
     (ui/render-template (dom/getElement "internal-link")
                         tpl/document-link-options
@@ -738,6 +796,17 @@
                           (dom/getElement "related-pages-container")
                           (remove-self-from-documents self-slug
                                                       documents))})))
+
+(defn related-images-dialog-change-feed-xhr-callback [self-slug e]
+  (let [documents (.-documents (. (.-target e) (getResponseJson)))]
+    (ui/render-template (dom/getElement "internal-link")
+                        tpl/document-link-options
+                        {:documents
+                         (remove-already-related-images-from-documents
+                          (dom/getElement "related-images-container")
+                          documents)})
+
+    (update-image-in-dialog (first documents))))
 
 (defn add-menu-item-callback
   ([feeds documents evt]
@@ -777,29 +846,98 @@
                     "change"
                     menu-link-type-change-callback)))
 
-(defn add-related-page-link-callback [self-slug feeds documents evt]
-  (ui/display-dialog "Add Related Page"
-                     (ui/render-template-as-string
-                      tpl/add-related-page-dialog
-                      {:feeds feeds
-                       :documents documents})
-                     (partial add-related-page-dialog-callback
-                              feeds
-                              documents
-                              (dom/getElement "related-pages-container")))
+(defn update-image-in-dialog [image]
+  (ui/render-template (dom/getElement "image-preview-in-dialog-container")
+                      tpl/related-image {:image image}))
+
+(defn add-related-image-link-callback [language evt]
+  (document/get-feeds-list
+   (fn [evt]
+     (let [feeds (. (.-target evt) (getResponseJson))
+           related-images-el (dom/getElement "related-images-container")]
+       (if (not-empty feeds)
+         (document/get-documents-for-feed
+          language
+          ("name" (js->clj (first feeds)))
+          (fn [evt]
+            (let [documents (.-documents
+                             (. (.-target evt) (getResponseJson)))]
+              (ui/display-dialog
+               "Add Related Image"
+               (ui/render-template-as-string
+                tpl/add-related-image-dialog
+                {:feeds
+                 feeds
+                 :documents
+                 (remove-already-related-images-from-documents
+                  related-images-el
+                  documents)})
+               (partial add-related-image-dialog-callback
+                        related-images-el))
+
+              (when-let [feed-el (dom/getElement "internal-link-feed")]
+                (events/listen
+                 feed-el
+                 "change"
+                 (fn []
+                   (let [feed-pair (util/pair-from-string
+                                    (.-value feed-el))]
+                     (document/get-documents-for-feed
+                      (first feed-pair)
+                      (last feed-pair)
+                      (partial
+                       related-images-dialog-change-feed-xhr-callback
+                       self-slug))))))
+
+              (let [link-el (dom/getElement "internal-link")
+                    img-el (dom/getElement "preview-image-in-dialog")]
+                (events/listen
+                 link-el
+                 "change"
+                 (fn [evt]
+                   (let [slug (.-value link-el)
+                         title (util/get-select-option-name-by-value link-el
+                                                                     slug)]
+                     (update-image-in-dialog {:title title
+                                              :slug slug})))))))))))
+   "image"))
+
+(defn add-related-page-link-callback [self-slug feeds evt]
+  (let [feeds (filter #(not (= "image"
+                               ("default-document-type" (js->clj %))))
+                      feeds)
+        first-feed (first (js->clj feeds))]
+    (document/get-documents-for-feed
+     ("language" first-feed)
+     ("name" first-feed)
+     (fn [evt]
+       (let [documents (.-documents (. (.-target evt) (getResponseJson)))]
+         (ui/display-dialog "Add Related Page"
+                          (ui/render-template-as-string
+                           tpl/add-related-page-dialog
+                           {:feeds
+                            feeds
+                            :documents
+                            (remove-already-related-pages-from-documents
+                             (dom/getElement "related-pages-container")
+                             (remove-self-from-documents self-slug
+                                                         documents))})
+                          (partial add-related-page-dialog-callback
+                                   (dom/getElement
+                                    "related-pages-container")))
       
-  (let [feed-el (dom/getElement "internal-link-feed")]
-    (events/listen feed-el
-                   "change"
-                   (fn []
-                     (let [feed-pair (util/pair-from-string
-                                      (.-value feed-el))]
-                       (document/get-documents-for-feed
-                        (first feed-pair)
-                        (last feed-pair)
-                        (partial
-                         related-pages-dialog-upd-link-mode-xhr-callback
-                         self-slug)))))))
+       (when-let [feed-el (dom/getElement "internal-link-feed")]
+         (events/listen feed-el
+                        "change"
+                        (fn []
+                          (let [feed-pair (util/pair-from-string
+                                           (.-value feed-el))]
+                            (document/get-documents-for-feed
+                             (first feed-pair)
+                             (last feed-pair)
+                             (partial
+                              related-pages-dialog-change-feed-xhr-callback
+                              self-slug)))))))))))
 
 (defn get-related-pages [related-page-el]
   (when related-page-el
@@ -810,14 +948,35 @@
               :title (.-textContent title-el)}))
          (util/get-children related-page-el))))
 
-(defn add-related-page-dialog-callback [feeds documents related-pages-el e]
-  (when (= "ok" (.-key e))
+(defn get-related-image [li-el]
+  (let [slug-el (first (util/get-children-by-tag li-el "input"))
+        title-el (first (util/get-children-by-tag li-el "span"))]
+    {:slug (.-value slug-el)
+     :title (.-textContent title-el)}))
+
+(defn get-related-images [related-images-el]
+  (when related-images-el
+    (map get-related-image (util/get-children related-images-el))))
+
+(defn add-related-page-dialog-callback [related-pages-el evt]
+  (when (= "ok" (.-key evt))
     (let [link-el (dom/getElement "internal-link")
           slug (.-value link-el)]
       (if (pos? (count slug))
         (let [title (util/get-select-option-name-by-value link-el slug)]
           (update-related-pages (conj
                                  (get-related-pages related-pages-el)
+                                 {:slug slug :title title}))))))
+  (ui/remove-dialog))
+
+(defn add-related-image-dialog-callback [related-images-el evt]
+  (when (= "ok" (.-key evt))
+    (let [link-el (dom/getElement "internal-link")
+          slug (.-value link-el)]
+      (if (not-empty slug)
+        (let [title (util/get-select-option-name-by-value link-el slug)]
+          (update-related-images (conj
+                                 (get-related-images related-images-el)
                                  {:slug slug :title title}))))))
   (ui/remove-dialog))
 
@@ -930,8 +1089,15 @@
                         event-type/CLICK
                         (partial add-related-page-link-callback
                                  (:slug tpl-map)
-                                 feeds
-                                 documents)))
+                                 feeds)))
+
+       (when-let [add-related-image-link-element (dom/getElement
+                                                 "add-related-image-link")]
+         (update-related-images (:related-images tpl-map))
+         (events/listen add-related-image-link-element
+                        event-type/CLICK
+                        (partial add-related-image-link-callback
+                                 (:language feed))))
 
        (cond
         (= mode :menu)
@@ -971,7 +1137,8 @@
                       :title ""
                       :slug ""
                       :draft false
-                      :related-pages []}))
+                      :related-pages []
+                      :related-images []}))
     (document/get-doc slug
                       (fn [e]
                         (let [xhr (.-target e)]
@@ -990,7 +1157,9 @@
                                               :slug ("slug" json)
                                               :draft ("draft" json)
                                               :related-pages
-                                              ("related-pages" json)}
+                                              ("related-pages" json)
+                                              :related-images
+                                              ("related-images" json)}
                                              ("content" json)))
                             (render-document-not-found-template)))))))
 
@@ -1032,7 +1201,9 @@
                                                       ("attachment"
                                                        json))}
                                               :related-pages
-                                              ("related-pages" json)}
+                                              ("related-pages" json)
+                                              :related-images
+                                              ("related-images" json)}
                                              ("content" json)))
                             (render-document-not-found-template)))))))
 

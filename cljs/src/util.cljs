@@ -63,7 +63,7 @@
         (to-array rv))))) ; convert result vector to array when done
 
 (defn pair-from-string [s]
-  (let [matches (re-matches #"\['([a-z]+)','([a-zA-Z\-/ ]+)'\]" s)]
+  (let [matches (re-matches #"\['([a-z]+)','([a-zA-Z0-9\-/ ]+)'\]" s)]
     (when matches
       (rest matches))))
 

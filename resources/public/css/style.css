@@ -138,6 +138,10 @@ h3 {
     max-width: 150px;
 }
 
+#preview-image-in-dialog {
+    max-width: 500px;
+}
+
 #editor-images-pagination-links {
     width: 600px;
 }

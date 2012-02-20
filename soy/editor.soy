@@ -57,6 +57,11 @@
     <ul id="related-pages-container"></ul>
   </div>
 
+  <div id="image-relations">
+    <p><a href="#" id="add-related-image-link">Add related image</a></p>
+    <ul id="related-images-container"></ul>
+  </div>
+
   <div id="editor-images"></div>
   <div style="clear: both;">&nbsp;</div>
 
@@ -144,7 +149,7 @@
 {/template}
 
 /**
- * Displays the menu mode for the Vix Editor.
+ * Displays the related page dialog for the Vix Editor.
  *
  * @param feeds
  * @param documents
@@ -153,17 +158,26 @@
   <form name="add-related-page-dialog-form" id="add-related-page-dialog-form">
   <p id="add-link-status" class="hide"></p>
   <table id="add-related-page-dialog">
+    {if length($feeds) > 1 }
+      <tr>
+        <td>
+          <label for="internal-link-feed">Feed:</label>      
+        </td>
+        <td>
+          <select name="internal-link-feed" id="internal-link-feed">
+            {foreach $feed in $feeds}
+              <option value="['{$feed.language}','{$feed.name}']"
+                >{$feed.name}</option>
+            {/foreach}
+          </select>
+        </td>
+      </tr>
+    {/if}
     <tr id="internal-link-row">
       <td>
         <label for="internal-link">Link:</label>
       </td>
       <td>
-        <select name="internal-link-feed" id="internal-link-feed">
-          {foreach $feed in $feeds}
-            <option value="['{$feed.language}','{$feed.name}']"
-              >{$feed.name}</option>
-          {/foreach}
-        </select>
         <select name="internal-link" id="internal-link">
           {foreach $document in $documents}
             <option value="{$document.slug}">{$document.title}</option>
@@ -173,6 +187,77 @@
     </tr>
   </table>
   </form>
+{/template}
+
+/**
+ * Displays image tag for image dialogs
+ *
+ * @param image
+ */
+{template .related_image}
+  <img src="{$image.slug}"
+       alt="{$image.title}"
+       title="{$image.title}" 
+       id="preview-image-in-dialog" />
+{/template}
+
+/**
+ * Displays the related image dialog for the Vix Editor.
+ *
+ * @param feeds
+ * @param documents
+ */
+{template .add_related_image_dialog}
+  <form name="add-related-page-dialog-form" id="add-related-page-dialog-form">
+  <p id="add-link-status" class="hide"></p>
+  <table id="add-related-image-dialog">
+    {if length($feeds) > 1 }
+      <tr>
+        <td>
+          <label for="internal-link-feed">Feed:</label>      
+        </td>
+        <td>
+          <select name="internal-link-feed" id="internal-link-feed">
+            {foreach $feed in $feeds}
+              <option value="['{$feed.language}','{$feed.name}']"
+                >{$feed.name}</option>
+            {/foreach}
+          </select>
+        </td>
+      </tr>
+    {/if}
+    <tr id="internal-link-row">
+      <td>
+        <label for="internal-link">Image:</label>
+      </td>
+      <td>
+        <select name="internal-link" id="internal-link">
+          {foreach $document in $documents}
+            <option value="{$document.slug}">{$document.title}</option>
+          {/foreach}
+        </select>
+      </td>
+    </tr>
+  </table>
+  <div id="image-preview-in-dialog-container">
+    {call .related_image}
+      {param image: $documents[0] /}
+    {/call}
+  </div>
+  </form>
+{/template}
+
+/**
+ * Displays image preview.
+ *
+ * @param image
+ */
+{template .image_preview_dialog}
+  <div id="image-preview-in-dialog-container">
+    {call .related_image}
+      {param image: $image /}
+    {/call}
+  </div>
 {/template}
 
 /**
@@ -195,6 +280,23 @@
       <input type="hidden" value="{$page.slug}" />
       <span>{$page.title}</span>
       &nbsp; <a href="#" class="related-page-delete-link">(delete)</a>
+    </li>
+  {/foreach}
+{/template}
+
+/**
+ *
+ * @param images
+ */
+{template .related_image_list_items}
+  {foreach $image in $images}
+    <li>
+      <input type="hidden" value="{$image.slug}" />
+      <span>{$image.title}</span>
+      &nbsp;
+      <a href="#" class="related-image-preview-link">(preview)</a>
+      &nbsp;
+      <a href="#" class="related-image-delete-link">(delete)</a>
     </li>
   {/foreach}
 {/template}
