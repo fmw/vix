@@ -79,7 +79,7 @@ a:hover {
 }
 
 .document-fields-row {
-    width: 600px;
+    width: 700px;
 }
 
 .document-fields-row label:first-of-type, .feed-fields-row label:first-of-type {
@@ -87,7 +87,7 @@ a:hover {
     float: left;
 }
 .document-fields-row label:first-of-type {
-    width: 50px;
+    width: 70px;
 }
 
 .feed-fields-row label:first-of-type {

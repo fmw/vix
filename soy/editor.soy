@@ -7,6 +7,7 @@
  * @param feed
  * @param language
  * @param title
+ * @param subtitle
  * @param slug
  * @param draft
  */
@@ -32,6 +33,12 @@
              checked="checked"
            {/if} />
     <label for="draft">Draft</label>
+  </div>
+
+  <div class="document-fields-row">
+    <label for="subtitle" id="subtitle-label">Subtitle:</label>
+    <input type="text" id="subtitle" name="subtitle" class="input-field"
+           value="{$subtitle}" />
   </div>
 
   <div class="document-fields-row">

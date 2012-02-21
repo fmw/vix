@@ -282,6 +282,7 @@
                (assoc (dissoc document :attachment)
                  :updated (util/now-rfc3339)
                  :title (:title new-document)
+                 :subtitle (:subtitle new-document)
                  :content (:content new-document)
                  :draft (:draft new-document)
                  :start-time (:start-time new-document)

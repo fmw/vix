@@ -338,6 +338,8 @@
   ([language feed-name content]
      {:feed [language feed-name]
       :title (ui/get-form-value "title")
+      :subtitle (when-let [subtitle (ui/get-form-value "subtitle")]
+                  subtitle)
       :slug (ui/get-form-value "slug")
       :draft (.-checked (dom/getElement "draft"))
       :content (or content (html-with-clean-image-uris
@@ -1182,6 +1184,7 @@
                       :feed (:name feed)
                       :language (:language feed)
                       :title ""
+                      :subtitle ""
                       :slug ""
                       :draft false
                       :related-pages []
@@ -1201,6 +1204,8 @@
                                               :feed ("feed" json)
                                               :language (:language feed)
                                               :title ("title" json)
+                                              :subtitle (str
+                                                         ("subtitle" json))
                                               :slug ("slug" json)
                                               :draft ("draft" json)
                                               :start-time ("start-time" json)
