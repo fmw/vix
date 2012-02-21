@@ -52,6 +52,24 @@
            {/if}>Custom</label>
   </div>
 
+  <div class="document-fields-row hide" id="start-time-row">
+    <label for="start-time" id="start-time-label">Start:</label>
+    <input type="text"
+           id="start-time"
+           name="start-time"
+           class="input-field"
+           value="" />
+  </div>
+
+  <div class="document-fields-row hide" id="end-time-row">
+    <label for="end-time" id="end-time-label">End:</label>
+    <input type="text"
+           id="end-time"
+           name="end-time"
+           class="input-field"
+           value="" />
+  </div>
+
   <div id="document-relations">
     <p><a href="#" id="add-related-page-link">Add related page</a></p>
     <ul id="related-pages-container"></ul>
@@ -72,6 +90,34 @@
 
 {/template}
 
+
+/**
+ * Provides the content for the datepicker dialog.
+ *
+ * @param time
+ */
+{template .date_picker}
+  <div id="date-widget"></div>
+
+  {if $time}
+    <div id="datepicker-time-row">
+      <label for="hour">Hour:</label>
+      <select name="hour" id="hour">
+        {for $hour in range(24)}
+          <option>{if $hour < 10}0{/if}{$hour}</option>
+        {/for}
+      </select>
+
+      <label for="minute">Minute:</label>
+      <select name="minute" id="minute">
+        {for $minute in range(60)}
+          <option>{if $minute < 10}0{/if}{$minute}</option>
+        {/for}
+      </select>
+    </div>
+  {/if}
+
+{/template}
 /**
  *
  * @param documents

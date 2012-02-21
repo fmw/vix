@@ -247,6 +247,7 @@
                                              database
                                              language
                                              feed-name
+                                             default-timezone
                                              (read-json (slurp* body)))]
             (lucene/add-documents-to-index! lucene/directory [document])
             (json-response document :status 201))))
@@ -269,6 +270,7 @@
                             :PUT)
              (let [document (db/update-document db-server
                                                 database
+                                                default-timezone
                                                 slug
                                                 (read-json (slurp* body)))]
                (lucene/update-document-in-index! lucene/directory

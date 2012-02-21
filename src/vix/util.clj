@@ -70,6 +70,15 @@
       (time-format/formatters :date-time) date-string)
     (time-core/time-zone-for-id timezone)))
 
+(defn editor-datetime-to-rfc3339 [date-string timezone]
+  (when (not (= date-string ""))
+    (time-format/unparse
+     (time-format/formatters :date-time)
+     (time-core/from-time-zone
+      (time-format/parse 
+       (time-format/formatter "yyyy-MM-dd HH:mm") date-string)
+      (time-core/time-zone-for-id timezone)))))
+
 (defn log-stream []
   (java.io.PrintStream. (java.io.ByteArrayOutputStream.) false))
 

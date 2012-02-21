@@ -162,6 +162,7 @@
                                +test-db+
                                "en"
                                "blog"
+                               "Europe/Amsterdam"
                                {:title "foo"
                                 :slug "/blog/foo"
                                 :content "bar"
@@ -171,6 +172,7 @@
                                +test-db+
                                "en"
                                "blog"
+                               "Europe/Amsterdam"
                                {:title "foo"
                                 :slug "/blog/foo"
                                 :content "bar"
@@ -227,6 +229,7 @@
                      +test-db+
                      "en"
                      "blog"
+                     "Europe/Amsterdam"
                      {:title "foo"
                       :slug "/blog/foo"
                       :content "bar"
@@ -253,6 +256,7 @@
                          +test-db+
                          "en"
                          "images"
+                         "Europe/Amsterdam"
                          {:attachment {:type "image/gif" :data gif}
                           :title "a single black pixel!"
                           :slug "/images/white-pixel.gif"
@@ -262,6 +266,7 @@
                          +test-db+
                          "en"
                          "images"
+                         "Europe/Amsterdam"
                          {:title "not a single black pixel!"
                           :slug "/images/not-a-white-pixel.gif"
                           :content ""
@@ -321,6 +326,7 @@
                      +test-db+
                      "en"
                      "blog"
+                     "Europe/Amsterdam"
                      {:title "foo"
                       :slug "/blog/foo-1234567890"
                       :content "bar"
@@ -330,6 +336,7 @@
                      +test-db+
                      "en"
                      "blog"
+                     "Europe/Amsterdam"
                      {:title "foo"
                       :slug "/blog/foo-1234567891"
                       :content "bar"
@@ -345,9 +352,12 @@
                                     +test-db+
                                     "en"
                                     "blog"
+                                    "Europe/Amsterdam"
                                     {:title "foo"
                                      :slug "/blog/foo"
                                      :content "bar"
+                                     :start-time "2012-02-21 01:19"
+                                     :end-time "2012-02-21 10:00"
                                      :draft false})]
 
       (is (couchdb-id? (:_id document)))
@@ -359,6 +369,10 @@
       (is (= (:title document) "foo"))
       (is (= (:slug document) "/blog/foo"))
       (is (= (:content document) "bar"))
+      (is (= (:start-time document) "2012-02-21 01:19"))
+      (is (= (:end-time document) "2012-02-21 10:00"))
+      (is (= (:start-time-rfc3339 document) "2012-02-21T00:19:00.000Z"))
+      (is (= (:end-time-rfc3339 document) "2012-02-21T09:00:00.000Z"))
       (is (false? (:draft document)))))
 
   (testing "Test if slugs are correctly autoincremented"
@@ -367,6 +381,7 @@
                                       +test-db+
                                       "en"
                                       "blog"
+                                      "Europe/Amsterdam"
                                       {:title "foo"
                                        :slug "/blog/foo"
                                        :content "bar"
@@ -389,6 +404,7 @@
                                     +test-db+
                                     "en"
                                     "images"
+                                    "Europe/Amsterdam"
                                     {:attachment {:type "image/gif"
                                                   :data gif}
                                      :title "a single black pixel!"
@@ -434,6 +450,7 @@
                                +test-db+
                                "en"
                                "blog"
+                               "Europe/Amsterdam"
                                {:title "foo"
                                 :slug "/blog/foo"
                                 :content "bar"
@@ -443,6 +460,7 @@
                                +test-db+
                                "en"
                                "blog"
+                               "Europe/Amsterdam"
                                {:title "foo"
                                 :slug "/blog/foo"
                                 :content "bar"
@@ -452,6 +470,7 @@
                                +test-db+
                                "nl"
                                "blog"
+                               "Europe/Amsterdam"
                                {:title "foo"
                                 :slug "/blog/foo"
                                 :content "bar"
@@ -616,6 +635,7 @@
                   +test-db+
                   "en"
                   "blog"
+                  "Europe/Amsterdam"
                   {:title "foo"
                    :slug "/blog/bar"
                    :content "bar"
@@ -625,20 +645,34 @@
         updated-doc (update-document
                       +test-server+
                       +test-db+
+                      "Europe/Amsterdam"
                       "/blog/bar"
                       (assoc new-doc
                         :title "hic sunt dracones"
                         :draft true
+                        :start-time "2012-02-21 01:19"
+                        :end-time "2012-02-21 10:00"
                         :related-pages [{:title "foo" :slug "bar"}]
                         :related-images [{:title "cat" :slug "cat.png"}]))]
     (is (= (get-document +test-server+ +test-db+ "/blog/bar") updated-doc))
     (is (couchdb-rev? 2 (:_rev updated-doc)))
     (is (iso-date? (:updated updated-doc)))
+
     (is (= (:published new-doc) (:published updated-doc)))
+
+    (is (= (:start-time new-doc) nil))
+    (is (= (:end-time new-doc) nil))
+    (is (= (:start-time-rfc3339 new-doc) nil))
+    (is (= (:end-time-rfc3339 new-doc) nil))
     (is (not (:draft new-doc)))
     (is (= (:related-pages new-doc) []))
     (is (= (:related-images new-doc) []))
+    
     (is (= (:title updated-doc) "hic sunt dracones"))
+    (is (= (:start-time updated-doc) "2012-02-21 01:19"))
+    (is (= (:end-time updated-doc) "2012-02-21 10:00"))
+    (is (= (:start-time-rfc3339 updated-doc) "2012-02-21T00:19:00.000Z"))
+    (is (= (:end-time-rfc3339 updated-doc) "2012-02-21T09:00:00.000Z"))
     (is (true? (:draft updated-doc)))
     (is (= (:related-pages updated-doc) [{:title "foo" :slug "bar"}]))
     (is (= (:related-images updated-doc) [{:title "cat" :slug "cat.png"}])))
@@ -669,6 +703,7 @@
                    +test-db+
                    "en"
                    "images"
+                   "Europe/Amsterdam"
                    {:attachment {:type "image/jpeg" :data white-pixel}
                     :title "a single black pixel!"
                     :slug "/pixel.jpeg"
@@ -677,6 +712,7 @@
           updated-doc (update-document
                        +test-server+
                        +test-db+
+                       "Europe/Amsterdam"
                        "/pixel.jpeg"
                        {:attachment {:type "image/gif" :data black-pixel}
                         :title "a single black pixel!"
@@ -748,6 +784,7 @@
                      +test-db+
                      "en"
                      "blog"
+                     "Europe/Amsterdam"
                      {:title "foo"
                       :slug "/blog/bar"
                       :content "bar"

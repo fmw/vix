@@ -292,6 +292,10 @@ footer {
     background-color: transparent;
 }
 
+#datepicker-time-row select {
+    margin: 0 10px 0 10px;
+}
+
 /* Google Closure */
 .goog-inline-block {
     position: relative;

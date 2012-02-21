@@ -140,6 +140,7 @@
                      +test-db+
                      "en"
                      "blog"
+                     "Europe/Amsterdam"
                      {:title "foo"
                       :slug "/blog/bar"
                       :content "bar"
@@ -155,6 +156,7 @@
                     +test-db+
                     "en"
                     "images"
+                    "Europe/Amsterdam"
                     {:attachment {:type "image/gif" :data gif}
                      :title "a single black pixel!"
                      :slug "/pixel.gif"
@@ -181,6 +183,7 @@
                      +test-db+
                      "en"
                      "blog"
+                     "Europe/Amsterdam"
                      {:title "foo"
                       :slug "/blog/bar"
                       :content "bar"
@@ -198,6 +201,7 @@
                            +test-db+
                            "en"
                            "pages"
+                           "Europe/Amsterdam"
                            {:title (str "doc " n)
                             :slug (str "/pages/doc-" n)
                             :language "en"
@@ -527,6 +531,7 @@
                      +test-db+
                      "en"
                      "blog"
+                     "Europe/Amsterdam"
                      {:title "foo"
                       :slug "/blog/test"
                       :content "bar"
@@ -610,6 +615,7 @@
                      +test-db+
                      "en"
                      "blog"
+                     "Europe/Amsterdam"
                      {:title "foo"
                       :slug "/blog/test"
                       :content "bar"

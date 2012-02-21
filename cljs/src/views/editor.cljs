@@ -337,12 +337,16 @@
      (get-document-value-map! language feed-name nil))
   ([language feed-name content]
      {:feed [language feed-name]
-      :title (.-value (dom/getElement "title"))
-      :slug (.-value (dom/getElement "slug"))
+      :title (ui/get-form-value "title")
+      :slug (ui/get-form-value "slug")
       :draft (.-checked (dom/getElement "draft"))
       :content (or content (html-with-clean-image-uris
                              (.getCleanContents @editor-field
                                                 @editor-field)))
+      :start-time (when-let [start-time (ui/get-form-value "start-time")]
+                    start-time)
+      :end-time (when-let [end-time (ui/get-form-value "end-time")]
+                    end-time)
       :related-pages (vec
                       (get-related-pages
                        (dom/getElement "related-pages-container")))
@@ -495,7 +499,7 @@
                       (cond
                        (= mode :image) tpl/image-mode
                        (= mode :menu) tpl/menu-mode
-                       (= mode :default) tpl/default-mode)
+                       :default tpl/default-mode)
                       data)
   (core/xhrify-internal-links! (core/get-internal-links!)))
 
@@ -989,6 +993,7 @@
            mode (cond
                  (= (:default-document-type feed) "image") :image
                  (= (:default-document-type feed) "menu") :menu
+                 (= (:default-document-type feed) "event") :event
                  :default :default)
            tpl-map (if (and (= mode :image) (not new?))
                      (assoc tpl-map :image (str "data:"
@@ -1092,12 +1097,54 @@
                                  feeds)))
 
        (when-let [add-related-image-link-element (dom/getElement
-                                                 "add-related-image-link")]
+                                                  "add-related-image-link")]
          (update-related-images (:related-images tpl-map))
          (events/listen add-related-image-link-element
                         event-type/CLICK
                         (partial add-related-image-link-callback
                                  (:language feed))))
+
+       (when (= mode :event)
+         (classes/remove (dom/getElement "start-time-row") "hide")
+         (classes/remove (dom/getElement "end-time-row") "hide")
+           
+         (when-let [start-time-el (dom/getElement "start-time")]
+           (ui/set-form-value start-time-el (:start-time tpl-map))
+           (events/listen start-time-el
+                          event-type/CLICK
+                          #(ui/display-datepicker
+                            (fn [date hour minute]
+                              (let [datetime-string
+                                    (if date
+                                      (str (.toIsoString date
+                                                         true)
+                                           " "
+                                           hour
+                                           ":"
+                                           minute)
+                                      "")]
+                                (ui/set-form-value start-time-el
+                                                   datetime-string)))
+                            true)))
+              
+         (when-let [end-time-el (dom/getElement "end-time")]
+           (ui/set-form-value end-time-el (:end-time tpl-map))
+           (events/listen end-time-el
+                          event-type/CLICK
+                          #(ui/display-datepicker
+                            (fn [date hour minute]
+                              (let [datetime-string
+                                    (if date
+                                      (str (.toIsoString date
+                                                         true)
+                                           " "
+                                           hour
+                                           ":"
+                                           minute)
+                                      "")]
+                                (ui/set-form-value end-time-el
+                                                   datetime-string)))
+                            true))))
 
        (cond
         (= mode :menu)
@@ -1156,6 +1203,8 @@
                                               :title ("title" json)
                                               :slug ("slug" json)
                                               :draft ("draft" json)
+                                              :start-time ("start-time" json)
+                                              :end-time ("end-time" json)
                                               :related-pages
                                               ("related-pages" json)
                                               :related-images
@@ -1222,6 +1271,8 @@
              (= (:default-document-type feed) "image")
              (start-image-mode! feed slug status feeds documents)
              (= (:default-document-type feed) "menu")
+             (start-default-mode! feed slug status feeds documents)
+             (= (:default-document-type feed) "event")
              (start-default-mode! feed slug status feeds documents)
              :default
              (start-default-mode! feed slug status feeds documents))))))))

@@ -61,6 +61,19 @@
     (is (= (time-core/sec datetime-obj) 52))
     (is (= (time-core/milli datetime-obj) 253))))
 
+(deftest test-editor-datetime-to-rfc3339
+  (is (= (editor-datetime-to-rfc3339 "2012-02-20 14:30" "Europe/Amsterdam")
+         "2012-02-20T13:30:00.000Z"))
+
+  (is (= (editor-datetime-to-rfc3339 "2012-01-01 00:00" "Europe/Amsterdam")
+         "2011-12-31T23:00:00.000Z"))
+
+  (is (= (editor-datetime-to-rfc3339 "2012-08-04 14:30" "Europe/Amsterdam")
+         "2012-08-04T12:30:00.000Z"))
+
+  (is (= (editor-datetime-to-rfc3339 "" "Europe/Amsterdam")
+         nil)))
+
 (deftest test-log-stream
   (is (= (class (log-stream)) java.io.PrintStream)))
 

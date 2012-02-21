@@ -228,8 +228,17 @@
         (recur (util/increment-slug slug))
         slug))))
 
-(defn create-document [db-server db-name language feed-name document]
+(defn create-document
+  [db-server db-name language feed-name timezone document]
   (let [slug (get-unique-slug db-server db-name (:slug document))
+        st-rfc3339 (when (:start-time document)
+                      (util/editor-datetime-to-rfc3339
+                       (:start-time document)
+                       timezone))
+        et-rfc3339 (when (:end-time document)
+                      (util/editor-datetime-to-rfc3339
+                       (:end-time document)
+                       timezone))
         doc (couchdb/document-create db-server
                                      db-name
                                      (assoc (dissoc document :attachment)
@@ -237,10 +246,12 @@
                                        :feed feed-name
                                        :language language
                                        :slug slug
-                                       :published (util/now-rfc3339)))]
+                                       :published (util/now-rfc3339)
+                                       :start-time-rfc3339 st-rfc3339
+                                       :end-time-rfc3339 et-rfc3339))]
 
     (if-not (and (nil? (:data (:attachment document)))
-                   (nil? (:type (:attachment document))))
+                 (nil? (:type (:attachment document))))
       (do
         (couchdb/attachment-create db-server
                                    db-name
@@ -254,9 +265,17 @@
       ;; when there is no attachment we don't need to refetch
       doc)))
 
-(defn update-document [db-server db-name slug new-document]
+(defn update-document [db-server db-name timezone slug new-document]
   (if-let [document (get-document db-server db-name slug)]
-    (let [doc (couchdb/document-update
+    (let [st-rfc3339 (when (:start-time new-document)
+                        (util/editor-datetime-to-rfc3339
+                         (:start-time new-document)
+                         timezone))
+          et-rfc3339 (when (:end-time new-document)
+                        (util/editor-datetime-to-rfc3339
+                         (:end-time new-document)
+                         timezone))
+          doc (couchdb/document-update
                db-server
                db-name
                (:_id document)
@@ -265,6 +284,10 @@
                  :title (:title new-document)
                  :content (:content new-document)
                  :draft (:draft new-document)
+                 :start-time (:start-time new-document)
+                 :end-time (:end-time new-document)
+                 :start-time-rfc3339 st-rfc3339
+                 :end-time-rfc3339 et-rfc3339
                  :related-pages (:related-pages new-document)
                  :related-images (:related-images new-document)))]
       
@@ -278,9 +301,9 @@
                                      (Base64/decodeBase64
                                       (:data (:attachment new-document)))
                                      (:type (:attachment new-document)))
-          ; return newly fetched doc from db (including attachment)
+                                        ; return newly fetched doc from db (including attachment)
           (get-document db-server db-name (:slug doc)))
-        ; when there is no attachment we don't need to refetch
+                                        ; when there is no attachment we don't need to refetch
         doc))))
 
 (defn delete-document [db-server db-name slug]

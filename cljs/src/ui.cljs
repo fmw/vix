@@ -16,6 +16,7 @@
 
 (ns vix.ui
   (:require [vix.util :as util]
+            [vix.templates.editor :as editor-templates]
             [clojure.string :as string]
             [soy :as soy]
             [goog.dom :as dom]
@@ -24,6 +25,8 @@
             [goog.ui.Dialog :as goog.ui.Dialog]
             [goog.ui.Dialog.ButtonSet :as goog.ui.Dialog.ButtonSet]
             [goog.ui.Dialog.EventType :as goog.ui.Dialog.EventType]
+            [goog.ui.DatePicker :as DatePicker]
+            [goog.ui.DatePicker.Events :as DatePickerEvents]
             [goog.events :as events]
             [goog.fx.DragDrop :as goog.fx.DragDrop]
             [goog.fx.DragDropGroup :as goog.fx.DragDropGroup]
@@ -66,6 +69,28 @@
   (doseq [el (concat (util/get-elements-by-class "modal-dialog")
                      (util/get-elements-by-class "modal-dialog-bg"))]
     (dom/removeNode el)))
+
+(defn display-datepicker [success-handler include-time?]
+  "Displays a date picker in a dialog and passes a goog.date.Date object
+   (or nil if no date is selected) to the success-handler function
+   if the user confirms the selection. If the include-time? argument
+   is true two arguments are added to the success-handler fn:
+   hour and minute (both strings)."
+  (let [dp (goog.ui.DatePicker.)]
+    (display-dialog "Pick a date"
+                    (render-template-as-string editor-templates/date-picker
+                                               {:time include-time?})
+                    (fn [evt]
+                      (when (= "ok" (.-key evt))
+                        (if include-time?
+                          (success-handler (. dp (getDate))
+                                           (get-form-value "hour")
+                                           (get-form-value "minute"))
+                          (success-handler (. dp (getDate))))
+                        (. dp (dispose)))
+                      (remove-dialog)))
+
+    (.decorate dp (dom/getElement "date-widget"))))
 
 (defn display-error [status-el message & other-elements]
   (doseq [el other-elements] (classes/add el "error"))
