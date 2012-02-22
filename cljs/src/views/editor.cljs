@@ -218,29 +218,53 @@
     (.registerPlugin (goog.editor.plugins.LinkDialogPlugin.))
     (.registerPlugin (goog.editor.plugins.LinkBubble.))))
 
-(defn create-editor-toolbar [element-id]
-  (let [buttons (to-array [buttons/BOLD
-                           buttons/ITALIC
-                           buttons/UNDERLINE
-                           buttons/FONT_COLOR
-                           buttons/BACKGROUND_COLOR
-                           buttons/FONT_FACE
-                           buttons/FONT_SIZE
-                           buttons/LINK
-                           buttons/IMAGE
-                           buttons/UNDO
-                           buttons/REDO
-                           buttons/UNORDERED_LIST
-                           buttons/ORDERED_LIST
-                           buttons/INDENT
-                           buttons/OUTDENT
-                           buttons/JUSTIFY_LEFT
-                           buttons/JUSTIFY_CENTER
-                           buttons/JUSTIFY_RIGHT
-                           buttons/SUBSCRIPT
-                           buttons/SUPERSCRIPT
-                           buttons/STRIKE_THROUGH
-                           buttons/REMOVE_FORMAT])]
+(defn create-editor-toolbar [element-id & included-buttons]
+  (let [buttons-map {:bold buttons/BOLD
+                     :italic buttons/ITALIC
+                     :underline buttons/UNDERLINE
+                     :font-color buttons/FONT_COLOR
+                     :background-color buttons/BACKGROUND_COLOR
+                     :font-face buttons/FONT_FACE
+                     :font-size buttons/FONT_SIZE
+                     :link buttons/LINK
+                     :image buttons/IMAGE
+                     :undo buttons/UNDO
+                     :redo buttons/REDO
+                     :unordered-list buttons/UNORDERED_LIST
+                     :ordered-list buttons/ORDERED_LIST
+                     :indent buttons/INDENT
+                     :outdent buttons/OUTDENT
+                     :justify-left buttons/JUSTIFY_LEFT
+                     :justify-center buttons/JUSTIFY_CENTER
+                     :justify-right buttons/JUSTIFY_RIGHT
+                     :subscript buttons/SUBSCRIPT
+                     :superscript buttons/SUPERSCRIPT
+                     :strike-through buttons/STRIKE_THROUGH
+                     :remove-format buttons/REMOVE_FORMAT}
+        buttons (to-array
+                 (map #(get buttons-map %) (or included-buttons
+                                               [:bold
+                                                :italic
+                                                :underline
+                                                :strike-through
+                                                :font-color
+                                                :background-color
+                                                :font-face
+                                                :font-size
+                                                :link
+                                                :image
+                                                :undo
+                                                :redo
+                                                :unordered-list
+                                                :ordered-list
+                                                :indent
+                                                :outdent
+                                                :justify-left
+                                                :justify-center
+                                                :justify-right
+                                                :subscript
+                                                :superscript
+                                                :remove-format])))]
     (DefaultToolbar/makeToolbar buttons (dom/getElement element-id))))
 
 (defn increment-slug [slug]
@@ -331,6 +355,7 @@
                           handle-duplicate-custom-slug-callback)))))
 
 (def editor-field (atom nil))
+(def description-editor-field (atom nil))
 
 (defn get-document-value-map!
   ([language feed-name]
@@ -345,10 +370,13 @@
       :content (or content (html-with-clean-image-uris
                              (.getCleanContents @editor-field
                                                 @editor-field)))
+      :description (html-with-clean-image-uris
+                     (.getCleanContents @description-editor-field
+                                        @description-editor-field))
       :start-time (when-let [start-time (ui/get-form-value "start-time")]
                     start-time)
       :end-time (when-let [end-time (ui/get-form-value "end-time")]
-                    end-time)
+                  end-time)
       :related-pages (vec
                       (get-related-pages
                        (dom/getElement "related-pages-container")))
@@ -993,9 +1021,14 @@
   ([feed feeds documents tpl-map content]
      (let [new? (= "new" (:status tpl-map))
            mode (cond
-                 (= (:default-document-type feed) "image") :image
-                 (= (:default-document-type feed) "menu") :menu
-                 (= (:default-document-type feed) "event") :event
+                 (= (:default-document-type feed) "image")
+                 :image
+                 (= (:default-document-type feed) "menu")
+                 :menu
+                 (= (:default-document-type feed) "event")
+                 :event
+                 (= (:default-document-type feed) "with-description")
+                 :with-description
                  :default :default)
            tpl-map (if (and (= mode :image) (not new?))
                      (assoc tpl-map :image (str "data:"
@@ -1148,30 +1181,75 @@
                                                    datetime-string)))
                             true))))
 
-       (cond
-        (= mode :menu)
-        (when content
-          (update-menu-builder-from-data content feeds documents))
-        :default
-        (let [editor (create-editor-field "content")
-              toolbar (create-editor-toolbar "toolbar")]
-          (reset! editor-field editor)
-          (when content
-            (. editor (setHtml false content true false)))
+       (if (= mode :menu)
+         (when content
+           (update-menu-builder-from-data content feeds documents))
+         (let [editor (create-editor-field "content")
+               toolbar (create-editor-toolbar "toolbar"
+                                              :bold
+                                              :italic
+                                              :underline
+                                              :strike-through
+                                              :font-size
+                                              :link
+                                              :image
+                                              :undo
+                                              :redo
+                                              :unordered-list
+                                              :ordered-list
+                                              :indent
+                                              :outdent
+                                              :justify-left
+                                              :justify-center
+                                              :justify-right
+                                              :subscript
+                                              :superscript
+                                              :remove-format)]
+           (reset! editor-field editor)
+           (when content
+             (. editor (setHtml false content true false)))
 
-          (do
-            (register-editor-plugins editor)
-            (goog.ui.editor.ToolbarController. editor toolbar)
-            (. editor (makeEditable))
+           (do
+             (register-editor-plugins editor)
+             (goog.ui.editor.ToolbarController. editor toolbar)
+             (. editor (makeEditable))
 
-            (events/listen (dom/getElement "image")
-                           event-type/CLICK
-                           (fn [e]
-                             (let [editor-images-el (dom/getElement
-                                                     "editor-images")]
-                               (if (. editor-images-el (hasChildNodes))
-                                 (set! (.-innerHTML editor-images-el) "")
-                                 (display-image-feeds)))))))))))
+             (events/listen (dom/getElement "image")
+                            event-type/CLICK
+                            (fn [e]
+                              (let [editor-images-el (dom/getElement
+                                                      "editor-images")]
+                                (if (. editor-images-el (hasChildNodes))
+                                  (set! (.-innerHTML editor-images-el) "")
+                                  (display-image-feeds))))))))
+
+       (when (= mode :with-description)
+         (classes/remove (dom/getElement "description-container") "hide")
+         (let [description-editor
+               (create-editor-field "description-content")
+               description-toolbar
+               (create-editor-toolbar "description-toolbar"
+                                      :bold
+                                      :italic
+                                      :underline
+                                      :strike-through
+                                      :link
+                                      :undo
+                                      :redo
+                                      :remove-formatting)]
+           (reset! description-editor-field description-editor)
+
+           (when (:description tpl-map)
+             (. description-editor (setHtml false
+                                            (:description tpl-map)
+                                            true
+                                            false)))
+
+           (do
+             (register-editor-plugins description-editor)
+             (goog.ui.editor.ToolbarController. description-editor
+                                                description-toolbar)
+             (. description-editor (makeEditable))))))))
 
 (defn start-default-mode! [feed slug status feeds documents]
   (if (= :new status)
@@ -1206,6 +1284,8 @@
                                               :title ("title" json)
                                               :subtitle (str
                                                          ("subtitle" json))
+                                              :description
+                                              ("description" json)
                                               :slug ("slug" json)
                                               :draft ("draft" json)
                                               :start-time ("start-time" json)

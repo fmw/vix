@@ -640,6 +640,7 @@
                    :subtitle ""
                    :slug "/blog/bar"
                    :content "bar"
+                   :description ""
                    :draft false
                    :related-pages []
                    :related-images []})
@@ -651,6 +652,7 @@
                       (assoc new-doc
                         :title "hic sunt dracones"
                         :subtitle "old maps are cool!"
+                        :description "hey!"
                         :draft true
                         :start-time "2012-02-21 01:19"
                         :end-time "2012-02-21 10:00"
@@ -663,6 +665,7 @@
     (is (= (:published new-doc) (:published updated-doc)))
 
     (is (= (:subtitle new-doc) ""))
+    (is (= (:description new-doc) ""))
     (is (= (:start-time new-doc) nil))
     (is (= (:end-time new-doc) nil))
     (is (= (:start-time-rfc3339 new-doc) nil))
@@ -673,6 +676,7 @@
     
     (is (= (:title updated-doc) "hic sunt dracones"))
     (is (= (:subtitle updated-doc) "old maps are cool!"))
+    (is (= (:description updated-doc) "hey!"))
     (is (= (:start-time updated-doc) "2012-02-21 01:19"))
     (is (= (:end-time updated-doc) "2012-02-21 10:00"))
     (is (= (:start-time-rfc3339 updated-doc) "2012-02-21T00:19:00.000Z"))

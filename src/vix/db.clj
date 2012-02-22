@@ -284,6 +284,7 @@
                  :title (:title new-document)
                  :subtitle (:subtitle new-document)
                  :content (:content new-document)
+                 :description (:description new-document)
                  :draft (:draft new-document)
                  :start-time (:start-time new-document)
                  :end-time (:end-time new-document)

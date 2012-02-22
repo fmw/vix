@@ -94,7 +94,6 @@ a:hover {
     width: 200px;
 }
 
-
 h3 {
     padding: 0;
     margin: 0 0 10px 0;
@@ -158,15 +157,25 @@ h3 {
     color: grey;
 }
 
-#toolbar {
-    with: 602px;
+.editor-caption {
+    margin: 0 0 10px 0;
+    padding: 0;
 }
 
-#content {
+#toolbar, #description-toolbar {
+    width: 602px;
+}
+
+#content, #description-content {
     width: 600px;
     height: 300px;
     background-color: #fff;
     border: 1px solid grey;
+}
+
+#description-content {
+    height: 100px;
+    margin-bottom: 15px;
 }
 
 button {
