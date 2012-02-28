@@ -370,13 +370,25 @@
       :content (or content (html-with-clean-image-uris
                              (.getCleanContents @editor-field
                                                 @editor-field)))
-      :description (html-with-clean-image-uris
-                     (.getCleanContents @description-editor-field
-                                        @description-editor-field))
+      :description (if @description-editor-field
+                     (html-with-clean-image-uris
+                       (.getCleanContents @description-editor-field
+                                          @description-editor-field)))
       :start-time (when-let [start-time (ui/get-form-value "start-time")]
                     start-time)
       :end-time (when-let [end-time (ui/get-form-value "end-time")]
                   end-time)
+      :icon (let [icon-container-el (dom/getElement
+                                     "icon-preview-container")]
+              (when-let [icon-slug-el (first
+                                       (util/get-children-by-tag
+                                        icon-container-el
+                                        "input"))]
+                {:slug (.getAttribute icon-slug-el "value")
+                 :title (.-innerHTML (first
+                                 (util/get-children-by-tag
+                                  icon-container-el
+                                  "span")))}))
       :related-pages (vec
                       (get-related-pages
                        (dom/getElement "related-pages-container")))
@@ -802,6 +814,39 @@
            (update-related-images
             (get-related-images related-images-el))))))))
 
+(defn update-icon-image! [slug title]
+  (when (and slug title)
+    (set! (.-text (dom/getElement "add-icon-image-link"))
+          "Update icon image")
+    
+    (let [icon-preview-container-el (dom/getElement
+                                     "icon-preview-container")]
+      (ui/render-template icon-preview-container-el
+                          tpl/related-image-list-item
+                          {:slug slug
+                           :title title})
+
+      (ui/trigger-on-class
+       "related-image-preview-link"
+       "click"
+       (fn [evt]
+         (. evt (preventDefault))
+         
+         (ui/display-dialog "Image Preview"
+                            (ui/render-template-as-string
+                             tpl/image-preview-dialog
+                             {:image {:slug slug
+                                      :title title}})
+                            #(ui/remove-dialog)
+                            :ok)))
+            
+      (ui/trigger-on-class
+       "related-image-delete-link"
+       "click"
+       (fn [e]
+         (. e (preventDefault))
+         (set! (.-innerHTML icon-preview-container-el) ""))))))
+
 (defn remove-already-related-pages-from-documents
   [related-page-el documents]
   (let [existing-slugs (map :slug (get-related-pages related-page-el))]
@@ -884,7 +929,8 @@
   (ui/render-template (dom/getElement "image-preview-in-dialog-container")
                       tpl/related-image {:image image}))
 
-(defn add-related-image-link-callback [language evt]
+(defn add-related-image-link-callback
+  [language dialog-title dialog-callback-fn evt]
   (document/get-feeds-list
    (fn [evt]
      (let [feeds (. (.-target evt) (getResponseJson))
@@ -897,17 +943,18 @@
             (let [documents (.-documents
                              (. (.-target evt) (getResponseJson)))]
               (ui/display-dialog
-               "Add Related Image"
+               dialog-title
                (ui/render-template-as-string
                 tpl/add-related-image-dialog
                 {:feeds
                  feeds
                  :documents
-                 (remove-already-related-images-from-documents
-                  related-images-el
-                  documents)})
-               (partial add-related-image-dialog-callback
-                        related-images-el))
+                 (if (= dialog-title "Add Related Image")
+                   (remove-already-related-images-from-documents
+                    related-images-el
+                    documents)
+                   documents)})
+               dialog-callback-fn)
 
               (when-let [feed-el (dom/getElement "internal-link-feed")]
                 (events/listen
@@ -1012,6 +1059,15 @@
           (update-related-images (conj
                                  (get-related-images related-images-el)
                                  {:slug slug :title title}))))))
+  (ui/remove-dialog))
+
+(defn add-icon-image-dialog-callback [icon-image-el evt]
+  (when (= "ok" (.-key evt))
+    (let [link-el (dom/getElement "internal-link")
+          slug (.-value link-el)]
+      (if (not-empty slug)
+        (let [title (util/get-select-option-name-by-value link-el slug)]
+          (update-icon-image! slug title)))))
   (ui/remove-dialog))
 
 ;; FIX: fully refactor into something more modular and condensed
@@ -1137,7 +1193,23 @@
          (events/listen add-related-image-link-element
                         event-type/CLICK
                         (partial add-related-image-link-callback
-                                 (:language feed))))
+                                 (:language feed)
+                                 "Add Related Image"
+                                 (partial add-related-image-dialog-callback
+                                          (dom/getElement
+                                           "related-images-container")))))
+
+       (when-let [add-icon-image-link-element (dom/getElement
+                                               "add-icon-image-link")]
+         (update-icon-image! (:slug (:icon tpl-map))
+                             (:title (:icon tpl-map)))
+         (events/listen add-icon-image-link-element
+                        event-type/CLICK
+                        (partial add-related-image-link-callback
+                                 (:language feed)
+                                 "Add Icon Image"
+                                 (partial add-icon-image-dialog-callback
+                                          (dom/getElement "icon-preview")))))
 
        (when (= mode :event)
          (classes/remove (dom/getElement "start-time-row") "hide")
@@ -1265,6 +1337,7 @@
                       :subtitle ""
                       :slug ""
                       :draft false
+                      :icon {:title nil :slug nil}
                       :related-pages []
                       :related-images []}))
     (document/get-doc slug
@@ -1290,6 +1363,9 @@
                                               :draft ("draft" json)
                                               :start-time ("start-time" json)
                                               :end-time ("end-time" json)
+                                              :icon (let [ico ("icon" json)]
+                                                      {:slug ("slug" ico)
+                                                       :title ("title" ico)})
                                               :related-pages
                                               ("related-pages" json)
                                               :related-images

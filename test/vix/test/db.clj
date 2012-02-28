@@ -642,6 +642,7 @@
                    :content "bar"
                    :description ""
                    :draft false
+                   :icon nil
                    :related-pages []
                    :related-images []})
         updated-doc (update-document
@@ -656,6 +657,7 @@
                         :draft true
                         :start-time "2012-02-21 01:19"
                         :end-time "2012-02-21 10:00"
+                        :icon {:title "cat" :slug "/cat.png"}
                         :related-pages [{:title "foo" :slug "bar"}]
                         :related-images [{:title "cat" :slug "cat.png"}]))]
     (is (= (get-document +test-server+ +test-db+ "/blog/bar") updated-doc))
@@ -671,6 +673,7 @@
     (is (= (:start-time-rfc3339 new-doc) nil))
     (is (= (:end-time-rfc3339 new-doc) nil))
     (is (not (:draft new-doc)))
+    (is (nil? (:icon new-doc)))
     (is (= (:related-pages new-doc) []))
     (is (= (:related-images new-doc) []))
     
@@ -682,6 +685,7 @@
     (is (= (:start-time-rfc3339 updated-doc) "2012-02-21T00:19:00.000Z"))
     (is (= (:end-time-rfc3339 updated-doc) "2012-02-21T09:00:00.000Z"))
     (is (true? (:draft updated-doc)))
+    (is (= (:icon updated-doc) {:title "cat" :slug "/cat.png"}))
     (is (= (:related-pages updated-doc) [{:title "foo" :slug "bar"}]))
     (is (= (:related-images updated-doc) [{:title "cat" :slug "cat.png"}])))
   

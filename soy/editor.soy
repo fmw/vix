@@ -77,6 +77,12 @@
            value="" />
   </div>
 
+  <div id="icon-container">
+    <p><a href="#" id="add-icon-image-link">Add icon image</a></p>
+    <div id="icon-preview-container">
+    </div>
+  </div>
+
   <div id="document-relations">
     <p><a href="#" id="add-related-page-link">Add related page</a></p>
     <ul id="related-pages-container"></ul>
@@ -353,14 +359,26 @@
 {template .related_image_list_items}
   {foreach $image in $images}
     <li>
-      <input type="hidden" value="{$image.slug}" />
-      <span>{$image.title}</span>
-      &nbsp;
-      <a href="#" class="related-image-preview-link">(preview)</a>
-      &nbsp;
-      <a href="#" class="related-image-delete-link">(delete)</a>
+        {call .related_image_list_item}
+          {param slug: $image.slug /}
+          {param title: $image.title /}
+        {/call}
     </li>
   {/foreach}
+{/template}
+
+/**
+ *
+ * @param slug
+ * @param title
+ */
+{template .related_image_list_item}
+  <input type="hidden" value="{$slug}" />
+  <span>{$title}</span>
+  &nbsp;
+  <a href="#" class="related-image-preview-link">(preview)</a>
+  &nbsp;
+  <a href="#" class="related-image-delete-link">(delete)</a>
 {/template}
 
 /**
