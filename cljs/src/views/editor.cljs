@@ -363,8 +363,8 @@
   ([language feed-name content]
      {:feed [language feed-name]
       :title (ui/get-form-value "title")
-      :subtitle (when-let [subtitle (ui/get-form-value "subtitle")]
-                  subtitle)
+      :subtitle (when-let [subtitle-el (dom/getElement "subtitle")]
+                  (ui/get-form-value subtitle-el))
       :slug (ui/get-form-value "slug")
       :draft (.-checked (dom/getElement "draft"))
       :content (or content (html-with-clean-image-uris
@@ -374,21 +374,21 @@
                      (html-with-clean-image-uris
                        (.getCleanContents @description-editor-field
                                           @description-editor-field)))
-      :start-time (when-let [start-time (ui/get-form-value "start-time")]
-                    start-time)
-      :end-time (when-let [end-time (ui/get-form-value "end-time")]
-                  end-time)
-      :icon (let [icon-container-el (dom/getElement
-                                     "icon-preview-container")]
+      :start-time (when-let [start-time-el (dom/getElement "start-time")]
+                    (ui/get-form-value  start-time-el))
+      :end-time (when-let [end-time-el (dom/getElement "end-time")]
+                  (ui/get-form-value end-time-el))
+      :icon (when-let [icon-container-el (dom/getElement
+                                          "icon-preview-container")]
               (when-let [icon-slug-el (first
                                        (util/get-children-by-tag
                                         icon-container-el
                                         "input"))]
                 {:slug (.getAttribute icon-slug-el "value")
                  :title (.-innerHTML (first
-                                 (util/get-children-by-tag
-                                  icon-container-el
-                                  "span")))}))
+                                      (util/get-children-by-tag
+                                       icon-container-el
+                                       "span")))}))
       :related-pages (vec
                       (get-related-pages
                        (dom/getElement "related-pages-container")))
