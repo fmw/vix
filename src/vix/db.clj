@@ -101,23 +101,41 @@
             (view-get db-server db-name design-doc view-name view-options))
           (.printStackTrace e)))))
 
-(defn list-feeds [db-server db-name]
-  (if-let [feeds (:rows (view-get db-server
-                                  db-name
-                                  "views"
-                                  "feeds"
-                                  {:descending true}))]
-    (map #(:value %) feeds)))
+(defn list-feeds
+  ([db-server db-name]
+     (list-feeds db-server db-name nil))
+  ([db-server db-name language]
+     (if-let [feeds (:rows (view-get db-server
+                                     db-name
+                                     "views"
+                                     "feeds"
+                                     (if language
+                                       {:descending true
+                                        :startkey [language {}]
+                                        :endkey [language nil]}
+                                       {:descending true})))]
+       (map #(:value %) feeds))))
 
 (defn list-feeds-by-default-document-type
-  [db-server db-name default-document-type]
-  (if-let [feeds (:rows (view-get db-server
-                                  db-name
-                                  "views"
-                                  "feeds_by_default_document_type"
-                                  {:descending true
-                                   :key default-document-type}))]
-    (map #(:value %) feeds)))
+  ([db-server db-name default-document-type]
+     (list-feeds-by-default-document-type db-server
+                                          db-name
+                                          default-document-type
+                                          nil))
+  ([db-server db-name default-document-type language]
+     (if-let [feeds (:rows (view-get db-server
+                                     db-name
+                                     "views"
+                                     "feeds_by_default_document_type"
+
+                                       {:descending true
+                                        :startkey [default-document-type
+                                                   (or language {})
+                                                   {}]
+                                        :endkey [default-document-type
+                                                 language
+                                                 nil]}))]
+       (map #(:value %) feeds))))
 
 (defn get-feed [db-server db-name language feed-name]
   (let [feed (view-get db-server

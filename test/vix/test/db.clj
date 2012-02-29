@@ -117,9 +117,13 @@
     (is (= (:map (:feeds_by_default_document_type (:views view-doc)))
            (str "function(doc) {\n"
                 "    if(doc.type === \"feed\") {\n"
-                "        emit(doc[\"default-document-type\"], doc);\n"
+                "        emit([doc[\"default-document-type\"],\n"
+                "              doc[\"language\"],\n"
+                "              doc[\"name\"]],\n"
+                "             doc);\n"
                 "    }\n"
-                "}")))
+                "}\n")
+))
     
     (is (= (:map (:by_slug (:views view-doc)))
            (str "function(doc) {\n"
@@ -597,6 +601,7 @@
                                +test-db+
                                {:title "Weblog"
                                 :subtitle "Vix Weblog!"
+                                :language "en"
                                 :name "blog"
                                 :default-slug-format
                                 "/{feed-name}/{document-title}"
@@ -605,6 +610,7 @@
                                 +test-db+
                                 {:title "Pages"
                                  :subtitle "Web Pages"
+                                 :language "en"
                                  :name "pages"
                                  :default-slug-format "/{document-title}"
                                  :default-document-type "standard"})
@@ -612,22 +618,78 @@
                                  +test-db+
                                  {:title "Images"
                                   :subtitle "Internal feed with images"
+                                  :language "en"
                                   :name "images"
                                   :default-slug-format
                                   "/media/{document-title}"
                                   :default-document-type "image"})
-        feeds (list-feeds +test-server+ +test-db+)]
+        blog-feed-nl (create-feed +test-server+
+                                  +test-db+
+                                  {:title "Weblog"
+                                   :subtitle "Vix Weblog!"
+                                   :language "nl"
+                                   :name "blog"
+                                   :default-slug-format
+                                   "/{feed-name}/{document-title}"
+                                   :default-document-type
+                                   "with-description"})
+        pages-feed-nl (create-feed +test-server+
+                                   +test-db+
+                                   {:title "Pages"
+                                    :subtitle "Web Pages"
+                                    :language "nl"
+                                    :name "pages"
+                                    :default-slug-format "/{document-title}"
+                                    :default-document-type "standard"})
+        images-feed-nl (create-feed +test-server+
+                                    +test-db+
+                                    {:title "Images"
+                                     :subtitle "Internal feed with images"
+                                     :language "nl"
+                                     :name "images"
+                                     :default-slug-format
+                                     "/media/{document-title}"
+                                     :default-document-type "image"})]
 
-    (is (= (count feeds) 3))
+    (testing "test without providing a language"
+      (is (= [pages-feed-nl
+              images-feed-nl
+              blog-feed-nl
+              pages-feed
+              images-feed
+              blog-feed]
+             (list-feeds +test-server+ +test-db+))))
 
-    (is (some #{blog-feed} feeds))
-    (is (some #{pages-feed} feeds))
-    (is (some #{images-feed} feeds))
+    (testing "test with a language argument"
+      (is (= [pages-feed
+              images-feed
+              blog-feed]
+             (list-feeds +test-server+ +test-db+ "en")))
 
-    (is (= (list-feeds-by-default-document-type +test-server+
-                                                +test-db+
-                                                "image")
-           [images-feed]))))
+      (is (= [pages-feed-nl
+              images-feed-nl
+              blog-feed-nl]
+             (list-feeds +test-server+ +test-db+ "nl"))))
+
+
+    (testing "test with default-document-type without a language argument"
+      (is (= (list-feeds-by-default-document-type +test-server+
+                                                  +test-db+
+                                                  "image")
+             [images-feed-nl images-feed])))
+
+    (testing "test with default-document-type and  a language argument"
+      (is (= (list-feeds-by-default-document-type +test-server+
+                                                  +test-db+
+                                                  "image"
+                                                  "en")
+             [images-feed]))
+
+      (is (= (list-feeds-by-default-document-type +test-server+
+                                                  +test-db+
+                                                  "image"
+                                                  "nl")
+             [images-feed-nl])))))
 
 (deftest test-update-document
   (let [new-doc (create-document

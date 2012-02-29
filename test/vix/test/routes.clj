@@ -469,37 +469,75 @@
         (is (= @search-allowed-feeds {"en" ["pages" "blog"]})
             "Test if search-allowed-feeds is updated when feed is added")
         
-        (let [all-feeds (read-json
+        (let [image-feed (read-json
+                          (:body
+                           (request
+                            :post
+                            "/json/new-feed"
+                            (json-str {:name "image"
+                                       :title "Images"
+                                       :language "en"
+                                       :subtitle "Pictures."
+                                       :default-slug-format
+                                       "/static/{document-title}.{ext}"
+                                       :default-document-type "image"})
+                            main-routes)))
+              all-feeds (read-json
                          (:body
-                          (request :get "/json/list-feeds" main-routes)))]
-          (do
-            (request :post
-                     "/json/new-feed"
-                     (json-str {:name "image"
-                                :title "Images"
-                                :language "en"
-                                :subtitle "Pictures."
-                                :default-slug-format
-                                "/static/{document-title}.{ext}"
-                                :default-document-type "image"})
-                     main-routes))
+                          (request :get "/json/list-feeds" main-routes)))
+              image-feed-nl (read-json
+                             (:body
+                              (request
+                               :post
+                               "/json/new-feed"
+                               (json-str {:name "image"
+                                          :title "Images"
+                                          :language "nl"
+                                          :subtitle "Pictures."
+                                          :default-slug-format
+                                          "/static/{document-title}.{ext}"
+                                          :default-document-type "image"})
+                               main-routes)))]
 
-          (is (= (count all-feeds) 2))
+          (is (= (count all-feeds) 3))
+
+          (testing "test language argument for /json/list-feeds"
+            (is (= (sort-by :name all-feeds)
+                   (sort-by :name
+                            (read-json
+                             (:body
+                              (request :get
+                                       "/json/list-feeds"
+                                       nil
+                                       main-routes
+                                       {:language "en"}))))))
+
+            (is (= [image-feed-nl]
+                   (read-json
+                    (:body
+                     (request
+                      :get
+                      "/json/list-feeds"
+                      nil
+                      main-routes
+                      {:default-document-type "image"
+                       :language "nl"}))))))
+          
           (is (= (count (read-json
                          (:body (request :get
                                          "/json/list-feeds"
                                          main-routes))))
-                 3))
-          (is (= (sort-by :name all-feeds)
-                 (sort-by :name
-                          (read-json
-                           (:body (request
-                                   :get
-                                   "/json/list-feeds"
-                                   nil
-                                   main-routes
-                                   {:default-document-type
-                                    "standard"}))))))))
+                 4))
+          
+          (is (= [image-feed-nl image-feed]
+                 (read-json
+                  (:body (request
+                          :get
+                          "/json/list-feeds"
+                          nil
+                          main-routes
+                          {:default-document-type
+                           "image"})))))))
 
       (let [get-feed-request (request :get "/json/feed/en/blog" main-routes)
             json-body (read-json (:body get-feed-request))]
@@ -518,7 +556,7 @@
           (is (= (:name json-put-body) "blog"))
           (is (= (:title json-put-body) "Vix!"))
           
-          (is (= @search-allowed-feeds {"en" ["pages"]})
+          (is (= @search-allowed-feeds {"nl" [] "en" ["pages"]})
               "Make sure search-allowed-feeds is updated when feeds are")))
     
       (is (:status (request :get "/json/feed/en/blog" main-routes)) 200)

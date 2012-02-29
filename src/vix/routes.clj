@@ -187,13 +187,16 @@
                                      startkey-published
                                      startkey_docid))))
   (GET "/json/list-feeds"
-       {session :session {ddt :default-document-type} :params}
+       {session :session
+        {ddt :default-document-type
+         language :language} :params}
        (when (authorize session nil :* :GET)
          (json-response  (if ddt
                            (db/list-feeds-by-default-document-type db-server
                                                                    database
-                                                                   ddt)
-                           (db/list-feeds db-server database)))))
+                                                                   ddt
+                                                                   language)
+                           (db/list-feeds db-server database language)))))
   (POST "/json/new-feed"
         request
         (when (authorize (:session request) nil :* :POST)

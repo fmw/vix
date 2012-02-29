@@ -79,12 +79,17 @@
 
 (defn get-feeds-list
   ([callback]
-     (get-feeds-list callback nil))
+     (get-feeds-list callback nil nil))
   ([callback default-document-type]
-     (let [uri (if default-document-type
-                 (str "/json/list-feeds?default-document-type="
-                      default-document-type)
-                 "/json/list-feeds")]
+     (get-feeds-list callback default-document-type nil))
+  ([callback default-document-type language]
+     (let [uri (str "/json/list-feeds"
+                    (when default-document-type
+                      (str "?default-document-type=" default-document-type))
+                    (when language
+                      (if default-document-type
+                        (str "&language=" language)
+                        (str "?language=" language))))]
        (xhrio/send uri callback))))
 
 (defn get-feed [language feed-name callback]

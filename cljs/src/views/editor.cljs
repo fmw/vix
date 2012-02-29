@@ -107,7 +107,7 @@
              (butlast img-uri-pairs))
       modified-html))))
 
-(defn display-image-feeds []
+(defn display-image-feeds [language]
   (document/get-feeds-list
    (fn [e]
      (let [xhr (.-target e)
@@ -117,7 +117,8 @@
          (display-images (.-language first-feed) (.-name first-feed) json)
          (ui/render-template (dom/getElement "editor-images")
                              tpl/no-image-feeds-found))))
-   "image"))
+   "image"
+   language))
 
 (defn display-images
   ([language feed-name all-feeds]
@@ -628,7 +629,7 @@
                         tpl/document-link-options
                         {:documents documents})))
 
-(defn call-with-feeds-and-documents [f]    
+(defn call-with-feeds-and-documents [language f]    
   (document/get-feeds-list
    (fn [e]
      (let [feeds (filter #(not (= "menu"
@@ -641,7 +642,9 @@
         (fn [e]
           (let [documents (.-documents (. (.-target e) (getResponseJson)))]
             (do
-              (f feeds documents)))))))))
+              (f feeds documents)))))))
+   nil
+   language))
 
 (defn update-menu-builder [el links new nested feeds documents]
   (ui/render-template el
@@ -980,8 +983,16 @@
                          title (util/get-select-option-name-by-value link-el
                                                                      slug)]
                      (update-image-in-dialog {:title title
-                                              :slug slug})))))))))))
-   "image"))
+                                              :slug slug}))))))))
+         (ui/display-dialog
+          "Error"
+          (ui/render-template-as-string
+           tpl/error-dialog
+           {:message "No image feeds for this language."})
+          #(ui/remove-dialog)
+          :ok))))
+   "image"
+   language))
 
 (defn add-related-page-link-callback [self-slug feeds evt]
   (let [feeds (filter #(not (= "image"
@@ -1293,7 +1304,8 @@
                                                       "editor-images")]
                                 (if (. editor-images-el (hasChildNodes))
                                   (set! (.-innerHTML editor-images-el) "")
-                                  (display-image-feeds))))))))
+                                  (display-image-feeds (:language
+                                                        feed)))))))))
 
        (when (= mode :with-description)
          (classes/remove (dom/getElement "description-container") "hide")
@@ -1427,6 +1439,7 @@
                   :default-document-type ("default-document-type" json)}]
 
         (call-with-feeds-and-documents
+          (:language feed)
           (fn [feeds documents]
             (cond
              (= (:default-document-type feed) "image")
