@@ -81,7 +81,9 @@
   (if (re-matches #"[/\-a-zA-Z0-9\.]+" slug) false true))
 
 (defn link-label-has-invalid-chars? [label]
-  (if (re-matches #"[/\-a-zA-Z0-9\.?!]+" label) false true))
+  (if (re-matches #"[\u0080-\uffffa-zA-Z0-9.?! -]+" label)
+    false
+    true))
 
 (defn html-with-clean-image-uris [html]
   (let [get-num-sub-paths (fn [s] (when (string? s)
@@ -397,6 +399,13 @@
                        (get-related-images
                         (dom/getElement "related-images-container")))}))
 
+
+(defn handle-successful-save []
+  (let [save-button-el (dom/getElement "save-document")]
+    ;; TODO: display status message
+    (set! (.-innerHTML save-button-el) "Save")
+    (set! (.-disabled save-button-el) false)))
+
 (defn save-new-document-xhr-callback [e]
   (let [xhr (.-target e)]
     (if (= (.getStatus xhr e) 201)
@@ -406,7 +415,8 @@
                                           ("feed" json)
                                           "/edit"
                                           ("slug" json))
-                                     (str "Edit \"" ("title" json) "\"")))
+                                     (str "Edit \"" ("title" json) "\""))
+        (handle-successful-save))
       (ui/display-error (dom/getElement "status-message")
                         could-not-create-document-err))))
 
@@ -428,7 +438,7 @@
 (defn save-existing-document-xhr-callback [e]
   (let [xhr (.-target e)]
     (if (= (. xhr (getStatus)) 200)
-      nil ; TODO: display status message
+      (handle-successful-save)
       (ui/display-error (dom/getElement "status-message")
                         could-not-save-document-err))))
 
@@ -711,9 +721,6 @@
                                (.-target evt)))
                              evt))))
 
-(defn menu-container-el? [el]
-  (= (.-id el) "menu-container"))
-
 (defn make-menu-builder-sortable [feeds documents]
   (let [menu-container-el (dom/getElement "menu-container")]
     (ui/to-sortable-tree (dom/getElement menu-container-el)
@@ -723,20 +730,17 @@
                            documents))))
 
 (defn menu-item-dialog-callback [feeds documents parent-el e]
-  (if (= "ok" (.-key e))
-    (let [nested (classes/has parent-el "new-node")
-          new-link-details (menu-item-link-details-from-dialog!)
-          menu-container-el (dom/getElement "menu-container")
-          active-el (or parent-el menu-container-el)]
-      (validate-link-label! (:label new-link-details))
-      (if (classes/has (dom/getElement "add-link-status") "error")
-        (do
-          (. e (preventDefault))
-          (when-not (menu-container-el? active-el)
-            (dom/removeNode active-el)))
-        (do
-          (classes/remove parent-el "new-node")
+  (. e (preventDefault))
+ 
+  (let [active-el (or parent-el menu-container-el)]
+    (if (= "ok" (.-key e))
+      (let [nested (classes/has parent-el "new-node")
+            new-link-details (menu-item-link-details-from-dialog!)
+            menu-container-el (dom/getElement "menu-container")]
+        (validate-link-label! (:label new-link-details))
+        (when-not (classes/has (dom/getElement "add-link-status") "error")
           (let [dummy-el (dom/createElement "ul")]
+            (classes/remove parent-el "new-node")
             (set! (.-innerHTML dummy-el)
                   (ui/render-template-as-string tpl/menu-item-li
                                                 new-link-details))
@@ -748,11 +752,12 @@
              (get-links-from-ul menu-container-el)
              feeds
              documents)
-            (ui/remove-dialog)))))
-    (do
-      (when (classes/has parent-el "new-node")
-        (dom/removeNode parent-el))
-      (ui/remove-dialog))))
+            (ui/remove-dialog))))
+      (do
+        (when (and (not (pos? (count (util/get-children active-el))))
+                   (not (= (.-id active-el) "menu-container")))
+          (dom/removeNode active-el))
+        (ui/remove-dialog)))))
 
 (defn update-related-pages [related-pages]
   (when (not-empty related-pages)
@@ -1163,9 +1168,13 @@
                        (:language feed)
                        (:name feed)))))))]
          
-         (events/listen (dom/getElement "save-document")
-                        "click"
-                        #(validate-title-and-get-save-fn)))
+         (let [save-button-el (dom/getElement "save-document")]
+           (events/listen save-button-el
+                          "click"
+                          (fn [e]
+                            (set! (.-innerHTML save-button-el) "Saving...")
+                            (set! (.-disabled save-button-el) true)
+                            (validate-title-and-get-save-fn)))))
 
        (cond
         (= mode :image)
