@@ -56,22 +56,23 @@
     (time-core/now)))
 
 (defn rfc3339-to-long
-  [s]
+  [date-string]
   "Converts RFC3339 formatted date string to microseconds since UNIX epoch.
    Throws NullPointerException on incorrect input."
-  (when (string? s)
-    (time-coerce/to-long (time-format/parse s))))
+  (when (and (string? date-string) (not (= date-string "")))
+    (time-coerce/to-long (time-format/parse date-string))))
 
 (defn rfc3339-to-jodatime [date-string timezone]
   "Converts a RFC3339 formatted date string into an org.joda.time.DateTime
    object for the provided timezone."
-  (time-core/to-time-zone
-    (time-format/parse
+  (when (and (string? date-string) (not (= date-string "")))
+    (time-core/to-time-zone
+     (time-format/parse
       (time-format/formatters :date-time) date-string)
-    (time-core/time-zone-for-id timezone)))
+     (time-core/time-zone-for-id timezone))))
 
 (defn editor-datetime-to-rfc3339 [date-string timezone]
-  (when (not (= date-string ""))
+  (when (and (string? date-string) (not (= date-string "")))
     (time-format/unparse
      (time-format/formatters :date-time)
      (time-core/from-time-zone
