@@ -255,7 +255,7 @@
         (is (.isIndexed field))
         (is (not (.isStored field)))
         (is (.isTokenized field))
-        (is (= (.stringValue field) "bar\nffff\nme small\nme small")))
+        (is (= (.stringValue field) "bar\n\nffff\nme small\nme small\n")))
       
       (let [field (.getField document "title")]
         (is (= (.name field) "title"))

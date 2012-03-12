@@ -110,24 +110,24 @@
   ; FIXME: fix charset issues
   (is (= (json-response {:foo "bar"})
          {:status 200
-          :headers {"Content-type" "application/json; charset=UTF-8"}
+          :headers {"Content-Type" "application/json; charset=UTF-8"}
           :body "{\"foo\":\"bar\"}"}))
 
   (is (= (json-response {:foo "bar"} :status 201)
          {:status 201
-          :headers {"Content-type" "application/json; charset=UTF-8"}
+          :headers {"Content-Type" "application/json; charset=UTF-8"}
           :body "{\"foo\":\"bar\"}"})))
 
 (deftest test-response
   (is (= (response "foo") {:status 200
-                         :headers {"Content-type"
+                         :headers {"Content-Type"
                                    "text/html; charset=UTF-8"}
                          :body "foo"}))
 
   (is (= (:status (response nil) 404)))
   (is (= (:status (response "foo" :status 201) 201)))
 
-  (is (= (get (:headers (response "foo" :content-type "image/png")) "Content-type")
+  (is (= (get (:headers (response "foo" :content-type "image/png")) "Content-Type")
          "image/png")))
 
 (deftest test-catch-all
@@ -164,7 +164,7 @@
                      :draft false})
           catch-all (catch-all +test-server+ +test-db+ "/pixel.gif")]
 
-      (is (= (get (:headers catch-all) "Content-type") "image/gif"))
+      (is (= (get (:headers catch-all) "Content-Type") "image/gif"))
       (is (= (class (:body catch-all)) java.io.ByteArrayInputStream)))))
 
 (deftest ^{:integration true} test-routes
