@@ -41,7 +41,7 @@
 ; FIXME: test character encoding issues
 (defn response [body & {:keys [status content-type]}]
   {:status (or status (if (nil? body) 404 200))
-   :headers {"Content-type" (or content-type "text/html; charset=UTF-8")}
+   :headers {"Content-Type" (or content-type "text/html; charset=UTF-8")}
    :body body})
 
 ; FIXME: test character encoding issues
