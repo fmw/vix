@@ -116,11 +116,13 @@
   (let [{:keys [feed
                 slug
                 title
+                subtitle
                 draft
                 language
                 published
                 updated
-                content]}
+                content
+                description]}
         vix-doc]
 
     (doto #^Document (Document.)
@@ -130,8 +132,13 @@
                               (apply str
                                      (interpose "\n"
                                                 [title
-                                                 (distill-plaintext
-                                                  content)]))
+                                                 subtitle
+                                                 (when content
+                                                   (distill-plaintext
+                                                    content))
+                                                 (when description
+                                                   (distill-plaintext
+                                                    description))]))
                               :analyzed))
           
           (.add (create-field "feed" feed :indexed-not-analyzed :stored))
@@ -332,34 +339,38 @@
   ([query filter limit reader analyzer]
      (search query filter limit nil nil reader analyzer))
   ([query filter limit after-doc-id after-score reader analyzer]
-     (let [searcher (IndexSearcher. reader)
-           parser (QueryParser. (Version/LUCENE_35) "fulltext" analyzer)
-           q (.parse parser query)
-           top-docs (if (nil? after-doc-id)
-                      (if (nil? filter)
-                        (.search searcher q limit)
-                        (.search searcher q filter limit))
-                      (if (nil? filter)
-                        (.searchAfter searcher
-                                      (ScoreDoc. after-doc-id after-score)
-                                      q
-                                      limit)
-                        (.searchAfter searcher
-                                      (ScoreDoc. after-doc-id after-score)
-                                      q
-                                      filter
-                                      limit)))]
+     (if (and (not-empty query) (not-any? #(= (first query) %) #{\*\?}))
+       (let [searcher (IndexSearcher. reader)
+             parser (QueryParser. (Version/LUCENE_35) "fulltext" analyzer)
+             q (.parse parser query)
+             top-docs (if (nil? after-doc-id)
+                        (if (nil? filter)
+                          (.search searcher q limit)
+                          (.search searcher q filter limit))
+                        (if (nil? filter)
+                          (.searchAfter searcher
+                                        (ScoreDoc. after-doc-id after-score)
+                                        q
+                                        limit)
+                          (.searchAfter searcher
+                                        (ScoreDoc. after-doc-id after-score)
+                                        q
+                                        filter
+                                        limit)))]
 
-       (. searcher close)
+         (. searcher close)
        
-       {:total-hits (.totalHits top-docs)
-        :docs (map #(assoc (document-to-map (second %))
-                      :index {:doc-id (.doc (first %))
-                              :score (.score (first %))})
-                   (partition 2
-                              (interleave
-                               (.scoreDocs top-docs)
-                               (get-docs reader (.scoreDocs top-docs)))))})))
+         {:total-hits (.totalHits top-docs)
+          :docs (map #(assoc (document-to-map (second %))
+                        :index {:doc-id (.doc (first %))
+                                :score (.score (first %))})
+                     (partition 2
+                                (interleave
+                                 (.scoreDocs top-docs)
+                                 (get-docs reader
+                                           (.scoreDocs top-docs)))))})
+       {:total-hits 0
+        :docs nil})))
 
 (defn search-jump-to-page
   "This function performs a search and drops results from the unwanted
