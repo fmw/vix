@@ -440,8 +440,6 @@
               docs (lucene/get-docs reader (:docs result))]
           (is (= (:total-hits result) 0))))
                         
-      (is (= (:status (request :get "/static/css/style.css" main-routes))
-             200))
       (is (= (:status (request :get "/static/none" main-routes)) 404))
       (is (= (:body (request :get "/static/none" main-routes))
              "<h1>Page not found</h1>"))

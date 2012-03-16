@@ -490,9 +490,7 @@
     (is (= (.getMin query)
            (util/rfc3339-to-long "1985-08-04T09:00:00.0Z")))
     (is (= (.getMax query)
-           (util/rfc3339-to-long "2012-01-15T17:54:45.0Z"))))
-
-  (is (thrown? Exception (create-date-range-query "error" "foo" "bar"))))
+           (util/rfc3339-to-long "2012-01-15T17:54:45.0Z")))))
 
 (deftest test-create-filter
   (testing "test if filter with empty arguments returns nil"
