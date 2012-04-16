@@ -103,10 +103,7 @@ Install Vix::
     lein deps
 
 If you chose a different database name earlier you should change the
-src/vix/config.clj script to reflect this. There are also some
-hardcoded references to "/home/fmw/clj/vix" in the src/vix/db.clj
-file, which you should change to something appropriate to your system
-(this will be corrected in a later version).
+src/vix/config.clj script to reflect this.
 
 Start the REPL::
 
