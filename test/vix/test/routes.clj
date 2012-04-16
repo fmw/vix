@@ -20,6 +20,7 @@
         [clojure.contrib.json :only [json-str read-json]]
         [vix.test.db :only [database-fixture +test-server+ +test-db+]])
   (:require [net.cgrand.enlive-html :as html]
+            [vix.config :as config]
             [vix.lucene :as lucene])
   (:use [clojure.test])
   (:import [org.apache.commons.codec.binary Base64]))
@@ -191,8 +192,8 @@
 
   (let [directory (lucene/create-directory :RAM)]
     (with-redefs [search-allowed-feeds (atom {"en" ["pages"]})
-                  search-results-per-page 10
-                  database +test-db+
+                  config/search-results-per-page 10
+                  config/database +test-db+
                   lucene/directory directory]
       (dotimes [n 21]
         (lucene/add-documents-to-index!
@@ -582,7 +583,7 @@
                   :default-document-type "with-description"
                   :language "en"}))
 
-  (with-redefs [database +test-db+
+  (with-redefs [config/database +test-db+
                 lucene/directory (lucene/create-directory :RAM)]
     (testing "Test if authorization is enforced correctly."
       (is (= (:status (unauthorized-request :get "/admin/" main-routes))
@@ -658,7 +659,7 @@
                       :draft false}))
 
   (testing "Test if authentication is enforced correctly."
-    (with-redefs [database +test-db+
+    (with-redefs [config/database +test-db+
                   lucene/directory (lucene/create-directory :RAM)]
       (is (= (:status (unauthenticated-request :get "/admin" main-routes))
              302))
@@ -711,7 +712,7 @@
       "oops"
       {:* ["GET" "POST" "PUT" "DELETE"]}))
 
-  (with-redefs [database +test-db+]
+  (with-redefs [config/database +test-db+]
     (is (= (form-request :post "/login" main-routes {"username" "fmw"
                                                      "password" "foo"})
            {:status 302
