@@ -337,39 +337,27 @@
 (deftest test-create-index-writer
   (testing "test if index writers are created correctly"
     (let [directory (create-directory :RAM)
-          analyzer (create-analyzer)
-          writer (create-index-writer analyzer directory :create)
-          config (.getConfig writer)]
+          analyzer (create-analyzer)]
       
-      (is (= (class writer) IndexWriter))
-      (is (= (.getAnalyzer writer) analyzer))
-      (is (= (.getDirectory writer) directory))
+      (with-open [writer (create-index-writer analyzer directory :create)]
+        (is (= (class writer) IndexWriter))
+        (is (= (.getAnalyzer writer) analyzer))
+        (is (= (.getDirectory writer) directory))
+          
+        (let [config (.getConfig writer)]
+          (is (= (.getRAMBufferSizeMB config) 49.0))
+          (is (= (.getOpenMode config) IndexWriterConfig$OpenMode/CREATE))))
 
-      (is (= (.getRAMBufferSizeMB config) 49.0))
-
-      (is (= (.getOpenMode config) IndexWriterConfig$OpenMode/CREATE))
-
-      (close-index-writer writer)
       
-      (let [writer (create-index-writer analyzer directory :append)
-            config (.getConfig writer)]
-        (is (= (.getOpenMode config) IndexWriterConfig$OpenMode/APPEND))
-        (close-index-writer writer))
+      (with-open [writer (create-index-writer analyzer directory :append)]
+        (is (= (.getOpenMode (.getConfig writer))
+               IndexWriterConfig$OpenMode/APPEND)))
       
-      (let [writer (create-index-writer analyzer directory :create-or-append)
-            config (.getConfig writer)]
-        (is (= (.getOpenMode config)
-               IndexWriterConfig$OpenMode/CREATE_OR_APPEND))
-        (close-index-writer writer)))))
-
-(deftest test-close-index-writer
-  (testing "test if index writers are really closed"
-  
-    (let [writer (create-index-writer (create-analyzer)
-                                      (create-directory :RAM)
-                                      :create)]
-      (is (not (get-field IndexWriter "closed" writer)))
-      (is (get-field IndexWriter "closed" (close-index-writer writer))))))
+      (with-open [writer (create-index-writer analyzer
+                                              directory
+                                              :create-or-append)]
+        (is (= (.getOpenMode (.getConfig writer))
+               IndexWriterConfig$OpenMode/CREATE_OR_APPEND))))))
 
 (deftest test-add-documents-to-index!
   (testing "test passing all documents at once to an encapsulated writer"
@@ -396,9 +384,11 @@
                 "Caol Ila 9"])))))
 
   (testing "test passing documents in batches to the same writer"
-    (let [directory (create-directory :RAM)
-          writer (create-index-writer (create-analyzer) directory :create)]
-      (do
+    (let [directory (create-directory :RAM)]
+
+      (with-open [writer (create-index-writer (create-analyzer)
+                                              directory
+                                              :create)]
         (add-documents-to-index! writer
                                  (subvec (vec dummy-docs-extended) 0 2))
         (add-documents-to-index! writer
@@ -412,9 +402,7 @@
         (add-documents-to-index! writer
                                  (subvec (vec dummy-docs-extended) 10 12))
         (add-documents-to-index! writer
-                                 (subvec (vec dummy-docs-extended) 12 14))
-
-        (close-index-writer writer))
+                                 (subvec (vec dummy-docs-extended) 12 14)))
       
       (let [reader (create-index-reader directory)]
         (is (= (map #(.get % "title")
@@ -678,11 +666,10 @@
 
 (deftest test-search
   (let [dir (create-directory :RAM)
-        analyzer (create-analyzer)
-        writer (create-index-writer analyzer dir :create)]
-    (do
-      (add-documents-to-index! writer dummy-docs-extended)
-      (close-index-writer writer))
+        analyzer (create-analyzer)]
+    
+    (with-open [writer (create-index-writer analyzer dir :create)]
+      (add-documents-to-index! writer dummy-docs-extended))
 
     (let [reader (create-index-reader dir)]
 
@@ -832,11 +819,9 @@
 
 (deftest test-search-jump-to-page
   (let [dir (create-directory :RAM)
-        analyzer (create-analyzer)
-        writer (create-index-writer analyzer dir :create)]
-    (do
-      (add-documents-to-index! writer dummy-docs-extended)
-      (close-index-writer writer))
+        analyzer (create-analyzer)]
+    (with-open [writer (create-index-writer analyzer dir :create)]
+      (add-documents-to-index! writer dummy-docs-extended))
 
     (let [reader (create-index-reader dir)]
       

@@ -183,11 +183,6 @@
     
     (IndexWriter. directory config)))
 
-(defn #^IndexWriter close-index-writer [writer]
-  "Closes the provided IndexWriter and writes the changes to disk (or RAM)."
-  (doto writer
-    (.close)))
-
 (defmulti add-documents-to-index!
   "Supports adding documents to either a provided IndexWriter or
    through an IndexWriter created for the provided documents specifically."
@@ -195,11 +190,10 @@
 
 (defmethod add-documents-to-index! [Directory Object] [directory documents]
   "Adds the documents to the index for the provided directory."
-  (let [writer (create-index-writer (create-analyzer)
-                                    directory
-                                    :create-or-append)]
-    (add-documents-to-index! writer documents)
-    (close-index-writer writer)))
+  (with-open [writer (create-index-writer (create-analyzer)
+                                          directory
+                                          :create-or-append)]
+    (add-documents-to-index! writer documents)))
 
 (defmethod add-documents-to-index! [IndexWriter Object] [writer documents]
   "Adds the documents to the provided IndexWriter, but doesn't close it
@@ -211,20 +205,20 @@
 (defn delete-document-from-index! [directory slug]
   "Deletes the document with the provided slug from the provided Lucene
    Directory object."
-  (doto (create-index-writer (create-analyzer) directory :append)
-    (.deleteDocuments (Term. "slug" slug))
-    (.close)))
+  (with-open [writer (create-index-writer (create-analyzer)
+                                          directory
+                                          :append)]
+    (.deleteDocuments writer (Term. "slug" slug))))
 
 (defn update-document-in-index! [directory slug document]
   "Deletes the existing document with the provided slug from the
    provided Lucene Directory object and creates a new document using
    the provided document map."
-  (let [analyzer (create-analyzer)]
-    (doto (create-index-writer analyzer directory :append)
-      (.updateDocument (Term. "slug" slug)
-                       (create-document document)
-                       analyzer)
-      (.close))))
+  (with-open [writer (create-index-writer analyzer directory :append)]
+    (.updateDocument writer
+                     (Term. "slug" slug)
+                     (create-document document)
+                     (create-analyzer))))
 
 (defn #^NumericRangeQuery create-date-range-query
   [field-name start-date-rfc3339 end-date-rfc3339]
