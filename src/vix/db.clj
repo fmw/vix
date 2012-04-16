@@ -17,6 +17,7 @@
 (ns vix.db
   (:require [clojure.contrib [error-kit :as kit]]
             [clojure.contrib.base64 :as base64]
+            [clojure.java.io :as io]
             [couchdb [client :as couchdb]]
             [clj-http.client :as http]
             [clojure.data.json :as json]
@@ -24,25 +25,21 @@
   (:import [java.net URLEncoder]
            [org.apache.commons.codec.binary Base64]))
 
-(def views {:by_feed  {:map (slurp (str "/home/fmw/clj/vix/src/"
-                                        "database-views/"
-                                        "map_document_by_feed.js"))}
-            :by_slug  {:map (slurp (str "/home/fmw/clj/vix/src/"
-                                        "database-views/"
-                                        "map_document_by_slug.js"))}
-            :by_username  {:map (slurp (str "/home/fmw/clj/vix/src/"
-                                            "database-views/"
-                                            "map_user_by_username.js"))}
-            :feeds {:map (slurp (str "/home/fmw/clj/vix/src/"
-                                     "database-views/"
-                                     "map_feeds.js"))}
-            :feeds_by_default_document_type {:map
-                                             (slurp
-                                              (str "/home/fmw/clj/vix/"
-                                                   "src/database-views/"
-                                                   "map_feeds_by_"
-                                                   "default_document_"
-                                                   "type.js"))}})
+(defn load-view [path]
+  (slurp (io/resource path)))
+
+(def views {:by_feed
+            {:map (load-view "database-views/map_document_by_feed.js")}
+            :by_slug
+            {:map (load-view "database-views/map_document_by_slug.js")}
+            :by_username
+            {:map (load-view "database-views/map_user_by_username.js")}
+            :feeds
+            {:map (load-view "database-views/map_feeds.js")}
+            :feeds_by_default_document_type
+            {:map (load-view (str
+                              "database-views/"
+                              "map_feeds_by_default_document_type.js"))}})
 
 (defn #^{:rebind true} view-sync
   [server db design-doc view-name view-functions]
