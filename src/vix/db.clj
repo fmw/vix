@@ -37,9 +37,13 @@
             :feeds
             {:map (load-view "database-views/map_feeds.js")}
             :feeds_by_default_document_type
-            {:map (load-view (str
-                              "database-views/"
-                              "map_feeds_by_default_document_type.js"))}})
+            {:map (load-view
+                   "database-views/map_feeds_by_default_document_type.js")}
+            :events_by_feed
+            {:map (load-view "database-views/map_events_by_feed.js")}
+            :subscribers
+            {:map (load-view
+                   "database-views/map_newsletter_subscribers.js")}})
 
 (defn #^{:rebind true} view-sync
   [server db design-doc view-name view-functions]
@@ -175,6 +179,24 @@
                 nil)
     (kit/handle couchdb/ResourceConflict []
                 nil)))
+
+(defn get-most-recent-event-documents
+  [db-server db-name language feed-name limit]
+     (let [feed [language feed-name]
+           options {:include_docs true
+                    :startkey [feed {}]
+                    :endkey [feed nil]
+                    :descending true}
+           options (if (nil? limit)
+                     options
+                     (assoc options :limit limit))
+           result (view-get db-server
+                            db-name
+                            "views"
+                            "events_by_feed"
+                            options)]
+       (if-let [entries (:rows result)]
+         (map #(:value %) entries))))
 
 (defn get-documents-for-feed
   ([db-server db-name language feed-name]

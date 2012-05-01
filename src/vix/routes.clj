@@ -1,6 +1,6 @@
 ;; src/vix/routes.clj core routes for the application.
 ;;
-;; Copyright 2011, F.M. (Filip) de Waard <fmw@vix.io>.
+;; Copyright 2011-2012, F.M. (Filip) de Waard <fmw@vix.io>.
 ;;
 ;; Licensed under the Apache License, Version 2.0 (the "License");
 ;; you may not use this file except in compliance with the License.
@@ -25,40 +25,184 @@
             [vix.lucene :as lucene]
             [vix.views :as views]
             [vix.util :as util]
+            [clj-time.format :as time-format]
+            [clj-time.core :as time-core]
             [clojure.contrib [error-kit :as kit]]
             [couchdb [client :as couchdb]]
             [compojure.route :as route]
             [compojure.handler :as handler]))
 
 (def search-allowed-feeds
-  (atom (db/get-searchable-feeds (db/list-feeds config/db-server
-                                                config/database))))
+  (atom (try
+          (db/get-searchable-feeds (db/list-feeds config/db-server
+                                                  config/database))
+          (catch Exception e
+            nil))))
 
-; FIXME: test character encoding issues
 (defn response [body & {:keys [status content-type]}]
   {:status (or status (if (nil? body) 404 200))
    :headers {"Content-Type" (or content-type "text/html; charset=UTF-8")}
    :body body})
 
-; FIXME: test character encoding issues
 (defn json-response [body & {:keys [status]}]
   (response (when-not (nil? body) (json-str body))
             :status (or status (if (nil? body) 404 200))
             :content-type "application/json; charset=UTF-8"))
 
-; FIXME: add a nice 404 page
-; FIXME: add authorization
-(defn catch-all [db-server database slug]
-  (if-let [document (db/get-document db-server database slug)]
-    (if-let [original (:original (:_attachments document))]
-      (response (new java.io.ByteArrayInputStream
-                     (:body (couchdb/attachment-get db-server
+;; FIXME: add a nice 404 page
+(defn page-not-found-response []
+  (response "<h1>Page not found</h1>" :status 404))
+
+(defn image-response [db-server database document]
+  (try
+    (let [resp (response (new java.io.ByteArrayInputStream
+                              (:body (couchdb/attachment-get db-server
+                                                             database
+                                                             document
+                                                             "original")))
+                         :content-type (:content_type
+                                        (:original
+                                         (:_attachments
+                                          document))))]
+      (assoc resp :headers
+             (assoc (:headers resp)
+               "ETag"
+               (:_rev document))
+             "Last-Modified"
+             (time-format/unparse (time-format/formatters :rfc822)
+                                  (util/rfc3339-to-jodatime
+                                   (or (:updated document)
+                                       (:published document))
+                                   "UTC"))))
+    (catch java.io.FileNotFoundException e
+      (page-not-found-response))))
+
+(defmulti get-segment
+  "Multimethod that retrieves the data associated with a page segment
+   based on the segment :type (e.g. :document, :string).
+
+   Segments are used for coupling external entities with documents
+   (e.g. recent news items, but not the related-pages that are already
+   stored in a document attribute).
+
+   They are stored in config/page-segments."
+  (fn [segment-details db-server database language timezone]
+    (:type segment-details)))
+
+(defmethod get-segment :document
+  [segment-details db-server database language timezone]
+  (assoc segment-details
+    :data
+    (db/get-document
+     db-server
+     database
+     ((:slug segment-details) language))))
+
+(defmethod get-segment :most-recent-events
+  [segment-details db-server database language timezone]
+  (let [docs (db/get-most-recent-event-documents db-server
+                                                 database
+                                                 language
+                                                 (:feed segment-details)
+                                                 (:limit segment-details))]
+    (assoc segment-details
+      :data
+      (if (= (count docs) 1)
+        (first docs)
+        docs))))
+
+(defmethod get-segment :feed
+  [segment-details db-server database language timezone]
+  (let [docs (db/get-documents-for-feed db-server
+                                        database
+                                        language
+                                        (:feed segment-details)
+                                        (:limit segment-details))]
+    (assoc segment-details
+      :data
+      (if (= (count docs) 1)
+        (first docs)
+        docs))))
+
+(defmethod get-segment :string
+  [segment-details db-server database language timezone]
+  segment-details)
+
+(defn get-segments [page-segments db-server database language timezone]
+  (into {}
+        (for [[k v] page-segments]
+          [k (get-segment v
+                          db-server
+                          database
+                          language
+                          timezone)])))
+
+(defn get-frontpage-for-language! [db-server database language timezone]
+  (views/frontpage-view
+   language
+   timezone
+   (get-segments (:frontpage config/page-segments)
+                 db-server
+                 database
+                 language
+                 timezone)))
+
+(def *frontpage-cache* (atom {}))
+
+(defn get-cached-frontpage! [db-server database language timezone]
+  (if-let [fp (get @*frontpage-cache* language)]
+    fp
+    (do
+      (swap! *frontpage-cache*
+             assoc
+             language
+             (response (get-frontpage-for-language! db-server
                                                     database
-                                                    (:_id document)
-                                                    "original")))
-                :content-type (:content_type original))
-      (response (views/blog-article-view document config/default-timezone)))
-    (response "<h1>Page not found</h1>" :status 404)))
+                                                    language
+                                                    timezone)))
+      (get-cached-frontpage! db-server database language timezone))))
+
+(defn reset-frontpage-cache! [language]
+  (swap! *frontpage-cache* dissoc language))
+
+(def *page-cache* (atom {}))
+
+(defn get-cached-page! [db-server database slug timezone]
+  (if-let [p (get @*page-cache* slug)]
+    p
+    (if-let [document (db/get-document db-server database slug)]
+      (cond
+       ;; files always skip the cache
+       (:original (:_attachments document))
+       (image-response db-server database document)
+       ;; for event-like documents
+       ;;(not (nil? (:end-time-rfc3339 document)))
+       ;; for all other documents
+       :default
+       (do
+         (swap! *page-cache*
+                assoc
+                slug
+                (response
+                 (views/page-view (:language document)
+                                  timezone
+                                  document
+                                  (get-segments (:default-page
+                                                 config/page-segments)
+                                                db-server
+                                                database
+                                                (:language document)
+                                                timezone))))
+         (get-cached-page! db-server database slug timezone)))
+      
+      (page-not-found-response))))
+
+(defn reset-page-cache! []
+  (compare-and-set! *page-cache* @*page-cache* {}))
+
+;; FIXME: add authorization
+(defn catch-all [db-server database slug timezone]
+  (get-cached-page! db-server database slug timezone))
 
 (defn logout [session]
   {:session (dissoc session :username)
@@ -87,18 +231,34 @@
 ;; consider escaping json calls (e.g. /json/document/_new
 ;; instead of just /new)
 (defroutes main-routes
-  (GET "/test"
-       {{a :a} :params}
-       (json-str a))
   (GET "/"
        []
-       (response (views/blog-frontpage-view
-                  (db/get-documents-for-feed config/db-server
-                                             config/database
-                                             ;; FIXME: make configurable
-                                             "en"
-                                             "blog")
-                  config/default-timezone)))
+       (get-cached-frontpage! config/db-server
+                              config/database
+                              config/default-language
+                              config/default-timezone))
+  (GET "/admin*"
+       {session :session {feed "feed"} :params}
+       (when (authorize session nil :* :DELETE)
+         (response (views/admin-template {}))))
+  (GET "/login"
+       []
+       (response (views/login-page-template "")))
+  (POST "/login"
+        {session :session
+         {username "username" password "password"} :form-params}
+        (login session username password))
+  (GET "/logout"
+       {session :session}
+       (logout session))
+  (GET "/:language"
+       {{language :language} :params}
+       (if (<= (count language) 3)
+         (get-cached-frontpage! config/db-server
+                                config/database
+                                language
+                                config/default-timezone)
+         (page-not-found-response)))
   (GET "/:language/search"
        {{language :language
          q :q
@@ -130,7 +290,13 @@
              pp-after-score
              after-doc-id-int
              after-score-float
-             false)
+             false
+             (get-segments (:search-page
+                            config/page-segments)
+                           config/db-server
+                           config/database
+                           language
+                           config/default-timezone))
             (views/search-results-view
              language
              config/search-results-per-page
@@ -150,21 +316,13 @@
              pp-after-score
              after-doc-id-int
              after-score-float
-             true)))))
-  (GET "/admin*"
-       {session :session {feed "feed"} :params}
-       (when (authorize session nil :* :DELETE)
-         (response (views/admin-template {}))))
-  (GET "/login"
-       []
-       (response (views/login-page-template "")))
-  (POST "/login"
-        {session :session
-         {username "username" password "password"} :form-params}
-        (login session username password))
-  (GET "/logout"
-       {session :session}
-       (logout session))
+             true
+             (get-segments (:search-page
+                            config/page-segments)
+                           config/db-server
+                           config/database
+                           language
+                           config/default-timezone))))))
   (GET "/json/:language/:feed/list-documents"
        {{language :language
          feed-name :feed
@@ -200,6 +358,7 @@
           (let [feed (db/create-feed config/db-server
                                      config/database
                                      (read-json (slurp* (:body request))))]
+            (reset-frontpage-cache! (:language feed))
             (compare-and-set! search-allowed-feeds
                               @search-allowed-feeds
                               (db/get-searchable-feeds
@@ -228,6 +387,7 @@
                                       language
                                       feed-name
                                       (read-json (slurp* body)))]
+             (reset-frontpage-cache! language)
              (compare-and-set! search-allowed-feeds
                                @search-allowed-feeds
                                (db/get-searchable-feeds
@@ -247,7 +407,8 @@
                 config/db-server
                 config/database
                 language
-                feed-name)))
+                feed-name))
+              (reset-frontpage-cache! language))
             (json-response nil)))
   (POST "/json/:language/:feed/new"
         {{language :language feed-name :feed} :params
@@ -261,6 +422,7 @@
                                              config/default-timezone
                                              (read-json (slurp* body)))]
             (lucene/add-documents-to-index! lucene/directory [document])
+            (reset-frontpage-cache! language)
             (json-response document :status 201))))
   (GET "/json/document/*"
        {{slug :*} :params session :session}
@@ -275,8 +437,7 @@
        {{slug :*} :params body :body session :session}
        (let [slug (util/force-initial-slash slug)]
          (if-let [document (db/get-document config/db-server
-                                            config/database
-                                            slug)]
+                                            config/database slug)]
            (when (authorize session
                             (:language document)
                             (:feed document)
@@ -289,6 +450,8 @@
                (lucene/update-document-in-index! lucene/directory
                                                  slug
                                                  document)
+               (reset-frontpage-cache! (:language document))
+               (reset-page-cache!)
                (json-response document)))
            (json-response nil))))
   (DELETE "/json/document/*"
@@ -301,6 +464,8 @@
                                (:language document)
                                (:feed document)
                                :DELETE)
+                (reset-page-cache!)
+                (reset-frontpage-cache! (:language document))
                 (let [document (db/delete-document config/db-server
                                                    config/database
                                                    slug)]
@@ -312,17 +477,76 @@
        {{slug :*} :params}
        (catch-all config/db-server
                   config/database
-                  (util/force-initial-slash slug))))
+                  (util/force-initial-slash slug)
+                  config/default-timezone)))
 
 (defn handle-authentication-errors [handler]
+  "Middleware function that redirects on insufficient privileges."
   (fn [request]
     (kit/with-handler
       (handler request)
       (kit/handle InsufficientPrivileges []
         (redirect "/permission-denied"))
       (kit/handle AuthenticationRequired []
-        (redirect "/login")))))
+                  (redirect "/login")))))
+
+(defn wrap-caching-headers [handler]
+  "Middleware function that adds Cache-Control: public and Expires
+   headers to for image/png, image/jpeg, image/gif, text/css and
+   text/javascript requests. Adds an Expires header with a date that
+   is surely in the past for all other requests."
+  (fn [request]
+    (let [now (time-core/now)
+          response (handler request)]
+      (if (some #{(get (:headers response) "Content-Type")}
+                ["image/png"
+                 "image/jpeg"
+                 "image/gif"
+                 "text/css"
+                 "text/javascript"])
+        (assoc response :headers
+               (assoc (:headers response)
+                 "Cache-Control"
+                 "public"
+                 "Expires"
+                 (time-format/unparse (time-format/formatters :rfc822)
+                                      (time-core/plus now
+                                                      (time-core/years 3)))))
+        (assoc response :headers
+               (assoc (:headers response)
+                 "Expires" "Mon, 26 Mar 2012 09:00:00 GMT"))))))
+
+(defn redirect-301 [to]
+  "Returns a 'Moved Permanently' redirect with HTTP status 301."
+  {:status 301
+   :body "Moved Permanently"
+   :headers {"Location" to}})
+
+(defn redirection-handler [handler]
+  "Deals with the following redirects:
+   - redirects all relevant requests to config/default-host
+     (e.g. vixu.com -> www.vixu.com),
+   - redirects all non-SSL requests to /admin to SSL,
+   - any custom redirects specified in config/redirects."
+  (fn [request]
+    (cond
+     ;; redirect requests to default-host if necessary
+     (not (= (:server-name request) config/default-host))
+     (redirect-301 (str "http://" config/default-host (:uri request)))
+     ;; redirect /admin on non-localhost to https
+     (and (= (apply str (take 6 (:uri request))) "/admin")
+          (= (:scheme request) :http)
+          (not (= (:server-name request) "localhost")))
+     (redirect-301 (str "https://" config/default-host (:uri request)))
+     ;; perform custom redirects configured in config/redirects
+     (string? (get config/redirects (:uri request)))
+     (redirect-301 (get config/redirects (:uri request)))
+     ;; otherwise, move on to default handler and serve the page
+     :default
+     (handler request))))
 
 (def app
   (-> (handler/site main-routes)
+      ;(redirection-handler)
+      (wrap-caching-headers)
       (handle-authentication-errors)))

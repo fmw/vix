@@ -14,53 +14,172 @@
 ;; limitations under the License.
 
 (ns vix.views
-  (:require [net.cgrand.enlive-html :as html]
+  (:require [clojure.zip :as zip]
+            [net.cgrand.enlive-html :as html]
             [clj-time.core :as time-core]
-            [vix.util :as util]))
+            [clj-time.format :as time-format]
+            [vix.util :as util]
+            [vix.config :as config]))
 
-(html/deftemplate login-page-template "templates/login.html"
+(defmacro deftemplates
+  "Defines multiple Enlive templates. The same as Enlive's deftemplate,
+  but using a map with template sources as values instead of just a
+  single source string."
+  [name sources args & forms]
+  `(defn ~name [key# & fn-args#]
+     (let [templates# (zipmap (keys ~sources)
+                              (map (fn [source#]
+                                     (html/template source# ~args ~@forms))
+                                   (vals ~sources)))]
+       (apply (get templates# key#) fn-args#))))
+
+(defmacro defsnippets
+  "Defines multiple Enlive templates. The same as Enlive's deftemplate,
+  but using a map with template sources as values instead of just a
+  single source string."
+  [name sources selector args & forms]
+  `(defn ~name [key# & fn-args#]
+     (let [templates# (zipmap (keys ~sources)
+                              (map (fn [source#]
+                                     (html/snippet source#
+                                                   ~selector
+                                                   ~args
+                                                   ~@forms))
+                                   (vals ~sources)))]
+       (apply (get templates# key#) fn-args#))))
+
+(html/deftemplate login-page-template "templates/en/login.html"
   [message]
   [:div#status-message] (html/content message))
 
-(html/deftemplate admin-template "templates/admin.html"
+(html/deftemplate admin-template "templates/en/admin.html"
   [ctxt]
   [:div#status-message] (html/content (:message ctxt)))
 
-(html/deftemplate layout "templates/layout.html"
-  [{:keys [title main]}]
+(deftemplates layout
+  {:nl "templates/nl/layout.html"
+   :en "templates/en/layout.html"}
+  [language {:keys [menu title main background-image]}]
+  [:#menu] (if menu
+             (html/substitute menu)
+             identity)
   [:title] (if title
-             (html/content title) identity)
-  [:#page-title] (when title
-                   (html/content title))
-  [:div#main-content] (when main
-                        (html/substitute main)))
+             (html/content (str config/title-prefix title)) identity)
+  [[:#search-form-container] [:form]]
+  (html/set-attr :action (str "/" language "/search"))
+  [:html]
+  (html/set-attr :lang language)
+  [:div#content-bar] (when main
+                       (html/html-content
+                        (apply str (drop 2 (butlast (butlast main)))))))
 
-(html/defsnippet article-model "templates/blog-article.html"
-  [[:article (html/nth-of-type 1)]]
-  [{:keys [slug title content]} published include-title-link?]
-  [:h4 :a] (when include-title-link?
-             (html/do->
-              (html/content title) (html/set-attr :href slug)))
-  [:.month] (html/content (str (time-core/month published)))
-  [:.day] (html/content (str (time-core/day published)))
-  [:.year] (html/content (str (time-core/year published)))
-  [:.hour] (html/content (str (time-core/hour published)))
-  [:.minute] (html/content (str (time-core/minute published)))
-  [:div.content] (html/html-content content))
+(defsnippets screenshot-model
+  {:nl "templates/nl/frontpage.html"
+   :en "templates/en/frontpage.html"}
+  [[:.screenshot-container (html/nth-of-type 1)]]
+  [{:keys [slug title]}]
+  [[:img (html/nth-of-type 1)]]
+  (if slug
+    (html/do->
+     (html/set-attr :src (str config/cdn-hostname slug))
+     (html/set-attr :title title)
+     (html/set-attr :alt title))
+    (html/substitute nil))
+  [[:h5 (html/nth-of-type 1)]]
+  (html/content title))
 
-(defn blog-frontpage-view [documents timezone]
-  (layout {:main (map #(article-model %
-                                      (util/rfc3339-to-jodatime
-                                       (:published %) timezone)
-                                      true)
-                      (:documents documents))}))
+(deftemplates frontpage
+  {:nl "templates/nl/frontpage.html"
+   :en "templates/en/frontpage.html"}
+  [timezone
+   language
+   {:keys [frontpage]}]
+  [:div#leader-text]
+  (when (map? (:data frontpage))
+    (html/html-content
+     (:description (:data frontpage))))
+  [:div#advantages-container]
+  (when (map? (:data frontpage))
+    (html/html-content
+     (:content (:data frontpage))))
+  [:.screenshot-container]
+  (html/substitute nil)
+  [:div#teaser-image-container]
+  (when (pos? (count (:related-images (:data frontpage))))
+    (html/prepend
+     (map (partial screenshot-model (keyword language))
+          (:related-images (:data frontpage))))))
 
-(defn blog-article-view [document timezone]
-  (layout {:main (article-model document
-                                (util/rfc3339-to-jodatime
-                                 (:published document) timezone)
-                                false)
-           :title (:title document)}))
+(defn transform-menu [original]
+  (if original
+    (let [r (html/html-resource (java.io.StringReader. original))]
+      (html/select
+       (html/transform
+        (html/transform
+         (html/transform
+          (html/transform
+           (html/transform
+            (html/transform
+             r
+             [:ul]
+             (html/set-attr :id "menu"))
+            [[:li]]
+            (html/set-attr :class
+                           "block menu-category"))
+           [[:ul] [:ul] [:li]]
+           (html/remove-attr :class))
+          [[:ul] [:ul]]
+          (html/do->
+           (html/set-attr :class "sub-menu")
+           (html/remove-attr :id)))
+         [:a]
+         (html/set-attr :class "menu-main-item"))
+        [[:ul] [:ul] [:a]]
+        (html/remove-attr :class))
+       [:#menu]))))
+
+(defn frontpage-view
+  [language
+   timezone
+   segments]
+  (layout
+   (keyword language)
+   language
+   {:menu (transform-menu (:content (:data (:menu segments))))
+    :main
+    (frontpage (keyword language)
+               timezone
+               language
+               segments)}))
+
+(deftemplates content-page-model
+  {:nl "templates/nl/content-page.html"
+   :en "templates/en/content-page.html"}
+  [{:keys [content description subtitle]}]
+  [:h1#page-title]
+  (if (not-empty subtitle)
+    (html/content subtitle)
+    (html/substitute nil))
+  [:div#leader-text]
+  (when description
+    (html/html-content description))
+  [:div#content]
+  (when content
+    (html/html-content content)))
+
+(defn page-view
+  [language
+   timezone
+   document
+   segments]
+  (layout
+   (keyword language)
+   language
+   {:title (:title document)
+    :menu (transform-menu (:content (:data (:menu segments))))
+    :main
+    (content-page-model (keyword language)
+                        document)}))
 
 (defn make-pagination-uri
   [language
@@ -127,15 +246,18 @@
                    (nil? after-score))
       (str base-uri pp-after-doc-id-str pp-after-score-str))))
 
-(html/defsnippet search-result-model "templates/search-results.html"
+(defsnippets search-result-model
+  {:nl "templates/nl/search-results.html"
+   :en "templates/en/search-results.html"}
   [[:ol#search-results] [:li]]
   [document]
   [:a] (html/do->
         (html/content (:title document))
         (html/set-attr :href (:slug document))))
 
-(html/defsnippet search-results-snippet "templates/search-results.html"
-  [:div#main-content]
+(deftemplates search-results
+  {:nl "templates/nl/search-results.html"
+   :en "templates/en/search-results.html"}
   [language
    per-page
    result
@@ -145,19 +267,29 @@
    after-doc-id
    after-score
    has-next-page?
-   first-page?]
-  [:span#search-stats] (html/content (cond ;; FIXME: i18n here!
-                                      (= (:total-hits result) 0)
-                                      "No results for query"
-                                      (= (:total-hits result) 1)
-                                      "1 result for query"
-                                      :else
-                                      (str (:total-hits result)
-                                           " results for query")))
+   first-page?
+   segments]
+  [:span#search-stats] (html/content
+                        (cond           ; FIXME: i18n here!
+                         (= (:total-hits result) 0)
+                         (if (= language "nl")
+                           "Geen resultaten voor zoekopdracht"
+                           "No results for query")
+                         (= (:total-hits result) 1)
+                         (if (= language "nl")
+                           "1 resultaat voor zoekopdracht"
+                           "1 result for query")
+                         :else
+                         (str (:total-hits result)
+                              (if (= language "nl")
+                                " resultaten voor zoekopdracht"
+                                " results for query"))))
   [:strong#search-stats-query] (html/content query)
   [:ol#search-results] (when (not (empty? (:docs result)))
                          (html/content
-                          (map search-result-model (:docs result))))
+                          (map (partial search-result-model
+                                        (keyword language))
+                               (:docs result))))
   [:a#next-search-results-page] (when has-next-page?
                                   (html/set-attr
                                    :href
@@ -197,21 +329,93 @@
    pp-after-score
    after-doc-id
    after-score
-   first-page?]
+   first-page?
+   segments]
   (let [has-next-page? (if (= (count (:docs result)) (inc per-page))
-                     true
-                     false)]
-    (layout {:title "Search Results"
-             :main (search-results-snippet language
-                                           per-page
-                                           (if has-next-page?
-                                             (assoc result :docs
-                                                    (butlast (:docs result)))
-                                             result)
-                                           query
-                                           pp-after-doc-id
-                                           pp-after-score
-                                           after-doc-id
-                                           after-score
-                                           has-next-page?
-                                           first-page?)})))
+                         true
+                         false)]
+    (layout (keyword language)
+            language
+            {:menu (transform-menu (:content (:data (:menu segments))))
+             :title (if (= language "nl")
+                      (str "Zoekresultaten voor '" query "'")
+                      (str "Search Results for '" query "'"))
+             :main (search-results (keyword language)
+                                   language
+                                   per-page
+                                   (if has-next-page?
+                                     (assoc result :docs
+                                            (butlast (:docs result)))
+                                     result)
+                                   query
+                                   pp-after-doc-id
+                                   pp-after-score
+                                   after-doc-id
+                                   after-score
+                                   has-next-page?
+                                   first-page?
+                                   segments)})))
+
+(deftemplates newsletter-subscribed-template
+  {:en "templates/en/newsletter-subscribed.html"
+   :nl "templates/nl/newsletter-subscribed.html"}
+  [language news-items]
+  )
+
+(defn newsletter-subscribed-view
+  [language segments]
+  (layout
+   language
+   (keyword language) ;;FIXME: add title
+   {:menu (transform-menu (:content (:data (:menu segments))))
+    :main (newsletter-subscribed-template (keyword language)
+                                          language
+                                          (:recent-news segments))}))
+
+(deftemplates newsletter-already-subscribed-template
+  {:en "templates/en/newsletter-already-subscribed.html"
+   :nl "templates/nl/newsletter-already-subscribed.html"}
+  [language news-items]
+  )
+
+
+(defn newsletter-already-subscribed-view
+  [language segments]
+  (layout
+   (keyword language) ;;FIXME: add title
+   language
+   {:menu (transform-menu (:content (:data (:menu segments))))
+    :main (newsletter-already-subscribed-template (keyword language)
+                                                  language
+                                                  (:recent-news segments))}))
+
+(deftemplates newsletter-confirmed-template
+  {:en "templates/en/newsletter-confirmed.html"
+   :nl "templates/nl/newsletter-confirmed.html"}
+  [language news-items])
+
+(defn newsletter-confirmed-view
+  [language segments]
+  (layout
+   (keyword language) ;;FIXME: add title
+   language
+   {:menu (transform-menu (:content (:data (:menu segments))))
+    :main (newsletter-confirmed-template (keyword language)
+                                         language
+                                         (:recent-news segments))}))
+
+(deftemplates newsletter-confirmation-failed-template
+  {:en "templates/en/newsletter-confirmation-failed.html"
+   :nl "templates/nl/newsletter-confirmation-failed.html"}
+  [language news-items])
+
+
+(defn newsletter-confirmation-failed-view
+  [language segments]
+  (layout
+   (keyword language) ;;FIXME: add title
+   language
+   {:menu (transform-menu (:content (:data (:menu segments))))
+    :main (newsletter-confirmation-failed-template (keyword language)
+                                                   language
+                                                   (:recent-news segments))}))

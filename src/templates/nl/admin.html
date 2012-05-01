@@ -1,0 +1,68 @@
+<!doctype html>
+<!--[if lt IE 7 ]> <html lang="en" class="no-js ie6"> <![endif]-->
+<!--[if IE 7 ]>    <html lang="en" class="no-js ie7"> <![endif]-->
+<!--[if IE 8 ]>    <html lang="en" class="no-js ie8"> <![endif]-->
+<!--[if IE 9 ]>    <html lang="en" class="no-js ie9"> <![endif]-->
+<!--[if (gt IE 9)|!(IE)]><!--> <html lang="en" class="no-js"> <!--<![endif]-->
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+
+  <title>Vix Editor</title>
+
+  <link rel="stylesheet" href="/static/css/style.css">
+
+  <link rel="stylesheet" href="/static/css/button.css" />
+  <link rel="stylesheet" href="/static/css/dialog.css" />
+  <link rel="stylesheet" href="/static/css/linkbutton.css" />
+  <link rel="stylesheet" href="/static/css/menu.css">
+  <link rel="stylesheet" href="/static/css/menuitem.css">
+  <link rel="stylesheet" href="/static/css/menuseparator.css">
+  <link rel="stylesheet" href="/static/css/tab.css" />
+  <link rel="stylesheet" href="/static/css/tabbar.css" />
+  <link rel="stylesheet" href="/static/css/toolbar.css" />
+  <link rel="stylesheet" href="/static/css/colormenubutton.css" />
+  <link rel="stylesheet" href="/static/css/palette.css" />
+  <link rel="stylesheet" href="/static/css/colorpalette.css" />
+  <link rel="stylesheet" href="/static/css/datepicker.css" />
+
+  <link rel="stylesheet" href="/static/css/editor/bubble.css" />
+  <link rel="stylesheet" href="/static/css/editor/dialog.css" />
+  <link rel="stylesheet" href="/static/css/editor/linkdialog.css" />
+  <link rel="stylesheet" href="/static/css/editortoolbar.css" />
+
+  <!--[if lt IE 9]>
+      <script src="http://html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+  <![endif]--> 
+</head>
+
+<body>
+  <div id="wrapper"> 
+    <header id="header">
+      <div id="logo-bar">
+        <h1 id="logo">vix</h1>
+      </div>
+      <nav>
+        <ul id="menu">
+          <li><a href="/admin/">Feeds</a></li>
+          <li><a href="/logout">Logout</a></li>
+        </ul> 
+      </nav> 
+    </header>
+
+    <div id="main-page">
+    </div>
+
+    <!-- In unoptimized mode, additional script tags are required -->
+    <script type="text/javascript" src="/static/js/out/goog/base.js"></script>
+    <script type="text/javascript" src="/static/js/vix/vix.js"></script>
+    <script type="text/javascript">
+      goog.require('vix.core');
+    </script>
+    <script type="text/javascript">
+      vix.core.start_app(location.pathname);
+    </script>
+
+  </div>
+</body>
+</html>

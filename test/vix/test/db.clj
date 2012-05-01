@@ -27,8 +27,10 @@
   (re-matches #"^[a-z0-9]{32}$" s))
 
 (defn couchdb-rev?
-  ([s] (couchdb-rev? 1 s))
-  ([rev-num s] (re-matches (re-pattern (str "^" rev-num "-[a-z0-9]{32}$")) s)))
+  ([s]
+     (couchdb-rev? 1 s))
+  ([rev-num s]
+     (re-matches (re-pattern (str "^" rev-num "-[a-z0-9]{32}$")) s)))
 
 (defn iso-date? [s]
   (re-matches
@@ -51,6 +53,13 @@
   (couchdb/database-delete +test-server+ +test-db+))
 
 (use-fixtures :each database-fixture)
+
+(deftest test-load-view
+  (is (= (load-view "database-views/map_newsletter_subscribers.js")
+         (str "function(doc) {\n"
+              "    if(doc.type === \"newsletter-subscriber\") {\n"
+              "        emit([doc.language, doc.email], doc);\n"
+              "    }\n}\n"))))
 
 (deftest test-view-sync
   (testing "Create new view"
@@ -101,11 +110,11 @@
 (deftest test-create-views
   (create-views +test-server+ +test-db+ "views" views)
   (let [view-doc (read-json (:body (http/get
-                     (str +test-server+
-                          +test-db+
-                          "/_design/views"))))]
+                                    (str +test-server+
+                                         +test-db+
+                                         "/_design/views"))))]
 
-    (is (= (count (:views view-doc)) 5))
+    (is (= (count (:views view-doc)) 7))
     
     (is (= (:map (:feeds (:views view-doc)))
            (str "function(doc) {\n"
@@ -122,8 +131,7 @@
                 "              doc[\"name\"]],\n"
                 "             doc);\n"
                 "    }\n"
-                "}\n")
-))
+                "}\n")))
     
     (is (= (:map (:by_slug (:views view-doc)))
            (str "function(doc) {\n"
@@ -136,7 +144,7 @@
            (str "function(doc) {\n"
                 "    if(doc.type === \"document\") {\n"
                 "        emit([[doc.language, doc.feed], doc.published]"
-                           ", doc);\n"
+                ", doc);\n"
                 "    }\n"
                 "}\n")))
 
@@ -145,7 +153,20 @@
                 "    if(doc.type === \"user\") {\n"
                 "        emit(doc.username, doc);\n"
                 "    }\n"
-                "}\n")))))
+                "}\n")))
+
+    (is (= (:map (:events_by_feed (:views view-doc)))
+           (str "function(doc) {\n"
+                "    if(doc.type === \"document\" "
+                "&& doc[\"end-time-rfc3339\"]) {\n"
+                "        emit([[doc.language, doc.feed], "
+                "doc[\"end-time-rfc3339\"]], doc);\n    }\n}\n")))
+
+    (is (= (:map (:subscribers (:views view-doc)))
+           (str "function(doc) {\n"
+                "    if(doc.type === \"newsletter-subscriber\") {\n"
+                "        emit([doc.language, doc.email], doc);\n"
+                "    }\n}\n")))))
 
 (deftest test-encode-view-options
   (is (= (encode-view-options {:key "blog" :include_docs true})
@@ -973,3 +994,76 @@
   (is (= (get-searchable-feeds (list-feeds +test-server+ +test-db+))
          {"nl" ["blog"]
           "en" ["images" "blog"]})))
+
+(deftest test-get-most-recent-event-documents
+  (let [doc-1 (create-document +test-server+
+                               +test-db+
+                               "en"
+                               "events"
+                               "Europe/Amsterdam"
+                               {:title
+                                "Tomasz Stańko Middelburg"
+                                :slug
+                                "/en/events/stanko-middelburg"
+                                :content
+                                (str "The legendary Polish trumpet player "
+                                     "Stańko will be playing in Middelburg.")
+                                :start-time
+                                "2012-04-25 20:30"
+                                :end-time
+                                "2012-04-25 23:59"
+                                :draft false})
+
+        doc-2 (create-document +test-server+
+                               +test-db+
+                               "en"
+                               "events"
+                               "Europe/Amsterdam"
+                               {:title
+                                "The Impossible Gentlemen"
+                                :slug
+                                "/en/events/impossible-gentlemen-amsterdam"
+                                :content
+                                (str "Gwilym Simcock, Mike Walker, "
+                                     "Adam Nussbaum, Steve Swallow "
+                                     "will be playing at the Bimhuis "
+                                     "in Amsterdam.")
+                                :start-time
+                                "2012-07-06 20:30"
+                                :end-time
+                                "2012-07-06 23:59"
+                                :draft false})
+
+        doc-3 (create-document +test-server+
+                               +test-db+
+                               "en"
+                               "events"
+                               "Europe/Amsterdam"
+                               {:title
+                                "Yuri Honing"
+                                :slug
+                                "/en/events/yuri-honing-tilburg"
+                                :content
+                                (str "VPRO/Boy Edgar prize winner "
+                                     "Yuri Honing will be playing at "
+                                     "the Paradox venue in Tilburg.")
+                                :start-time
+                                "2013-02-01 20:30"
+                                :end-time
+                                "2013-02-01 23:59"
+                                :draft false})]
+
+    (is (= (get-most-recent-event-documents +test-server+
+                                            +test-db+
+                                            "en"
+                                            "events"
+                                            nil)
+           [doc-3 doc-2 doc-1]))
+
+    ;; when limited, the fn retrieves (inc limit)
+    (is (= (get-most-recent-event-documents +test-server+
+                                            +test-db+
+                                            "en"
+                                            "events"
+                                            1)
+           [doc-3]))))

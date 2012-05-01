@@ -22,6 +22,7 @@
             [net.cgrand.enlive-html :as html]
             [clj-time.coerce :as time-coerce]
             [clojure.contrib.math :as math]
+            [vix.config :as config]
             [vix.util :as util])
   (:import [org.apache.lucene.document
             Document Field Field$Store Field$Index NumericField]
@@ -37,8 +38,6 @@
            [org.jsoup Jsoup]
            [java.io File]))
 
-(def index-path "/var/lucene/vix")
-
 (defn #^StandardAnalyzer create-analyzer []
   "Creates a StandardAnalyzer that tokenizes fulltext fields."
   (StandardAnalyzer. (. Version LUCENE_35)))
@@ -49,7 +48,7 @@
     (RAMDirectory.)
     (NIOFSDirectory. (File. path))))
 
-(def directory (create-directory index-path))
+(def directory (create-directory config/lucene-index-path))
 (def analyzer (create-analyzer))
 
 (defn #^IndexReader create-index-reader [#^Directory directory]

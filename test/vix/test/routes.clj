@@ -1,29 +1,37 @@
-; test/vix/test/routes.clj tests for routes namespace.
-; Copyright 2011, F.M. (Filip) de Waard <fmw@vix.io>.
-;
-; Licensed under the Apache License, Version 2.0 (the "License");
-; you may not use this file except in compliance with the License.
-; You may obtain a copy of the License at
-;
-; http://www.apache.org/licenses/LICENSE-2.0
-;
-; Unless required by applicable law or agreed to in writing, software
-; distributed under the License is distributed on an "AS IS" BASIS,
-; WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-; See the License for the specific language governing permissions and
-; limitations under the License.
+;; test/vix/test/routes.clj tests for routes namespace.
+;; Copyright 2011-2012, F.M. (Filip) de Waard <fmw@vix.io>.
+;;
+;; Licensed under the Apache License, Version 2.0 (the "License");
+;; you may not use this file except in compliance with the License.
+;; You may obtain a copy of the License at
+;;
+;; http://www.apache.org/licenses/LICENSE-2.0
+;;
+;; Unless required by applicable law or agreed to in writing, software
+;; distributed under the License is distributed on an "AS IS" BASIS,
+;; WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+;; See the License for the specific language governing permissions and
+;; limitations under the License.
 
 (ns vix.test.routes
-  (:use [vix.routes] :reload
+  (:use [clojure.test]
+        [vix.routes] :reload
         [vix.db :only [create-document create-feed get-document list-feeds]]
         [vix.auth :only [add-user]]
         [clojure.contrib.json :only [json-str read-json]]
         [vix.test.db :only [database-fixture +test-server+ +test-db+]])
-  (:require [net.cgrand.enlive-html :as html]
+  (:require [clj-time.format :as time-format]
+            [clj-time.core :as time-core]
+            [clojure.contrib [error-kit :as kit]]
+            [net.cgrand.enlive-html :as html]
+            [vix.auth :as auth]
             [vix.config :as config]
+            [vix.util :as util]
             [vix.lucene :as lucene])
-  (:use [clojure.test])
   (:import [org.apache.commons.codec.binary Base64]))
+
+(def last-modified-pattern
+  #"[A-Z]{1}[a-z]{2}, \d{1,2} [A-Z]{1}[a-z]{2} \d{4} \d{2}:\d{2}:\d{2} \+0000")
 
 ; Copied from Clojure 1.3.
 ; Also discussed in Joy of Clojure by Fogus & Houser, page 299.
@@ -69,7 +77,8 @@
   {:request-method method
    :uri resource
    :body (when body (java.io.StringReader. body))
-   :params params})
+   :params params
+   :server-name "localhost"})
 
 ; FIXME: refactor these four request functions to get rid of duplication
 (defn request
@@ -128,14 +137,472 @@
   (is (= (:status (response nil) 404)))
   (is (= (:status (response "foo" :status 201) 201)))
 
-  (is (= (get (:headers (response "foo" :content-type "image/png")) "Content-Type")
+  (is (= (get (:headers (response "foo" :content-type "image/png"))
+              "Content-Type")
          "image/png")))
 
-(deftest test-catch-all
-  (is (= (:status (catch-all +test-server+ +test-db+ "/blog/bar")) 404))
-  (is (= (:body (catch-all +test-server+ +test-db+ "/blog/bar"))
-         "<h1>Page not found</h1>"))
+(deftest test-page-not-found-response
+  (is (= (page-not-found-response)
+         {:status 404
+          :headers {"Content-Type" "text/html; charset=UTF-8"}
+          :body "<h1>Page not found</h1>"})))
 
+(deftest test-image-response
+  (let [gif (str "R0lGODlhAQABA++/vQAAAAAAAAAA77+9AQIAAAAh77+9BAQUA++/"
+                 "vQAsAAAAAAEAAQAAAgJEAQA7")
+        white-pixel-doc (create-document +test-server+
+                                         +test-db+
+                                         "en"
+                                         "images"
+                                         "Europe/Amsterdam"
+                                         {:attachment {:type "image/gif"
+                                                       :data gif}
+                                          :title "a single black pixel!"
+                                          :slug "/images/white-pixel.gif"
+                                          :content ""
+                                          :draft false})
+        no-image-doc (create-document +test-server+
+                                      +test-db+
+                                      "en"
+                                      "images"
+                                      "Europe/Amsterdam"
+                                      {:title "not a single black pixel!"
+                                       :slug "/images/not-a-white-pixel.gif"
+                                       :content ""
+                                       :draft false})
+        wp-response (image-response +test-server+
+                                    +test-db+
+                                    white-pixel-doc)]
+    
+    (testing "test if a simple gif is returned correctly"
+      (is (= (get wp-response "Last-Modified")
+             (time-format/unparse (time-format/formatters :rfc822)
+                                  (util/rfc3339-to-jodatime
+                                   (:published white-pixel-doc)
+                                   "UTC"))))
+
+      (is (re-matches last-modified-pattern
+                      (get wp-response "Last-Modified")))
+
+      (is (= (:status wp-response) 200))
+
+      (is (= (:headers wp-response)
+             {"ETag" (:_rev white-pixel-doc)
+              "Content-Type" "image/gif"}))
+    
+      (is (= (class (:body wp-response)) java.io.ByteArrayInputStream)))
+
+    (testing "test if a non-image document is handled correctly"
+      (is (= (image-response +test-server+
+                             +test-db+
+                             no-image-doc)
+             (page-not-found-response))))))
+
+(deftest test-get-segment-and-get-segments
+  (let [slug-fn
+        (fn [language]
+          (str "/" language "/menu/menu"))
+        menu-doc
+        (create-document +test-server+
+                         +test-db+
+                         "en"
+                         "menu"
+                         "Europe/Amsterdam"
+                         {:title "menu"
+                          :slug "/en/menu/menu"
+                          :content (str "<ul><li><a href=\""
+                                        "/\">home</a></li></ul>")
+                          :draft false})
+        grote-zaal-doc
+        (create-document +test-server+
+                         +test-db+
+                         "en"
+                         "grote-zaal"
+                         "Europe/Amsterdam"
+                         {:title
+                          "Tomasz Stańko Middelburg"
+                          :slug
+                          "/en/grote-zaal/stanko-middelburg"
+                          :content
+                          (str "The legendary Polish "
+                               "trumpet player Stańko "
+                               "will be playing in "
+                               "Middelburg.")
+                          :start-time
+                          "2012-04-25 20:30"
+                          :end-time
+                          "2012-04-25 23:59"
+                          :draft false})
+
+        kleine-zaal-doc
+        (create-document +test-server+
+                         +test-db+
+                         "en"
+                         "kleine-zaal"
+                         "Europe/Amsterdam"
+                         {:title
+                          "The Impossible Gentlemen"
+                          :slug
+                          (str "/en/kleine-zaal/"
+                               "impossible-gentlemen")
+                          :content
+                          (str "Gwilym Simcock, "
+                               "Mike Walker, "
+                               "Adam Nussbaum, "
+                               "Steve Swallow "
+                               "will be playing "
+                               "at the Bimhuis "
+                               "in Amsterdam.")
+                          :start-time
+                          "2012-07-06 20:30"
+                          :end-time
+                          "2012-07-06 23:59"
+                          :draft false})
+
+        kabinet-doc
+        (create-document +test-server+
+                         +test-db+
+                         "en"
+                         "kabinet"
+                         "Europe/Amsterdam"
+                         {:title
+                          "Yuri Honing"
+                          :slug
+                          "/en/kabinet/yuri-honing-tilburg"
+                          :content
+                          (str "VPRO/Boy Edgar prize winner "
+                               "Yuri Honing will be playing at "
+                               "the Paradox venue in Tilburg.")
+                          :start-time
+                          "2013-02-01 20:30"
+                          :end-time
+                          "2013-02-01 23:59"
+                          :draft false})
+        kabinet-doc-2 ;; dummy doc that should not be retrieved
+        (create-document +test-server+
+                         +test-db+
+                         "en"
+                         "kabinet"
+                         "Europe/Amsterdam"
+                         {:title
+                          "Yuri Honing"
+                          :slug
+                          "/en/kabinet/yuri-honing-tilburg"
+                          :content
+                          (str "VPRO/Boy Edgar prize winner "
+                               "Yuri Honing at "
+                               "the Paradox venue in Tilburg.")
+                          :start-time
+                          "2012-02-01 20:30"
+                          :end-time
+                          "2012-02-01 23:59"
+                          :draft false})
+        news-1
+        (create-document +test-server+
+                         +test-db+
+                         "en"
+                         "news"
+                         "Europe/Amsterdam"
+                         {:title
+                          "hey!"
+                          :slug
+                          "/en/news/hey"
+                          :content
+                          ""
+                          :draft false})
+        news-2
+        (create-document +test-server+
+                         +test-db+
+                         "en"
+                         "news"
+                         "Europe/Amsterdam"
+                         {:title
+                          "you!"
+                          :slug
+                          "/en/news/you"
+                          :content
+                          ""
+                          :draft false})
+        frontpage-segments
+        {:menu
+         {:type :document
+          :nodes :#menu
+          :slug slug-fn}
+         :primary-exposition
+         {:type :most-recent-events
+          :nodes :div#primary-exposition-block
+          :feed "grote-zaal"
+          :limit 1}
+         :secondary-exposition
+         {:type :most-recent-events
+          :nodes :div#secondary-exposition-block
+          :feed "kleine-zaal"
+          :limit 1}
+         :tertiary-exposition
+         {:type :most-recent-events
+          :nodes :div#tertiary-exposition-block
+          :feed "kabinet"
+          :limit 1}
+         :news
+         {:type :feed
+          :nodes [:div#news-block-first :div#news-block-second]
+          :feed "news"
+          :limit 2}
+         :background-image
+         {:type :string
+          :data (str "http://cdn0.baz.vixu.com/"
+                     "/static/images/baz-content-bg.jpg")}}]
+    
+    (testing "test (get-segment ...)"
+      (is (= (:content (:data (get-segment (:menu frontpage-segments)
+                                           +test-server+
+                                           +test-db+
+                                           "en"
+                                           "Europe/Amsterdam")))
+             "<ul><li><a href=\"/\">home</a></li></ul>"))
+
+      (is (= (get-segment (:primary-exposition frontpage-segments)
+                          +test-server+
+                          +test-db+
+                          "en"
+                          "Europe/Amsterdam")
+             (assoc (:primary-exposition frontpage-segments)
+               :data
+               grote-zaal-doc)))
+
+      (is (= (get-segment (:secondary-exposition frontpage-segments)
+                          +test-server+
+                          +test-db+
+                          "en"
+                          "Europe/Amsterdam")
+             (assoc (:secondary-exposition frontpage-segments)
+               :data
+               kleine-zaal-doc)))
+
+      (is (= (get-segment (:tertiary-exposition frontpage-segments)
+                          +test-server+
+                          +test-db+
+                          "en"
+                          "Europe/Amsterdam")
+             (assoc (:tertiary-exposition frontpage-segments)
+               :data
+               kabinet-doc)))
+
+      (is (= (get-segment (:news frontpage-segments)
+                          +test-server+
+                          +test-db+
+                          "en"
+                          "Europe/Amsterdam")
+             (assoc (:news frontpage-segments)
+               :data
+               {:next nil
+                :documents [news-2 news-1]})))
+
+      (is (= (get-segment {:type :string
+                           :data (str "http://cdn0.baz.vixu.com/"
+                                      "/static/images/baz-content-bg.jpg")}
+                          +test-server+
+                          +test-db+
+                          "en"
+                          "Europe/Amsterdam")
+             {:type :string
+              :data (str "http://cdn0.baz.vixu.com/"
+                         "/static/images/baz-content-bg.jpg")})))
+
+    (testing "test (get-segments...)"
+      (is (= (get-segments frontpage-segments
+                           +test-server+
+                           +test-db+
+                           "en"
+                           "Europe/Amsterdam")
+             {:menu
+              {:type :document
+               :nodes :#menu
+               :slug slug-fn
+               :data menu-doc}
+              :primary-exposition
+              {:type :most-recent-events
+               :nodes :div#primary-exposition-block
+               :feed "grote-zaal"
+               :limit 1
+               :data grote-zaal-doc}
+              :secondary-exposition
+              {:type :most-recent-events
+               :nodes :div#secondary-exposition-block
+               :feed "kleine-zaal"
+               :limit 1
+               :data kleine-zaal-doc}
+              :tertiary-exposition
+              {:type :most-recent-events
+               :nodes :div#tertiary-exposition-block
+               :feed "kabinet"
+               :limit 1
+               :data kabinet-doc}
+              :news
+              {:type :feed
+               :nodes [:div#news-block-first :div#news-block-second]
+               :feed "news"
+               :limit 2
+               :data {:next nil
+                      :documents [news-2 news-1]}}
+              :background-image
+              {:type :string
+               :data (str "http://cdn0.baz.vixu.com/"
+                          "/static/images/baz-content-bg.jpg")}})))))
+
+(deftest test-get-frontpage-for-language!
+  ;; this is tested in the tests for the view
+
+  ;; if it returns a string the view is executed successfully
+  (is (string? (first (get-frontpage-for-language! +test-server+
+                                                +test-db+
+                                                "nl"
+                                                "Europe/Amsterdam")))))
+
+(deftest test-get-cached-frontpage!
+  (is (= @*frontpage-cache* {}))
+  (let [empty-cache-fp (get-cached-frontpage! +test-server+
+                                              +test-db+
+                                              "nl"
+                                              "Europe/Amsterdam")]
+    (is (= @*frontpage-cache* {"nl" empty-cache-fp}))
+
+    (do  ; insert fake string to make sure pages are served from cache
+      (swap! *frontpage-cache* assoc "nl" "foo!"))
+
+    (is (= (get-cached-frontpage! +test-server+
+                                 +test-db+
+                                 "nl"
+                                 "Europe/Amsterdam")
+           "foo!")))
+
+  (reset-frontpage-cache! "nl"))
+
+(deftest test-reset-frontpage-cache!
+  (testing "test reset-frontpage-cache! on a single language cache"
+    (swap! *frontpage-cache* assoc "nl" "foo!")
+    (is (= @*frontpage-cache* {"nl" "foo!"}))
+    (is (= (reset-frontpage-cache! "nl") {})))
+  
+  (testing "test reset-frontpage-cache! on a multiple language cache"
+    (swap! *frontpage-cache* assoc "nl" "foo!")
+    (swap! *frontpage-cache* assoc "en" "bar!")
+    (is (= @*frontpage-cache* {"nl" "foo!" "en" "bar!"}))
+    (is (= (reset-frontpage-cache! "nl") {"en" "bar!"}))))
+
+(deftest test-reset-page-cache!
+  (is (= @*page-cache* {}))
+  (swap! *page-cache* assoc "/events/clojure-meetup.html" "hey!")
+  (is (not (= @*page-cache* {})))
+  (is (true? (reset-page-cache!)))
+  (is (= @*page-cache* {})))
+
+(deftest test-get-cached-page!
+  (is (= @*page-cache* {}))
+  
+  (testing "make sure images skip the cache"
+    (let [gif (str "R0lGODlhAQABA++/vQAAAAAAAAAA77+9AQIAAAAh77+9BAQUA++/"
+                   "vQAsAAAAAAEAAQAAAgJEAQA7")]
+      (do
+        (create-document +test-server+
+                         +test-db+
+                         "en"
+                         "images"
+                         "Europe/Amsterdam"
+                         {:attachment {:type "image/gif"
+                                       :data gif}
+                          :title "a single black pixel!"
+                          :slug "/images/white-pixel.gif"
+                          :content ""
+                          :draft false}))
+
+      (is (= (keys
+              (get-cached-page! +test-server+
+                                +test-db+
+                                "/images/white-pixel.gif"
+                                "Europe/Amsterdam"))
+             ["Last-Modified" :status :headers :body]))
+
+      ;; the cache should still be empty:
+      (is (= @*page-cache* {}))))
+
+  (testing "test with a regular page"
+    (do
+      (create-document +test-server+
+                       +test-db+
+                       "en"
+                       "pages"
+                       "Europe/Amsterdam"
+                       {:title "hic sunt dracones!"
+                        :slug "/pages/hic-sunt-dracones.html"
+                        :content "<h3>Here be dragons!</h3>"
+                        :draft false}))
+    (is (= (keys
+            (get-cached-page! +test-server+
+                              +test-db+
+                              "/pages/hic-sunt-dracones.html"
+                              "Europe/Amsterdam"))
+           [:status :headers :body]))
+
+    (is (= (keys (get @*page-cache* "/pages/hic-sunt-dracones.html"))
+           [:status :headers :body]))
+
+    ;; make sure the page is really served from the cache
+    (swap! *page-cache* assoc "/pages/hic-sunt-dracones.html" "hi!")
+    (is (= (get-cached-page! +test-server+
+                             +test-db+
+                             "/pages/hic-sunt-dracones.html"
+                             "Europe/Amsterdam")
+           "hi!")))
+
+  ;; TODO: make this test actually meaningful
+  (testing "test with event page"
+    (do
+      (create-document +test-server+
+                       +test-db+
+                       "en"
+                       "calendar"
+                       "Europe/Amsterdam"
+                       {:title "Clojure Meetup!"
+                        :slug "/events/clojure-meetup.html"
+                        :content "<h3>Here be dragons!</h3>"
+                        :start-time "2012-05-16 18:45"
+                        :start-time-rfc3339 "2012-05-16T18:45:00.000Z"
+                        :end-time "2012-05-16 23:00"
+                        :end-time-rfc3339 "2012-05-16T23:00:00.000Z"
+                        :draft false}))
+    (is (= (keys
+            (get-cached-page! +test-server+
+                              +test-db+
+                              "/events/clojure-meetup.html"
+                              "Europe/Amsterdam"))
+           [:status :headers :body]))
+
+    (is (= (keys (get @*page-cache* "/events/clojure-meetup.html"))
+           [:status :headers :body]))
+
+    ;; make sure the page is really served from the cache
+    (swap! *page-cache* assoc "/events/clojure-meetup.html" "hello!")
+    (is (= (get-cached-page! +test-server+
+                             +test-db+
+                             "/events/clojure-meetup.html"
+                             "Europe/Amsterdam")
+           "hello!")))
+
+  ;; clean up
+  (reset-page-cache!))
+
+(deftest test-catch-all
+  (is (= (:status (catch-all +test-server+
+                             +test-db+
+                             "/blog/bar"
+                             "Europe/Amsterdam"))
+         404))
+  (is (= (:body (catch-all +test-server+
+                           +test-db+
+                           "/blog/bar"
+                           "Europe/Amsterdam"))
+         "<h1>Page not found</h1>"))
   (do
     (create-document +test-server+
                      +test-db+
@@ -147,7 +614,11 @@
                       :content "bar"
                       :draft false}))
 
-  (is (= (:status (catch-all +test-server+ +test-db+ "/blog/bar")) 200))
+  (is (= (:status (catch-all +test-server+
+                             +test-db+
+                             "/blog/bar"
+                             "Europe/Amsterdam"))
+         200))
 
   (testing "Test if attachments are handled correctly."
     (let [gif (str "R0lGODlhAQABA++/vQAAAAAAAAAA77+9AQIAAAAh77+9BAQUA++/"
@@ -163,7 +634,10 @@
                      :slug "/pixel.gif"
                      :content ""
                      :draft false})
-          catch-all (catch-all +test-server+ +test-db+ "/pixel.gif")]
+          catch-all (catch-all +test-server+
+                               +test-db+
+                               "/pixel.gif"
+                               "Europe/Amsterdam")]
 
       (is (= (get (:headers catch-all) "Content-Type") "image/gif"))
       (is (= (class (:body catch-all)) java.io.ByteArrayInputStream)))))
@@ -187,6 +661,7 @@
                      "Europe/Amsterdam"
                      {:title "foo"
                       :slug "/blog/bar"
+                      :language "en"
                       :content "bar"
                       :draft false}))
 
@@ -372,7 +847,7 @@
           (is (=  (html/select third-page [:a#next-search-results-page])
                   []))))
     
-      (is (= (:status (request :get "/" main-routes)) 200))
+      ;(is (= (:status (request :get "/" main-routes)) 200))
       (is (= (:status (request :get "/login" main-routes)) 200))
       (is (= (:status (request :get "/logout" main-routes)) 302))
       (is (= (:status (request :get "/admin" main-routes)) 200))
@@ -440,7 +915,7 @@
               result (lucene/search "hi" filter 15 reader analyzer)
               docs (lucene/get-docs reader (:docs result))]
           (is (= (:total-hits result) 0))))
-                        
+
       (is (= (:status (request :get "/static/none" main-routes)) 404))
       (is (= (:body (request :get "/static/none" main-routes))
              "<h1>Page not found</h1>"))
@@ -706,32 +1181,150 @@
 (deftest test-login
   (do
     (add-user
-      +test-server+
-      +test-db+
-      "fmw"
-      "oops"
-      {:* ["GET" "POST" "PUT" "DELETE"]}))
+     +test-server+
+     +test-db+
+     "fmw"
+     "oops"
+     {:* ["GET" "POST" "PUT" "DELETE"]}))
 
   (with-redefs [config/database +test-db+]
     (is (= (form-request :post "/login" main-routes {"username" "fmw"
                                                      "password" "foo"})
            {:status 302
-            :headers {"Location" "/login"}
+            :headers {"Expires" "Mon, 26 Mar 2012 09:00:00 GMT"
+                      "Location" "/login"}
             :body ""}))
 
     (let [r (form-request :post "/login" main-routes {"username" "fmw"
-                                                     "password" "oops"})]
+                                                      "password" "oops"})]
       (is (= ((:headers r) "Location") "/admin/"))
-      (is (= (:status r) 302)))
-   ))
+      (is (= (:status r) 302)))))
 
+(deftest test-wrap-caching-headers
+  (testing "test if regular pages are pre-expired"
+    (is (= ((wrap-caching-headers identity) {})
+           {:headers {"Expires" "Mon, 26 Mar 2012 09:00:00 GMT"}})))
+
+  (with-redefs [time-core/now
+                (fn []
+                  (time-core/date-time 2012 4 22 16 04 57 525))]
+    (testing "test if files are expired correclty"
+      (are [content-type]
+           (= ((wrap-caching-headers identity)
+               {:headers {"Content-Type" content-type}})
+              {:headers {"Expires" "Wed, 22 Apr 2015 16:04:57 +0000"
+                         "Cache-Control" "public"
+                         "Content-Type" content-type}})
+           "image/png"
+           "image/jpeg"
+           "image/gif"
+           "text/css"
+           "text/javascript"))))
+
+(deftest test-redirect-301
+  (is (= (redirect-301 "/foo")
+         {:status 301
+          :body "Moved Permanently"
+          :headers {"Location" "/foo"}})))
+
+(deftest test-redirection-handler
+  (with-redefs [config/default-host "localhost"
+                config/base-uri "http://localhost:3000"
+                config/cdn-hostname "http://localhost:3000/"]
+    (is (= ((redirection-handler identity) {:server-name "localhost"})
+           {:server-name "localhost"}))
+
+    (testing "test if visitors are redirected to the default-host"
+      (with-redefs [config/default-host "www.vixu.com"]
+        (is (= ((redirection-handler identity) {:server-name "vixu.com"})
+               {:status 301
+                :body "Moved Permanently"
+                :headers {"Location" "http://www.vixu.com"}}))))
+
+    (testing "test if administrators are redirected to https://"
+      (with-redefs [config/default-host "www.vixu.com"]
+        (is (= ((redirection-handler identity) {:server-name "www.vixu.com"
+                                                :uri "/admin/"
+                                                :scheme :http})
+               {:status 301
+                :body "Moved Permanently"
+                :headers {"Location" "https://www.vixu.com/admin/"}}))
+
+        ;; don't redirect if the scheme is already https
+        (is (= ((redirection-handler identity) {:server-name "www.vixu.com"
+                                                :uri "/admin/"
+                                                :scheme :https})
+               {:server-name "www.vixu.com" :uri "/admin/" :scheme :https}))))
+
+    (testing "on localhost, /admin shouldn't redirect to https://"
+      (with-redefs [config/default-host "localhost"]
+        (is (= ((redirection-handler identity)
+                {:server-name "localhost"
+                 :uri "/admin/"
+                 :scheme :http})
+               {:server-name "localhost" :uri "/admin/" :scheme :http}))))
+
+    (testing "test if custom redirects are correctly executed"
+      (with-redefs [config/redirects {"/foo" "/bar"
+                                      "/vixu" "http://www.vixu.com/"}]
+
+        (is (= ((redirection-handler identity)
+                {:server-name "localhost"
+                 :uri "/foo"})
+               {:status 301
+                :body "Moved Permanently"
+                :headers {"Location" "/bar"}}))
+
+        (is (= ((redirection-handler identity)
+                {:server-name "localhost"
+                 :uri "/vixu"})
+               {:status 301
+                :body "Moved Permanently"
+                :headers {"Location" "http://www.vixu.com/"}}))
+      
+        ;; do nothing unless the uri is a listed redirect
+        (is (= ((redirection-handler identity)
+                {:server-name "localhost"
+                 :uri "/test"})
+               {:server-name "localhost" :uri "/test"}))))))
+
+(deftest test-handle-authentication-errors
+  (is (= ((handle-authentication-errors identity) :works) :works))
+
+  (is (= ((handle-authentication-errors
+           (fn [handler]
+             (kit/raise auth/InsufficientPrivileges)))
+          :should-not-work)
+         {:status 302
+          :headers {"Location" "/permission-denied"}
+          :body ""}))
+
+  (is (= ((handle-authentication-errors
+           (fn [handler]
+             (kit/raise auth/AuthenticationRequired)))
+          :should-not-work)
+         {:status 302
+          :headers {"Location" "/login"}
+          :body ""})))
 
 (defn test-ns-hook []
   (test-json-response)
   (test-response)
+  (test-page-not-found-response)
+  (database-fixture test-image-response)
+  (database-fixture test-get-segment-and-get-segments)
+  (database-fixture test-get-frontpage-for-language!)
+  (database-fixture test-get-cached-frontpage!)
+  (database-fixture test-get-cached-page!)
+  (test-reset-frontpage-cache!)
+  (test-reset-page-cache!)
   (database-fixture test-catch-all)
   (database-fixture test-routes)
   (database-fixture test-routes-authorization)
   (database-fixture test-routes-authentication)
   (test-logout)
-  (database-fixture test-login))
+  (database-fixture test-login)
+  (test-wrap-caching-headers)
+  (test-redirect-301)
+  (test-redirection-handler)
+  (test-handle-authentication-errors))

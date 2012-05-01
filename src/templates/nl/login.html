@@ -1,0 +1,50 @@
+<!doctype html> 
+<html lang=en> 
+  <head> 
+    <meta charset="UTF-8" /> 
+    <title>Login</title> 
+    <link rel="stylesheet" href="/static/css/style.css" type="text/css" /> 
+    <!--[if lt IE 9]>
+        <script
+           src="http://html5shim.googlecode.com/svn/trunk/html5.js"></script>
+        <![endif]-->
+  </head> 
+
+  <body>
+    <div id="wrapper"> 
+      <header id="header">
+        <div id="logo-bar">
+          <h1 id="logo">vix</h1>
+        </div>
+        <nav>
+          <ul id="menu">
+          </ul> 
+        </nav> 
+      </header>
+      <div id="status-message"></div>
+      <div id="main-page">
+        <div id="login-form">
+
+          <form action="/login" method="POST">
+            <div>
+                <label for="username">Username:</label>
+                <input type="text" name="username" id="username" />
+            </div>
+            <div>
+              <label for="password">Password:</label>
+              <input type="password" name="password"
+                     id="password" />
+            </div>
+            <p>
+              <input type="submit" value="Login" />
+            </p>
+          </form>
+
+        </div>
+      </div>
+    </div> 
+    <footer id="footer">
+      Powered by <a href="http://vix.io">Vix.io</a>.
+    </footer> 
+  </body> 
+</html>
