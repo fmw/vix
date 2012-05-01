@@ -229,6 +229,7 @@
                      :background-color buttons/BACKGROUND_COLOR
                      :font-face buttons/FONT_FACE
                      :font-size buttons/FONT_SIZE
+                     :format-block buttons/FORMAT_BLOCK
                      :link buttons/LINK
                      :image buttons/IMAGE
                      :undo buttons/UNDO
@@ -243,7 +244,8 @@
                      :subscript buttons/SUBSCRIPT
                      :superscript buttons/SUPERSCRIPT
                      :strike-through buttons/STRIKE_THROUGH
-                     :remove-format buttons/REMOVE_FORMAT}
+                     :remove-format buttons/REMOVE_FORMAT
+                     :edit-html buttons/EDIT_HTML}
         buttons (to-array
                  (map #(get buttons-map %) (or included-buttons
                                                [:bold
@@ -1282,7 +1284,7 @@
                                               :italic
                                               :underline
                                               :strike-through
-                                              :font-size
+                                              :format-block
                                               :link
                                               :image
                                               :undo
