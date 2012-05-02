@@ -39,6 +39,15 @@
           (catch Exception e
             nil))))
 
+(def *index-reader*
+  (atom (lucene/create-index-reader lucene/directory)))
+
+(defn reset-index-reader! []
+  (.close @*index-reader*)
+  (compare-and-set! *index-reader*
+                    @*index-reader*
+                    (lucene/create-index-reader lucene/directory)))
+
 (defn response [body & {:keys [status content-type]}]
   {:status (or status (if (nil? body) 404 200))
    :headers {"Content-Type" (or content-type "text/html; charset=UTF-8")}
@@ -308,8 +317,7 @@
                             (inc config/search-results-per-page)
                             after-doc-id-int
                             after-score-float
-                            (lucene/create-index-reader
-                             lucene/directory)
+                            @*index-reader*
                             lucene/analyzer)
              q
              pp-after-doc-id
@@ -359,6 +367,7 @@
                                      config/database
                                      (read-json (slurp* (:body request))))]
             (reset-frontpage-cache! (:language feed))
+            (reset-index-reader!)
             (compare-and-set! search-allowed-feeds
                               @search-allowed-feeds
                               (db/get-searchable-feeds
@@ -388,6 +397,7 @@
                                       feed-name
                                       (read-json (slurp* body)))]
              (reset-frontpage-cache! language)
+             (reset-index-reader!)
              (compare-and-set! search-allowed-feeds
                                @search-allowed-feeds
                                (db/get-searchable-feeds
@@ -408,7 +418,8 @@
                 config/database
                 language
                 feed-name))
-              (reset-frontpage-cache! language))
+              (reset-frontpage-cache! language)
+              (reset-index-reader!))
             (json-response nil)))
   (POST "/json/:language/:feed/new"
         {{language :language feed-name :feed} :params
@@ -423,6 +434,7 @@
                                              (read-json (slurp* body)))]
             (lucene/add-documents-to-index! lucene/directory [document])
             (reset-frontpage-cache! language)
+            (reset-index-reader!)
             (json-response document :status 201))))
   (GET "/json/document/*"
        {{slug :*} :params session :session}
@@ -451,6 +463,7 @@
                                                  slug
                                                  document)
                (reset-frontpage-cache! (:language document))
+               (reset-index-reader!)
                (reset-page-cache!)
                (json-response document)))
            (json-response nil))))
@@ -466,6 +479,7 @@
                                :DELETE)
                 (reset-page-cache!)
                 (reset-frontpage-cache! (:language document))
+                (reset-index-reader!)
                 (let [document (db/delete-document config/db-server
                                                    config/database
                                                    slug)]

@@ -106,13 +106,20 @@
   ([method resource my-routes]
    (unauthorized-request method resource "" my-routes))
   ([method resource body my-routes & params]
-   (app (request-map method resource body params))))
+     (app (request-map method resource body params))))
 
 (defn form-request [method resource my-routes form-params]
   (app (dissoc (assoc (request-map method resource nil nil)
                             :form-params
                             form-params)
                :body)))
+
+(deftest test-reset-index-reader!
+  (let [ir @*index-reader*]
+    (do
+      (reset-index-reader!))
+
+    (is (not (= ir @*index-reader*)))))
 
 (deftest test-json-response
   (is (= (:status (json-response nil)) 404))
@@ -684,237 +691,239 @@
                             :content "bar"
                             :draft false})]))
       
-      (testing "test document pagination"
-        (let [first-five (read-json
-                          (:body (request :get
-                                          "/json/en/pages/list-documents"
-                                          nil
-                                          main-routes
-                                          {:limit "5"})))]
-          (is (= (count (:documents first-five)) 5))
-
-          (let [next-five (read-json
-                           (:body (request :get
-                                           "/json/en/pages/list-documents"
-                                           nil
-                                           main-routes
-                                           {:limit "5"
-                                            :startkey-published
-                                            (:published
-                                             (:next first-five))})))]
-            (is (= (count (:documents next-five)) 5)))))
-
-      (testing "test search page and search pagination"
-        (let [first-page (html/html-resource
-                          (java.io.StringReader.
-                           (apply str
-                                  (:body
-                                   (request :get
-                                            "/en/search"
-                                            ""
+      (with-redefs [*index-reader* (atom
+                                    (lucene/create-index-reader directory))]
+        (testing "test document pagination"
+          (let [first-five (read-json
+                            (:body (request :get
+                                            "/json/en/pages/list-documents"
+                                            nil
                                             main-routes
-                                            {:q "bar"})))))]
+                                            {:limit "5"})))]
+            (is (= (count (:documents first-five)) 5))
 
-          (is (= (html/text
-                  (first
-                   (html/select
-                    first-page
-                    [:span#search-stats])))
-                 "21 results for query"))
-
-          (are [n expected-href]
-               (= (first
-                   (html/attr-values
-                    (nth (html/select first-page
-                                      [[:ol#search-results] [:li] [:a]])
-                         n)
-                    :href))
-                  expected-href)
-               0 "/pages/doc-0"
-               1 "/pages/doc-1"
-               2 "/pages/doc-2"
-               3 "/pages/doc-3"
-               4 "/pages/doc-4"
-               5 "/pages/doc-5"
-               6 "/pages/doc-6"
-               7 "/pages/doc-7"
-               8 "/pages/doc-8"
-               9 "/pages/doc-9")
-
-          (is (= (html/select first-page
-                              [:a#previous-search-results-page])
-                 []))
-          
-          (is (= (first
-                  (html/attr-values
-                   (first
-                    (html/select first-page
-                                 [:a#next-search-results-page]))
-                   :href))
-                 "/en/search?q=bar&after-doc-id=9&after-score=0.47674")))
-        
-        (let [second-page (html/html-resource
-                           (java.io.StringReader.
-                            (apply str
-                                   (:body
-                                    (request :get
-                                             "/en/search"
-                                             ""
+            (let [next-five (read-json
+                             (:body (request :get
+                                             "/json/en/pages/list-documents"
+                                             nil
                                              main-routes
-                                             {:q "bar"
-                                              :after-doc-id "9"
-                                              :after-score "0.47674"})))))]
+                                             {:limit "5"
+                                              :startkey-published
+                                              (:published
+                                               (:next first-five))})))]
+              (is (= (count (:documents next-five)) 5)))))
 
-          (is (= (html/text
-                  (first
-                   (html/select
-                    second-page
-                    [:span#search-stats])))
-                 "21 results for query"))
+        (testing "test search page and search pagination"
+          (let [first-page (html/html-resource
+                            (java.io.StringReader.
+                             (apply str
+                                    (:body
+                                     (request :get
+                                              "/en/search"
+                                              ""
+                                              main-routes
+                                              {:q "bar"})))))]
 
-          (are [n expected-href]
-               (= (first
-                   (html/attr-values
-                    (nth (html/select second-page
-                                      [[:ol#search-results] [:li] [:a]])
-                         n)
-                    :href))
-                  expected-href)
-               0 "/pages/doc-17"
-               1 "/pages/doc-18"
-               2 "/pages/doc-10"
-               3 "/pages/doc-11"
-               4 "/pages/doc-12"
-               5 "/pages/doc-13"
-               6 "/pages/doc-14"
-               7 "/pages/doc-15"
-               8 "/pages/doc-16"
-               9 "/pages/doc-19")
+            (is (= (html/text
+                    (first
+                     (html/select
+                      first-page
+                      [:span#search-stats])))
+                   "21 results for query"))
 
-          (is (= (html/attr-values
-                  (first
-                   (html/select second-page
-                                [:a#previous-search-results-page]))
-                  :href)
-                                   
-                 #{"/en/search?q=bar"}))
+            (are [n expected-href]
+                 (= (first
+                     (html/attr-values
+                      (nth (html/select first-page
+                                        [[:ol#search-results] [:li] [:a]])
+                           n)
+                      :href))
+                    expected-href)
+                 0 "/pages/doc-0"
+                 1 "/pages/doc-1"
+                 2 "/pages/doc-2"
+                 3 "/pages/doc-3"
+                 4 "/pages/doc-4"
+                 5 "/pages/doc-5"
+                 6 "/pages/doc-6"
+                 7 "/pages/doc-7"
+                 8 "/pages/doc-8"
+                 9 "/pages/doc-9")
+
+            (is (= (html/select first-page
+                                [:a#previous-search-results-page])
+                   []))
           
-          (is (= (first
-                  (html/attr-values
-                   (first
-                    (html/select second-page
-                                 [:a#next-search-results-page]))
-                   :href))
-                 (str "/en/search?q=bar&after-doc-id=19&after-score=0.47674"
-                      "&pp-aid[]=9&pp-as[]=0.47674"))))
+            (is (= (first
+                    (html/attr-values
+                     (first
+                      (html/select first-page
+                                   [:a#next-search-results-page]))
+                     :href))
+                   "/en/search?q=bar&after-doc-id=9&after-score=0.47674")))
         
-        (let [third-page (html/html-resource
-                          (java.io.StringReader.
-                           (apply str
-                                  (:body
-                                   (request :get
-                                            "/en/search"
-                                            ""
-                                            main-routes
-                                            {:q "bar"
-                                             :after-doc-id "19"
-                                             :after-score "0.47674"
-                                             :pp-aid ["9"]
-                                             :pp-as ["0.47674"]})))))]
+          (let [second-page (html/html-resource
+                             (java.io.StringReader.
+                              (apply str
+                                     (:body
+                                      (request :get
+                                               "/en/search"
+                                               ""
+                                               main-routes
+                                               {:q "bar"
+                                                :after-doc-id "9"
+                                                :after-score "0.47674"})))))]
 
-          (is (= (html/text
-                  (first
-                   (html/select
-                    third-page
-                    [:span#search-stats])))
-                 "21 results for query"))
+            (is (= (html/text
+                    (first
+                     (html/select
+                      second-page
+                      [:span#search-stats])))
+                   "21 results for query"))
 
-          (is (= (first
-                  (html/attr-values
-                   (first (html/select third-page
-                                       [[:ol#search-results] [:li] [:a]]))
-                   :href))
-                 "/pages/doc-20"))
+            (are [n expected-href]
+                 (= (first
+                     (html/attr-values
+                      (nth (html/select second-page
+                                        [[:ol#search-results] [:li] [:a]])
+                           n)
+                      :href))
+                    expected-href)
+                 0 "/pages/doc-17"
+                 1 "/pages/doc-18"
+                 2 "/pages/doc-10"
+                 3 "/pages/doc-11"
+                 4 "/pages/doc-12"
+                 5 "/pages/doc-13"
+                 6 "/pages/doc-14"
+                 7 "/pages/doc-15"
+                 8 "/pages/doc-16"
+                 9 "/pages/doc-19")
 
-          (is (= (html/attr-values
-                  (first
-                   (html/select third-page
-                                [:a#previous-search-results-page]))
-                  :href)
+            (is (= (html/attr-values
+                    (first
+                     (html/select second-page
+                                  [:a#previous-search-results-page]))
+                    :href)
                                    
-                 #{"/en/search?q=bar&after-doc-id=9&after-score=0.47674"}))
+                   #{"/en/search?q=bar"}))
           
-          (is (=  (html/select third-page [:a#next-search-results-page])
-                  []))))
+            (is (= (first
+                    (html/attr-values
+                     (first
+                      (html/select second-page
+                                   [:a#next-search-results-page]))
+                     :href))
+                   (str "/en/search?q=bar&after-doc-id=19&after-score=0.47674"
+                        "&pp-aid[]=9&pp-as[]=0.47674"))))
+        
+          (let [third-page (html/html-resource
+                            (java.io.StringReader.
+                             (apply str
+                                    (:body
+                                     (request :get
+                                              "/en/search"
+                                              ""
+                                              main-routes
+                                              {:q "bar"
+                                               :after-doc-id "19"
+                                               :after-score "0.47674"
+                                               :pp-aid ["9"]
+                                               :pp-as ["0.47674"]})))))]
+
+            (is (= (html/text
+                    (first
+                     (html/select
+                      third-page
+                      [:span#search-stats])))
+                   "21 results for query"))
+
+            (is (= (first
+                    (html/attr-values
+                     (first (html/select third-page
+                                         [[:ol#search-results] [:li] [:a]]))
+                     :href))
+                   "/pages/doc-20"))
+
+            (is (= (html/attr-values
+                    (first
+                     (html/select third-page
+                                  [:a#previous-search-results-page]))
+                    :href)
+                                   
+                   #{"/en/search?q=bar&after-doc-id=9&after-score=0.47674"}))
+          
+            (is (=  (html/select third-page [:a#next-search-results-page])
+                    []))))
     
-      ;(is (= (:status (request :get "/" main-routes)) 200))
-      (is (= (:status (request :get "/login" main-routes)) 200))
-      (is (= (:status (request :get "/logout" main-routes)) 302))
-      (is (= (:status (request :get "/admin" main-routes)) 200))
-      (is (= (:status (request :get
-                               "/json/en/blog/list-documents"
-                               main-routes))
-             200))
-
-      (is (= (:status (request
-                       :post
-                       "/json/en/blog/new"
-                       (json-str {:title "test-create"
-                                  :slug "/blog/test"
-                                  :content "hic sunt dracones"})
-                       main-routes))
-             201))
-
-      (testing "test if the document is added to the database"
-        (let [document (get-document +test-server+ +test-db+ "/blog/test")]
-          (is (= (:title document)) "test-create")))
-
-      (testing "test if the document is added to the lucene index"
-        (let [reader (lucene/create-index-reader directory)]
-          (is (= (.get (lucene/get-doc reader 21) "title") "test-create"))))
-
-      (is (= (:status (request :get "/json/document/blog/bar" main-routes))
-             200))
-      (is (= (:status (request :get "/json/document/blog/t3" main-routes))
-             404))
-    
-      ;; FIXME: should add a test-case for a 409 conflict
-      (testing "test if documents are updated correctly"
-        (let [document (get-document +test-server+ +test-db+ "/blog/bar")]
-          (is (= (:status (request
-                           :put
-                           "/json/document/blog/bar"
-                           (json-str (assoc document :title "hi!"))
-                           main-routes))
-                 200))
-
-          (is (= (:title (get-document +test-server+ +test-db+ "/blog/bar"))
-                 "hi!"))
-
-          (is (= (:status (request
-                           :put
-                           "/json/document/blog/doesnt-exist"
-                           (json-str (assoc document :title "hi!"))
-                           main-routes))
-                 404))))
-
-      (testing "test if documents are also updated in the lucene index"
-        (let [reader (lucene/create-index-reader directory)]
-          (is (= (.get (lucene/get-doc reader 22) "title") "hi!"))))
-
-      (testing "test if document is deleted from the database correctly"
-        (is (= (:status
-                (request :delete "/json/document/blog/bar" main-routes))
+                                        ;(is (= (:status (request :get "/" main-routes)) 200))
+        (is (= (:status (request :get "/login" main-routes)) 200))
+        (is (= (:status (request :get "/logout" main-routes)) 302))
+        (is (= (:status (request :get "/admin" main-routes)) 200))
+        (is (= (:status (request :get
+                                 "/json/en/blog/list-documents"
+                                 main-routes))
                200))
-        (is (= (get-document +test-server+ +test-db+ "/blog/bar") nil)))
 
-      (testing "test if document is also deleted from the lucene index."
-        (let [reader (lucene/create-index-reader directory)
-              analyzer (lucene/create-analyzer)
-              filter (lucene/create-filter {:slug "/blog/bar"})
-              result (lucene/search "hi" filter 15 reader analyzer)
-              docs (lucene/get-docs reader (:docs result))]
-          (is (= (:total-hits result) 0))))
+        (is (= (:status (request
+                         :post
+                         "/json/en/blog/new"
+                         (json-str {:title "test-create"
+                                    :slug "/blog/test"
+                                    :content "hic sunt dracones"})
+                         main-routes))
+               201))
+
+        (testing "test if the document is added to the database"
+          (let [document (get-document +test-server+ +test-db+ "/blog/test")]
+            (is (= (:title document)) "test-create")))
+
+        (testing "test if the document is added to the lucene index"
+          (let [reader (lucene/create-index-reader directory)]
+            (is (= (.get (lucene/get-doc reader 21) "title") "test-create"))))
+
+        (is (= (:status (request :get "/json/document/blog/bar" main-routes))
+               200))
+        (is (= (:status (request :get "/json/document/blog/t3" main-routes))
+               404))
+    
+        ;; FIXME: should add a test-case for a 409 conflict
+        (testing "test if documents are updated correctly"
+          (let [document (get-document +test-server+ +test-db+ "/blog/bar")]
+            (is (= (:status (request
+                             :put
+                             "/json/document/blog/bar"
+                             (json-str (assoc document :title "hi!"))
+                             main-routes))
+                   200))
+
+            (is (= (:title (get-document +test-server+ +test-db+ "/blog/bar"))
+                   "hi!"))
+
+            (is (= (:status (request
+                             :put
+                             "/json/document/blog/doesnt-exist"
+                             (json-str (assoc document :title "hi!"))
+                             main-routes))
+                   404))))
+
+        (testing "test if documents are also updated in the lucene index"
+          (let [reader (lucene/create-index-reader directory)]
+            (is (= (.get (lucene/get-doc reader 22) "title") "hi!"))))
+
+        (testing "test if document is deleted from the database correctly"
+          (is (= (:status
+                  (request :delete "/json/document/blog/bar" main-routes))
+                 200))
+          (is (= (get-document +test-server+ +test-db+ "/blog/bar") nil)))
+
+        (testing "test if document is also deleted from the lucene index."
+          (let [reader (lucene/create-index-reader directory)
+                analyzer (lucene/create-analyzer)
+                filter (lucene/create-filter {:slug "/blog/bar"})
+                result (lucene/search "hi" filter 15 reader analyzer)
+                docs (lucene/get-docs reader (:docs result))]
+            (is (= (:total-hits result) 0)))))
 
       (is (= (:status (request :get "/static/none" main-routes)) 404))
       (is (= (:body (request :get "/static/none" main-routes))
@@ -1308,6 +1317,7 @@
           :body ""})))
 
 (defn test-ns-hook []
+  (test-reset-index-reader!)
   (test-json-response)
   (test-response)
   (test-page-not-found-response)
