@@ -124,7 +124,9 @@
 (deftest test-create-index-reader
     (testing "test if Lucene IndexReaders are created correctly."
       (let [dir (create-directory :RAM)]
-        ;; write to index to avoid no segments file error
+        ;; before an index is written to the directory, expect nil
+        (is (= (create-index-reader dir) nil))
+        ;; write to index to get an actual IndexReader
         (do (add-documents-to-index! dir dummy-docs))
         (is (= (class (create-index-reader dir)) 
                org.apache.lucene.index.ReadOnlyDirectoryReader)))))
@@ -670,6 +672,11 @@
     
     (with-open [writer (create-index-writer analyzer dir :create)]
       (add-documents-to-index! writer dummy-docs-extended))
+
+    (testing "search should no results without a reader"
+      (is (= (search "whisky" nil 15 nil analyzer)
+             {:total-hits 0
+              :docs nil})))
 
     (let [reader (create-index-reader dir)]
 

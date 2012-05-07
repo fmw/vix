@@ -33,7 +33,8 @@
             TermQuery BooleanQuery BooleanClause$Occur ScoreDoc]
            [org.apache.lucene.queryParser QueryParser]
            [org.apache.lucene.index IndexWriter IndexWriterConfig
-            IndexWriterConfig$OpenMode IndexReader Term]
+            IndexWriterConfig$OpenMode IndexReader Term
+            IndexNotFoundException]
            [org.apache.lucene.util Version]
            [org.jsoup Jsoup]
            [java.io File]))
@@ -52,8 +53,12 @@
 (def analyzer (create-analyzer))
 
 (defn #^IndexReader create-index-reader [#^Directory directory]
-  "Create IndexReader for the specified directory."
-  (. IndexReader open directory))
+  "Creates IndexReader for the specified directory, but returns nil if
+   the provided directory exists but doesn't contain a valid index."
+  (try
+    (. IndexReader open directory)
+    (catch IndexNotFoundException e
+      nil)))
 
 (defn #^Field create-field
   "Creates a new Lucene Field object.
@@ -332,7 +337,9 @@
   ([query filter limit reader analyzer]
      (search query filter limit nil nil reader analyzer))
   ([query filter limit after-doc-id after-score reader analyzer]
-     (if (and (not-empty query) (not-any? #(= (first query) %) #{\*\?}))
+     (if (and reader
+              (not-empty query)
+              (not-any? #(= (first query) %) #{\*\?}))
        (let [searcher (IndexSearcher. reader)
              parser (QueryParser. (Version/LUCENE_35) "fulltext" analyzer)
              q (.parse parser query)
