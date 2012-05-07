@@ -43,7 +43,9 @@
   (atom (lucene/create-index-reader lucene/directory)))
 
 (defn reset-index-reader! []
-  (.close @*index-reader*)
+  (when @*index-reader*
+    (.close @*index-reader*))
+  
   (compare-and-set! *index-reader*
                     @*index-reader*
                     (lucene/create-index-reader lucene/directory)))
@@ -419,7 +421,8 @@
                 language
                 feed-name))
               (reset-frontpage-cache! language)
-              (reset-index-reader!))
+              (reset-index-reader!)
+              (json-response nil))
             (json-response nil)))
   (POST "/json/:language/:feed/new"
         {{language :language feed-name :feed} :params

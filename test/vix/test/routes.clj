@@ -119,7 +119,15 @@
     (do
       (reset-index-reader!))
 
-    (is (not (= ir @*index-reader*)))))
+    (is (not (= ir @*index-reader*))))
+
+  (do
+    (compare-and-set! *index-reader* @*index-reader* nil)
+    (is (= @*index-reader* nil))
+    (reset-index-reader!))
+
+  (is (= (class @*index-reader*)
+         org.apache.lucene.index.ReadOnlyDirectoryReader)))
 
 (deftest test-json-response
   (is (= (:status (json-response nil)) 404))
