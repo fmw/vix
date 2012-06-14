@@ -14,8 +14,7 @@
 ;; limitations under the License.
 
 (ns vix.views
-  (:require [clojure.zip :as zip]
-            [net.cgrand.enlive-html :as html]
+  (:require [net.cgrand.enlive-html :as html]
             [clj-time.core :as time-core]
             [clj-time.format :as time-format]
             [vix.util :as util]
