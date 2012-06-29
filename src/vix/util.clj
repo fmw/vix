@@ -18,7 +18,8 @@
   (:require [couchdb [client :as couchdb]]
             [clj-time.core :as time-core]
             [clj-time.coerce :as time-coerce]
-            [clj-time.format :as time-format]))
+            [clj-time.format :as time-format]
+            [clojure.string :as string]))
 
 (defn read-int [possible-integer]
   "Converts a numeric string to an integer or returns nil when
@@ -103,3 +104,26 @@
         (swap! orig (constantly nil))
         (System/setOut out)
         (System/setErr err)))))
+
+(defn parse-accept-language-header
+  "Returns a lowercase sequence of language tags for the provided
+   accept-language string value, sorted by quality."
+  [header]
+  (when header
+    (map first
+         (sort-by second
+                  >
+                  (map (fn [[a tag c weight]]
+                         [tag
+                          (if weight
+                            (java.lang.Double/parseDouble weight)
+                            1.0)])
+                       (re-seq #"([a-z\-]+)(\;q=(\d+\.\d+)){0,1}"
+                               (string/lower-case header)))))))
+
+(defn get-preferred-language
+  "Returns the preferred language from the given sorted
+   preferred-languages sequence and the available-languages, or nil if
+   there is no match."
+  [preferred-languages available-languages]
+  (first (filter #(some #{%} available-languages) preferred-languages)))

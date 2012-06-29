@@ -15,7 +15,5 @@
                  [org.apache.lucene/lucene-queries "3.5.0"]
                  [com.draines/postal "1.7.1"]
                  [ring/ring-servlet "1.0.1"]]
-  :dev-dependencies [[radagast "1.1.0"]]
-  :plugins [[lein-ring "0.6.1"]
-            [lein-swank "1.4.3"]]
+  :plugins [[lein-ring "0.7.1"]]
   :ring {:handler vix.routes/app})

@@ -114,7 +114,7 @@
                                          +test-db+
                                          "/_design/views"))))]
 
-    (is (= (count (:views view-doc)) 7))
+    (is (= (count (:views view-doc)) 8))
     
     (is (= (:map (:feeds (:views view-doc)))
            (str "function(doc) {\n"
@@ -166,7 +166,16 @@
            (str "function(doc) {\n"
                 "    if(doc.type === \"newsletter-subscriber\") {\n"
                 "        emit([doc.language, doc.email], doc);\n"
-                "    }\n}\n")))))
+                "    }\n}\n")))
+
+    (is (= (:map (:languages (:views view-doc)))
+           (str "function(doc) {\n"
+                "    if(doc.type === \"feed\") {\n"
+                "        emit(doc.language, null);\n"
+                "    }\n}\n")))
+
+    (is (= (:reduce (:languages (:views view-doc)))
+           "function(k,v) {\n    return null;\n}\n"))))
 
 (deftest test-encode-view-options
   (is (= (encode-view-options {:key "blog" :include_docs true})
@@ -921,6 +930,42 @@
 
   (is (nil? (get-feed +test-server+ +test-db+ "en" "blog"))
       "Assure the feed is truly removed."))
+
+(deftest test-get-available-languages
+  (do
+    (create-feed +test-server+
+                 +test-db+
+                 {:title "Weblog"
+                  :subtitle "Vix Weblog!"
+                  :name "blog"
+                  :language "en"
+                  :searchable true})
+
+    (create-feed +test-server+
+                 +test-db+
+                 {:title "Images"
+                  :subtitle "Images"
+                  :name "images"
+                  :language "en"
+                  :searchable true})
+
+    (create-feed +test-server+
+                 +test-db+
+                 {:title "Menu"
+                  :subtitle "Menu"
+                  :name "menu"
+                  :language "en"
+                  :searchable false})
+
+    (create-feed +test-server+
+                 +test-db+
+                 {:title "Weblog"
+                  :name "blog"
+                  :language "nl"
+                  :searchable true}))
+
+  (is (= (get-available-languages +test-server+ +test-db+)
+         ["en" "nl"])))
 
 (deftest test-get-languages
   (do

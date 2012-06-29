@@ -32,12 +32,23 @@
             [compojure.route :as route]
             [compojure.handler :as handler]))
 
-(def search-allowed-feeds
+(def *available-languages*
+  (atom (db/get-available-languages config/db-server config/database)))
+
+(defn reset-available-languages! [db-server database]
+  (reset! *available-languages*
+          (db/get-available-languages db-server database)))
+
+(def *search-allowed-feeds*
   (atom (try
           (db/get-searchable-feeds (db/list-feeds config/db-server
                                                   config/database))
           (catch Exception e
             nil))))
+
+(defn reset-search-allowed-feeds! [db-server database]
+  (reset! *search-allowed-feeds*
+          (db/get-searchable-feeds (db/list-feeds db-server database))))
 
 (def *index-reader*
   (atom (lucene/create-index-reader lucene/directory)))
@@ -46,9 +57,8 @@
   (when @*index-reader*
     (.close @*index-reader*))
   
-  (compare-and-set! *index-reader*
-                    @*index-reader*
-                    (lucene/create-index-reader lucene/directory)))
+  (reset! *index-reader*
+          (lucene/create-index-reader lucene/directory)))
 
 (defn response [body & {:keys [status content-type]}]
   {:status (or status (if (nil? body) 404 200))
@@ -209,7 +219,7 @@
       (page-not-found-response))))
 
 (defn reset-page-cache! []
-  (compare-and-set! *page-cache* @*page-cache* {}))
+  (reset! *page-cache* {}))
 
 ;; FIXME: add authorization
 (defn catch-all [db-server database slug timezone]
@@ -243,11 +253,19 @@
 ;; instead of just /new)
 (defroutes main-routes
   (GET "/"
-       []
-       (get-cached-frontpage! config/db-server
-                              config/database
-                              config/default-language
-                              config/default-timezone))
+       {headers :headers}
+       (let [preferred-language (or
+                                 (util/get-preferred-language
+                                  (util/parse-accept-language-header
+                                   (get headers "accept-language"))
+                                  @*available-languages*)
+                                 config/default-language)]
+         (if (= preferred-language config/default-language)
+           (get-cached-frontpage! config/db-server
+                                  config/database
+                                  config/default-language
+                                  config/default-timezone)
+           (redirect (str config/base-uri preferred-language)))))
   (GET "/admin*"
        {session :session {feed "feed"} :params}
        (when (authorize session nil :* :DELETE)
@@ -289,7 +307,7 @@
                             (lucene/create-filter
                              {:language language
                               :draft false
-                              :feed (get @search-allowed-feeds language)})
+                              :feed (get @*search-allowed-feeds* language)})
                             (inc config/search-results-per-page)
                             after-doc-id-int
                             after-score-float
@@ -315,7 +333,7 @@
                             (lucene/create-filter
                              {:language language
                               :draft false
-                              :feed (get @search-allowed-feeds language)})
+                              :feed (get @*search-allowed-feeds* language)})
                             (inc config/search-results-per-page)
                             after-doc-id-int
                             after-score-float
@@ -370,11 +388,8 @@
                                      (read-json (slurp* (:body request))))]
             (reset-frontpage-cache! (:language feed))
             (reset-index-reader!)
-            (compare-and-set! search-allowed-feeds
-                              @search-allowed-feeds
-                              (db/get-searchable-feeds
-                               (db/list-feeds config/db-server
-                                              config/database)))
+            (reset-search-allowed-feeds! config/db-server config/database)
+            (reset-available-languages! config/db-server config/database)
             (json-response feed :status 201))))
   (GET "/json/feed/:language/:name"
        {{language :language feed-name :name} :params session :session}
@@ -400,11 +415,8 @@
                                       (read-json (slurp* body)))]
              (reset-frontpage-cache! language)
              (reset-index-reader!)
-             (compare-and-set! search-allowed-feeds
-                               @search-allowed-feeds
-                               (db/get-searchable-feeds
-                                (db/list-feeds config/db-server
-                                               config/database)))
+             (reset-search-allowed-feeds! config/db-server config/database)
+             (reset-available-languages! config/db-server config/database)
              (json-response feed)))
          (json-response nil)))
   (DELETE "/json/feed/:language/:name"

@@ -109,3 +109,29 @@
     (log-restore!)
     (is (= orig-err System/err))
     (is (= orig-out System/out))))
+
+(deftest test-parse-accept-language-header
+  (is (= (parse-accept-language-header "en-US,en;q=0.8")
+         ["en-us" "en"]))
+
+  (is (= (parse-accept-language-header "da, en-gb;q=0.8, en;q=0.7")
+         ["da" "en-gb" "en"]))
+
+  (is (= (parse-accept-language-header "da, en-gb;q=0.8, en;q=0.7, nl;q=0.9")
+         ["da" "nl" "en-gb" "en"]))
+
+  (is (= (parse-accept-language-header
+          "da;q=0.9, en-gb;q=0.8, en;q=0.7, nl")
+         ["nl" "da" "en-gb" "en"]))
+
+  (is (= (parse-accept-language-header nil))
+      nil))
+
+(deftest test-get-preferred-language
+  (is (= (get-preferred-language ["nl" "da" "en-gb" "en"]
+                                 ["de" "nl" "da" "en-gb"]))
+      "nl")
+  
+  (is (= (get-preferred-language ["nl"]
+                                 ["de" "da" "en-gb"]))
+      nil))

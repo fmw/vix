@@ -114,6 +114,73 @@
                             form-params)
                :body)))
 
+(deftest test-reset-search-allowed-feeds!
+  (do
+    (create-feed +test-server+
+                 +test-db+
+                 {:title "Weblog"
+                  :subtitle "Vix Weblog!"
+                  :name "blog"
+                  :default-slug-format "/{document-title}"
+                  :default-document-type "with-description"
+                  :language "en"
+                  :searchable true})
+    (create-feed +test-server+
+                 +test-db+
+                 {:title "Images"
+                  :subtitle "Vix Weblog!"
+                  :name "blog"
+                  :default-slug-format "/{document-title}"
+                  :default-document-type "with-description"
+                  :language "en"
+                  :searchable false}))
+
+  (is (= @*search-allowed-feeds* {}))
+  (reset-search-allowed-feeds! +test-server+ +test-db+)
+  (is (= @*search-allowed-feeds* {"en" ["blog"]}))
+
+  (create-feed +test-server+
+               +test-db+
+               {:title "News"
+                :subtitle "Vix News!"
+                :name "news"
+                :default-slug-format "/{document-title}"
+                :default-document-type "with-description"
+                :language "en"
+                :searchable true})
+
+  (reset-search-allowed-feeds! +test-server+ +test-db+)
+  (is (= @*search-allowed-feeds* {"en" ["news" "blog"]})))
+
+(deftest test-reset-available-languages!
+  (do
+    (create-feed +test-server+
+                 +test-db+
+                 {:title "Weblog"
+                  :subtitle "Vix Weblog!"
+                  :name "blog"
+                  :default-slug-format "/{document-title}"
+                  :default-document-type "with-description"
+                  :language "en"
+                  :searchable true}))
+
+  (is (= @*available-languages* []))
+  (reset-available-languages! +test-server+ +test-db+)
+  (is (= @*available-languages* ["en"]))
+
+  (create-feed +test-server+
+               +test-db+
+               {:title "News"
+                :subtitle "Vix News!"
+                :name "news"
+                :default-slug-format "/{document-title}"
+                :default-document-type "with-description"
+                :language "nl"
+                :searchable true})
+
+  (reset-available-languages! +test-server+ +test-db+)
+  (is (= @*available-languages* ["en" "nl"])))
+
 (deftest test-reset-index-reader!
   (let [ir @*index-reader*]
     (do
@@ -509,7 +576,7 @@
   (is (= @*page-cache* {}))
   (swap! *page-cache* assoc "/events/clojure-meetup.html" "hey!")
   (is (not (= @*page-cache* {})))
-  (is (true? (reset-page-cache!)))
+  (is (= (reset-page-cache!) {}))
   (is (= @*page-cache* {})))
 
 (deftest test-get-cached-page!
@@ -681,7 +748,7 @@
                       :draft false}))
 
   (let [directory (lucene/create-directory :RAM)]
-    (with-redefs [search-allowed-feeds (atom {"en" ["pages"]})
+    (with-redefs [*search-allowed-feeds* (atom {"en" ["pages"]})
                   config/search-results-per-page 10
                   config/database +test-db+
                   lucene/directory directory]
@@ -957,7 +1024,7 @@
                                main-routes)]
         (is (= (:status post-feed-request) 201))
 
-        (is (= @search-allowed-feeds {"en" ["pages" "blog"]})
+        (is (= @*search-allowed-feeds* {"en" ["pages" "blog"]})
             "Test if search-allowed-feeds is updated when feed is added")
         
         (let [image-feed (read-json
@@ -1047,7 +1114,7 @@
           (is (= (:name json-put-body) "blog"))
           (is (= (:title json-put-body) "Vix!"))
           
-          (is (= @search-allowed-feeds {"nl" [] "en" ["pages"]})
+          (is (= @*search-allowed-feeds* {"nl" [] "en" ["pages"]})
               "Make sure search-allowed-feeds is updated when feeds are")))
     
       (is (:status (request :get "/json/feed/en/blog" main-routes)) 200)
@@ -1325,6 +1392,8 @@
           :body ""})))
 
 (defn test-ns-hook []
+  (database-fixture test-reset-search-allowed-feeds!)
+  (database-fixture test-reset-available-languages!)
   (test-reset-index-reader!)
   (test-json-response)
   (test-response)

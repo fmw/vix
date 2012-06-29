@@ -43,7 +43,10 @@
             {:map (load-view "database-views/map_events_by_feed.js")}
             :subscribers
             {:map (load-view
-                   "database-views/map_newsletter_subscribers.js")}})
+                   "database-views/map_newsletter_subscribers.js")}
+            :languages
+            {:map (load-view "database-views/map_languages.js")
+             :reduce (load-view "database-views/reduce_languages.js")}})
 
 (defn #^{:rebind true} view-sync
   [server db design-doc view-name view-functions]
@@ -354,6 +357,14 @@
                 nil)
     (kit/handle couchdb/ResourceConflict []
                 nil)))
+
+(defn get-available-languages [db-server db-name]
+  "Retrieve the available languages directly from the database."
+  (map :key (:rows (view-get db-server
+                             db-name
+                             "views"
+                             "languages"
+                             {:group true}))))
 
 (defn get-languages [feeds]
   "Returns a set of languages from the provided feeds"
