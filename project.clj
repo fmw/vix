@@ -2,6 +2,7 @@
   :description "Vix is a document repository and management system."
   :dependencies [[org.clojure/clojure "1.2.0"]
                  [org.clojure/data.json "0.1.2"]
+                 [slingshot "0.10.3"]
                  [org.mindrot/jbcrypt "0.3m"]
                  [compojure "1.0.1"]
                  [ring/ring-core "1.0.2"]
@@ -10,6 +11,7 @@
                  [clj-time "0.3.7"]
                  [clj-http "0.1.3"]
                  [org.clojars.pieterbreed/clojure-couchdb "0.4.7"]
+                 [com.ashafa/clutch "0.3.1"]
                  [commons-codec/commons-codec "1.5"]
                  [org.apache.lucene/lucene-core "3.5.0"]
                  [org.apache.lucene/lucene-queries "3.5.0"]

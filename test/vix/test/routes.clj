@@ -129,13 +129,13 @@
                  +test-db+
                  {:title "Images"
                   :subtitle "Vix Weblog!"
-                  :name "blog"
+                  :name "images"
                   :default-slug-format "/{document-title}"
                   :default-document-type "with-description"
                   :language "en"
                   :searchable false}))
 
-  (is (= @*search-allowed-feeds* {}))
+  (reset! *search-allowed-feeds* {})
   (reset-search-allowed-feeds! +test-server+ +test-db+)
   (is (= @*search-allowed-feeds* {"en" ["blog"]}))
 
@@ -164,7 +164,7 @@
                   :language "en"
                   :searchable true}))
 
-  (is (= @*available-languages* []))
+  (reset! *available-languages* {})
   (reset-available-languages! +test-server+ +test-db+)
   (is (= @*available-languages* ["en"]))
 
@@ -1264,12 +1264,10 @@
 
 (deftest test-login
   (do
-    (add-user
-     +test-server+
-     +test-db+
-     "fmw"
-     "oops"
-     {:* ["GET" "POST" "PUT" "DELETE"]}))
+    (add-user +test-db+
+              "fmw"
+              "oops"
+              {:* ["GET" "POST" "PUT" "DELETE"]}))
 
   (with-redefs [config/database +test-db+]
     (is (= (form-request :post "/login" main-routes {"username" "fmw"

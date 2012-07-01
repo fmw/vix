@@ -232,17 +232,15 @@
 
 (defn login [session username password]
   (kit/with-handler
-    (when-let [authenticated-session (authenticate
-                                       config/db-server
-                                       config/database
-                                       session
-                                       username
-                                       password)]
+    (when-let [authenticated-session (authenticate  config/database
+                                                    session
+                                                    username
+                                                    password)]
       {:session authenticated-session
        :status 302
        :headers {"Location" "/admin/"}})
     (kit/handle UserDoesNotExist []
-      (redirect "/login"))
+                (redirect "/login"))
     (kit/handle UsernamePasswordMismatch []
                 (redirect "/login"))))
 
@@ -268,7 +266,7 @@
            (redirect (str config/base-uri preferred-language)))))
   (GET "/admin*"
        {session :session {feed "feed"} :params}
-       (when (authorize session nil :* :DELETE)
+       (when (authorize session :DELETE nil :*)
          (response (views/admin-template {}))))
   (GET "/login"
        []
@@ -358,7 +356,7 @@
          startkey-published :startkey-published
          startkey_docid :startkey_docid} :params
          session :session}
-       (when (authorize session language feed-name :GET)
+       (when (authorize session :GET language feed-name)
          (json-response
           (db/get-documents-for-feed config/db-server
                                      config/database
@@ -372,7 +370,7 @@
        {session :session
         {ddt :default-document-type
          language :language} :params}
-       (when (authorize session nil :* :GET)
+       (when (authorize session :GET nil :*)
          (json-response
           (if ddt
             (db/list-feeds-by-default-document-type config/db-server
@@ -382,7 +380,7 @@
             (db/list-feeds config/db-server config/database language)))))
   (POST "/json/new-feed"
         request
-        (when (authorize (:session request) nil :* :POST)
+        (when (authorize (:session request) :POST nil :*)
           (let [feed (db/create-feed config/db-server
                                      config/database
                                      (read-json (slurp* (:body request))))]
@@ -397,7 +395,7 @@
                                   config/database
                                   language
                                   feed-name)]
-         (when (authorize session language feed-name :GET)
+         (when (authorize session :GET language feed-name)
            (json-response feed))
          (json-response nil)))
   (PUT "/json/feed/:language/:name"
@@ -407,7 +405,7 @@
                                   config/database
                                   language
                                   feed-name)]
-         (when (authorize session language feed-name :PUT)
+         (when (authorize session :PUT language feed-name)
            (let [feed (db/update-feed config/db-server
                                       config/database
                                       language
@@ -425,7 +423,7 @@
                                      config/database
                                      language
                                      feed-name)]
-            (when (authorize session language feed-name :DELETE)
+            (when (authorize session :DELETE language feed-name)
               (json-response 
                (db/delete-feed
                 config/db-server
@@ -440,7 +438,7 @@
         {{language :language feed-name :feed} :params
          session :session
          body :body}
-        (when (authorize session language feed-name :POST)
+        (when (authorize session :POST language feed-name)
           (let [document (db/create-document config/db-server
                                              config/database
                                              language
@@ -457,7 +455,7 @@
                                           config/database
                                           (util/force-initial-slash slug)
                                           true)]
-         (when (authorize session (:language document) (:feed document) :GET)
+         (when (authorize session :GET (:language document) (:feed document))
            (json-response document))
          (json-response nil)))
   (PUT "/json/document/*"
@@ -466,9 +464,9 @@
          (if-let [document (db/get-document config/db-server
                                             config/database slug)]
            (when (authorize session
+                            :PUT
                             (:language document)
-                            (:feed document)
-                            :PUT)
+                            (:feed document))
              (let [document (db/update-document config/db-server
                                                 config/database
                                                 config/default-timezone
@@ -489,9 +487,9 @@
                                                config/database
                                                slug)]
               (when (authorize session
+                               :DELETE
                                (:language document)
-                               (:feed document)
-                               :DELETE)
+                               (:feed document))
                 (reset-page-cache!)
                 (reset-frontpage-cache! (:language document))
                 (reset-index-reader!)

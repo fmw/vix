@@ -1,5 +1,5 @@
 ;; test/vix/test/auth.clj tests for auth namespace.
-;; Copyright 2011, F.M. (Filip) de Waard <fmw@vix.io>.
+;; Copyright 2011-2012, Vixu.com, F.M. (Filip) de Waard <fmw@vixu.com>.
 ;;
 ;; Licensed under the Apache License, Version 2.0 (the "License");
 ;; you may not use this file except in compliance with the License.
@@ -20,20 +20,24 @@
 
 (deftest test-fix-complex-keys
   (is (= (fix-complex-keys {:* "a" :b "b" (keyword "[:en :blog]") "c"})
-         {:* "a" :b "b" [:en :blog] "c"})))
+         {:* "a" :b "b" [:en :blog] "c"}))
+  (is (= (fix-complex-keys {:foo :bar})
+         {:foo :bar}))
+  (is (= (fix-complex-keys {(keyword "[\"foo\", \"bar\"]") :foobar})
+         {["foo" "bar"] :foobar}))
+  (is (= (fix-complex-keys {(keyword "{:a :b :c :d}") :map})
+         {{:a :b :c :d} :map})))
 
 (deftest test-authenticate
   (do
-    (add-user +test-server+
-              +test-db+
+    (add-user +test-db+
               "fmw"
               "oops"
-              {[:en :blog] ["GET" "PUT" "POST" "DELETE"]
-               [:en :pages] ["GET"]}))
+              {["en" "blog"] ["GET" "PUT" "POST" "DELETE"]
+               ["en" "pages"] ["GET"]}))
 
   (are [exc-re username password]
-       (thrown-with-msg? Exception exc-re (authenticate +test-server+
-                                                        +test-db+
+       (thrown-with-msg? Exception exc-re (authenticate +test-db+
                                                         {}
                                                         username
                                                         password))
@@ -41,30 +45,34 @@
        #"username and password do not match" "fmw" "ps"
        #"doesn't exist" "not-fmw" "oops")
   
-  (is (= (authenticate +test-server+ +test-db+ {} "fmw" "oops")
+  (is (= (authenticate +test-db+ {} "fmw" "oops")
          {:username "fmw"
-          :permissions {[:en :blog] ["GET" "PUT" "POST" "DELETE"]
-                        [:en :pages] ["GET"]}})))
+          :permissions {["en" "blog"] ["GET" "PUT" "POST" "DELETE"]
+                        ["en" "pages"] ["GET"]}})))
 
 (deftest test-authorize-for-feed
-  (is (authorize-for-feed {[:en :blog] ["GET" "POST" "PUT" "DELETE"]}
-                          "en"
-                          "blog"
-                          :GET))
+  (is (#'vix.auth/authorize-for-feed
+       {["en" "blog"] ["GET" "POST" "PUT" "DELETE"]}
+       :GET
+       "en"
+       "blog"))
 
   (are [permissions-map language feed-name method]
-       (not (authorize-for-feed permissions-map language feed-name method))
-       {[:en :blog] ["GET" "POST" "PUT" "DELETE"]} "en" "pages" :GET
-       {[:en :blog] ["GET"]} "en" "blog" :DELETE))
+       (not (#'vix.auth/authorize-for-feed permissions-map
+                                           method
+                                           language
+                                           feed-name))
+       {["en" "blog"] ["GET" "POST" "PUT" "DELETE"]} :GET "en" "pages"
+       {["en" "blog"] ["GET"]} :DELETE "en" "blog"))
 
 (deftest test-authorize
   (are [feed method] (authorize {:username "fmw"
-                                 :permissions {[:en :blog]
+                                 :permissions {["en" "blog"]
                                                ["GET" "PUT" "POST" "DELETE"]
-                                               [:en :pages] ["GET"]}}
+                                               ["en" "pages"] ["GET"]}}
+                                method
                                 "en"
-                                feed
-                                method)
+                                feed)
        "blog" :GET
        "blog" :PUT
        "blog" :POST
@@ -75,11 +83,22 @@
     (is (thrown-with-msg? Exception #"You need to authenticate"
           (authorize
            {:permissions
-            {[:en :blog] ["GET" "PUT" "POST" "DELETE"]
-             [:en :pages] ["GET"]}}
+            {["en" "blog"] ["GET" "PUT" "POST" "DELETE"]
+             ["en" "pages"] ["GET"]}}
+           :GET
            "en"
-           "pages"
-           :GET)
+           "pages")
+          true))
+
+    (is (thrown-with-msg? Exception #"You need to authenticate"
+          (authorize
+           {:username :not-a-string
+            :permissions
+            {["en" "blog"] ["GET" "PUT" "POST" "DELETE"]
+             ["en" "pages"] ["GET"]}}
+           :GET
+           "en"
+           "pages")
           true)))
 
   (testing "Expect exception if unlisted method is requested for feed."
@@ -87,11 +106,11 @@
          (thrown-with-msg? Exception #"insufficient privileges"
            (authorize {:username "fmw"
                        :permissions
-                       {[:en :blog] ["GET" "PUT" "POST" "DELETE"]
-                        [:en :pages] ["GET"]}}
+                       {["en" "blog"] ["GET" "PUT" "POST" "DELETE"]
+                        ["en" "pages"] ["GET"]}}
+                      method
                       "en"
-                      "pages"
-                      method))
+                      "pages"))
          :PUT
          :POST
          :DELETE))
@@ -99,13 +118,13 @@
   (testing "Requests on unlisted feeds should fail without global privileges"
     (are [method]
          (thrown-with-msg? Exception #"insufficient privileges"
-          (authorize {:username "fmw"
-                      :permissions
-                      {[:en :blog] ["GET" "PUT" "POST" "DELETE"]
-                       [:en :pages] ["GET"]}}
-                     "en"
-                     "foo"
-                     method))
+           (authorize {:username "fmw"
+                       :permissions
+                       {["en" "blog"] ["GET" "PUT" "POST" "DELETE"]
+                        ["en" "pages"] ["GET"]}}
+                      "en"
+                      "foo"
+                      method))
          :GET
          :PUT
          :POST
@@ -116,66 +135,65 @@
           (authorize {:username "fmw"
                       :permissions
                       {:* ["GET" "PUT" "POST" "DELETE"]
-                       [:en :blog] ["GET" "PUT" "POST" "DELETE"]
-                       [:en :pages] ["GET"]}}
+                       ["en" "blog"] ["GET" "PUT" "POST" "DELETE"]
+                       ["en" "pages"] ["GET"]}}
+                     :DELETE
                      "en"
-                     "pages"
-                     :DELETE))))
+                     "pages"))))
 
   (testing "Feed permission handling should be the same with a global map."
     (is (authorize {:username "fmw"
                     :permissions {:* ["GET" "PUT" "POST" "DELETE"]
-                                  [:en :blog] ["GET" "PUT" "POST" "DELETE"]
-                                  [:en :pages] ["GET"]}}
+                                  ["en" "blog"] ["GET" "PUT" "POST" "DELETE"]
+                                  ["en" "pages"] ["GET"]}}
+                   :DELETE
                    "en"
-                   "blog"
-                   :DELETE))
+                   "blog"))
 
     (is (authorize {:username "fmw"
-                   :permissions {:* ["GET" "PUT" "POST" "DELETE"]
-                                 [:en :blog] ["GET" "PUT" "POST" "DELETE"]
-                                 [:en :pages] ["GET"]}}
+                    :permissions {:* ["GET" "PUT" "POST" "DELETE"]
+                                  ["en" "blog"] ["GET" "PUT" "POST" "DELETE"]
+                                  ["en" "pages"] ["GET"]}}
+                   :GET
                    "en"
-                   "pages"
-                   :GET)))
+                   "pages")))
 
 
   (testing "Fall back to general privileges if no specific privilege found."
     (is (authorize {:username "fmw"
                     :permissions {:* ["GET"]
-                                  [:en :blog] ["GET" "PUT" "POST" "DELETE"]
-                                  [:en :pages] ["GET"]}}
+                                  ["en" "blog"] ["GET" "PUT" "POST" "DELETE"]
+                                  ["en" "pages"] ["GET"]}}
+                   :GET
                    "en"
-                   "photos"
-                   :GET))
+                   "photos"))
 
     (is (thrown-with-msg? Exception #"insufficient privileges"
           (authorize {:username "fmw"
                       :permissions
-                      {[:en :blog] ["GET" "PUT" "POST" "DELETE"]
-                       [:en :pages] ["GET"]}}
+                      {["en" "blog"] ["GET" "PUT" "POST" "DELETE"]
+                       ["en" "pages"] ["GET"]}}
+                     :GET
                      "en"
-                     "photos"
-                     :GET)))))
+                     "photos")))))
 
 (deftest test-add-user
-  (let [user (add-user
-               +test-server+
-               +test-db+
-               "username"
-               "password"
-               {[:en :blog] [:GET :POST :PUT :DELETE]
-                [:en :pages] [:GET]})]
+  (let [user (add-user +test-db+
+                       "username"
+                       "password"
+                       {["en" "blog"] ["GET" "POST" "PUT" "DELETE"]
+                        ["en" "pages"] ["GET"]})]
     (is (= (:type user) "user"))
     (is (= (:username user) "username"))
     (is (re-matches #"^\$2a\$[\d]{2}\$[A-z\d./]{53}$" (:password user)))
     (is (= (:permissions user)
-           {[:en :blog] [:GET :POST :PUT :DELETE]
-            [:en :pages] [:GET]})))
+           {["en" "blog"] ["GET" "POST" "PUT" "DELETE"]
+            ["en" "pages"] ["GET"]})))
 
   (are [username]
        (thrown-with-msg? Exception #"Username's can only contain"
-         (add-user +test-server+ +test-db+ username "password" {}))
+         (add-user +test-db+ username "password" {}))
+       "  foo"
        "space "
        "u"
        "user$"
@@ -184,27 +202,42 @@
        "user%")
   
   (is (thrown-with-msg? Exception #"already exists"
-        (add-user
-         +test-server+
-         +test-db+
-         "username"
-         "password"
-         {[:en :blog] [:GET :POST :PUT :DELETE]
-          [:en :pages] [:GET]}))
+        (add-user +test-db+
+                  "username"
+                  "password"
+                  {["en" "blog"] [:GET :POST :PUT :DELETE]
+                   ["en" "pages"] [:GET]}))
       "Expecting exception when user already exists."))
 
 (deftest test-get-user
   (do
-    (add-user +test-server+ +test-db+ "fmw" "oops" {}))
+    (add-user +test-db+ "fmw" "oops" {})
+    (add-user +test-db+ "fmw1" "oops" {:* ["GET" "PUT" "POST" "DELETE"]})
+    (add-user +test-db+
+              "fmw2"
+              "oops"
+              {["en" "blog"] ["GET" "PUT" "POST" "DELETE"]
+               ["en" "pages"] ["GET" "PUT" "POST" "DELETE"]}))
 
-  (let [user (get-user +test-server+ +test-db+ "fmw")]
+  (let [user (get-user +test-db+ "fmw")]
     (is (re-matches #"^[a-z0-9]{32}$" (:_id user)))
     (is (re-matches #"^1-[a-z0-9]{32}$" (:_rev user)))
-    (is (:type user) "user")
+    (is (= (:type user) "user"))
     (is (re-matches #"^\$2a\$[\d]{2}\$[A-z\d./]{53}$" (:password user)))
-    (is (:permissions user) {}))
+    (is (= (:permissions user) {})))
 
-  (is (nil? (get-user +test-server+ +test-db+ "john.doe"))))
+  (let [user (get-user +test-db+ "fmw1")]
+    (is (= (:permissions user) {:* ["GET" "PUT" "POST" "DELETE"]})))
+
+  (let [user (get-user +test-db+ "fmw1")]
+    (is (= (:permissions user) {:* ["GET" "PUT" "POST" "DELETE"]})))
+
+  (let [user (get-user +test-db+ "fmw2")]
+    (is (= (:permissions user)
+           {["en" "blog"] ["GET" "PUT" "POST" "DELETE"]
+            ["en" "pages"] ["GET" "PUT" "POST" "DELETE"]})))
+
+  (is (nil? (get-user +test-db+ "john.doe"))))
 
 (defn test-ns-hook []
   (database-fixture test-authenticate)
