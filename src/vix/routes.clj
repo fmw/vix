@@ -558,7 +558,7 @@
   (fn [request]
     (cond
      ;; redirect requests to default-host if necessary
-     (not (= (:server-name request) config/default-host))
+     (not (= (:server-name request) config/server-name))
      (redirect-301 (str "http://" config/default-host (:uri request)))
      ;; redirect /admin on non-localhost to https
      (and (= (apply str (take 6 (:uri request))) "/admin")

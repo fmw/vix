@@ -23,6 +23,7 @@
 (def lucene-index-path "/var/lucene/vix")
 
 ;; host
+(def server-name "localhost")
 (def default-host "localhost:3000")
 (def base-uri "http://localhost:3000/")
 (def cdn-hostname "http://localhost:3000")

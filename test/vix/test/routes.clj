@@ -1324,7 +1324,8 @@
                 :headers {"Location" "http://www.vixu.com"}}))))
 
     (testing "test if administrators are redirected to https://"
-      (with-redefs [config/default-host "www.vixu.com"]
+      (with-redefs [config/server-name "www.vixu.com"
+                    config/default-host "www.vixu.com"]
         (is (= ((redirection-handler identity) {:server-name "www.vixu.com"
                                                 :uri "/admin/"
                                                 :scheme :http})
