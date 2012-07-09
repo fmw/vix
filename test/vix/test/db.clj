@@ -17,8 +17,8 @@
 (ns vix.test.db
   (:use [vix.db] :reload)
   (:use [clojure.test]
-        [clojure.contrib.json :only [read-json]])
-  (:require [couchdb [client :as couchdb]]
+        [clojure.data.json :only [read-json]])
+  (:require [com.ashafa.clutch :as clutch]
             [clj-http.client :as http]
             [vix.util :as util])
   (:import [org.apache.commons.codec.binary Base64]))
@@ -47,10 +47,9 @@
 (def +test-server+ "http://localhost:5984/")
 
 (defn database-fixture [f]
-  (couchdb/database-create
-   +test-server+ +test-db+)
+  (clutch/get-database +test-db+)
   (f)
-  (couchdb/database-delete +test-server+ +test-db+))
+  (clutch/delete-database +test-db+))
 
 (use-fixtures :each database-fixture)
 
@@ -61,54 +60,8 @@
               "        emit([doc.language, doc.email], doc);\n"
               "    }\n}\n"))))
 
-(deftest test-view-sync
-  (testing "Create new view"
-    (do
-      (view-sync +test-server+
-                 +test-db+
-                 "test"
-                 "by_slug"
-                 {:map (str "function(doc) {\n"
-                            "    emit(doc.slug, doc);\n"
-                            "}\n")}))
-           
-    (let [view-doc (read-json (:body (http/get
-                                       (str +test-server+
-                                            +test-db+
-                                            "/_design/test"))))]
-      (is (= (:map (:by_slug (:views view-doc)))
-             (str "function(doc) {\n"
-                  "    emit(doc.slug, doc);\n"
-                  "}\n")))))
-
-  (testing "Update existing view"
-    (do
-      (view-sync +test-server+
-                 +test-db+
-                 "test"
-                 "by_slug"
-                 {:map (str "function(d) {\n"
-                            "    emit(d.slug, d);\n"
-                            "}\n")
-                  :reduce (str "function(key, v, rereduce) {\n"
-                               "    return sum(v);\n"
-                               "}\n")}))
-           
-    (let [view-doc (read-json (:body (http/get
-                                       (str +test-server+
-                                            +test-db+
-                                            "/_design/test"))))]
-      (is (= (:map (:by_slug (:views view-doc)))
-             (str "function(d) {\n"
-                  "    emit(d.slug, d);\n"
-                  "}\n")))
-      (is (= (:reduce (:by_slug (:views view-doc)))
-             (str "function(key, v, rereduce) {\n"
-                  "    return sum(v);\n"
-                  "}\n"))))))
-
 (deftest test-create-views
-  (create-views +test-server+ +test-db+ "views" views)
+  (create-views +test-db+ "views" views)
   (let [view-doc (read-json (:body (http/get
                                     (str +test-server+
                                          +test-db+
@@ -177,90 +130,25 @@
     (is (= (:reduce (:languages (:views view-doc)))
            "function(k,v) {\n    return null;\n}\n"))))
 
-(deftest test-encode-view-options
-  (is (= (encode-view-options {:key "blog" :include_docs true})
-         "key=%22blog%22&include_docs=true"))
-  
-  (is (= (encode-view-options {:endkey ["blog"]
-                               :startkey ["blog" "2999"]
-                               :startkey_docid "foo"
-                               :endkey_docid "bar"
-                               :descending true
-                               :include_docs true})                                  
-         (str "endkey=%5B%22blog%22%5D&startkey=%5B%22blog%22%2C%222999%22%5D"
-              "&startkey_docid=foo&endkey_docid=bar"
-              "&descending=true&include_docs=true"))))
-
-(deftest test-view-get
-  (let [doc-1 (create-document +test-server+
-                               +test-db+
-                               "en"
-                               "blog"
-                               "Europe/Amsterdam"
-                               {:title "foo"
-                                :slug "/blog/foo"
-                                :content "bar"
-                                :draft true})
-
-        doc-2 (create-document +test-server+
-                               +test-db+
-                               "en"
-                               "blog"
-                               "Europe/Amsterdam"
-                               {:title "foo"
-                                :slug "/blog/foo"
-                                :content "bar"
-                                :draft true})]
-    
-    (testing "Test if view-get works and if views are added automatically"
-      (let [entries (:rows (view-get
-                            +test-server+
-                            +test-db+
-                            "views"
-                            "by_feed"
-                            {:endkey [["en" "blog"], nil]
-                             :startkey [["en" "blog"] "2999"]
-                             :include_docs true
-                             :descending true}))
-
-            feed (map #(:value %) entries)]
-    
-        (is (= (count feed) 2))
-
-        (is (some #{doc-1} feed))
-        (is (some #{doc-2} feed))))
-
-    (testing
-        "Test if views are re-synced if missing (new?) view is requested"
-      (do
-        (couchdb/document-delete +test-server+ +test-db+ "_design/views")
-        ; add views with :by_feed missing (to simulate upgrading a vix
-        ; deployment to a new version with an extra view)
-        (create-views +test-server+
-                      +test-db+
-                      "views"
-                      (dissoc views :by_feed)))
-
-      (let [entries (:rows (view-get
-                            +test-server+
-                            +test-db+
-                            "views"
-                            "by_feed"
-                            {:endkey [["en" "blog"] nil]
-                             :startkey [["en" "blog"] "2999"]
-                             :descending true}))
-
-            feed (map #(:value %) entries)]
-    
-        (is (= (count feed) 2))
-
-        (is (some #{doc-1} feed))
-        (is (some #{doc-2} feed))))))
+(deftest test-get-attachment-as-base64-string
+  (let [gif (str "R0lGODlhAQABA++/vQAAAAAAAAAA77+9AQIAAAAh77+9BAQUA++/"
+                 "vQAsAAAAAAEAAQAAAgJEAQA7")
+        document (create-document +test-db+
+                                  "en"
+                                  "images"
+                                  "Europe/Amsterdam"
+                                  {:attachment {:type "image/gif"
+                                                :data gif}
+                                   :title "a single black pixel!"
+                                   :slug "pixel.gif"
+                                   :content ""
+                                   :draft false})]
+    (is (= (get-attachment-as-base64-string +test-db+ document :original)
+           gif))))
 
 (deftest test-get-document
   (do
-    (create-document +test-server+
-                     +test-db+
+    (create-document +test-db+
                      "en"
                      "blog"
                      "Europe/Amsterdam"
@@ -269,66 +157,60 @@
                       :content "bar"
                       :draft true}))
 
-  ; as we didn't create the view manually here, this test also implies
-  ; views are created automatically by get-document
-  (let [document (get-document +test-server+ +test-db+ "/blog/foo")]
-        (is (couchdb-id? (:_id document)))
-        (is (couchdb-rev? (:_rev document)))
-        (is (iso-date? (:published document)))
-        (is (= (:language document) "en"))
-        (is (= (:feed document) "blog"))
-        (is (= (:title document) "foo"))
-        (is (= (:slug document) (str "/blog/foo")))
-        (is (= (:content document) "bar"))
-        (is (true? (:draft document))))
+                                        ; as we didn't create the view manually here, this test also implies
+                                        ; views are created automatically by get-document
+  (let [document (get-document +test-db+ "/blog/foo")]
+    (is (couchdb-id? (:_id document)))
+    (is (couchdb-rev? (:_rev document)))
+    (is (iso-date? (:published document)))
+    (is (= (:language document) "en"))
+    (is (= (:feed document) "blog"))
+    (is (= (:title document) "foo"))
+    (is (= (:slug document) (str "/blog/foo")))
+    (is (= (:content document) "bar"))
+    (is (true? (:draft document))))
 
   (testing "Test if attachments are handled correctly."
     (let [gif (str "R0lGODlhAQABA++/vQAAAAAAAAAA77+9AQIAAAAh77+9BAQUA++/"
                    "vQAsAAAAAAEAAQAAAgJEAQA7")]
       (do
-        (create-document +test-server+
-                         +test-db+
-                         "en"
-                         "images"
-                         "Europe/Amsterdam"
-                         {:attachment {:type "image/gif" :data gif}
-                          :title "a single black pixel!"
-                          :slug "/images/white-pixel.gif"
-                          :content ""
-                          :draft false})
-        (create-document +test-server+
-                         +test-db+
-                         "en"
-                         "images"
-                         "Europe/Amsterdam"
-                         {:title "not a single black pixel!"
-                          :slug "/images/not-a-white-pixel.gif"
-                          :content ""
-                          :draft false}))
+       (create-document +test-db+
+                        "en"
+                        "images"
+                        "Europe/Amsterdam"
+                        {:attachment {:type "image/gif" :data gif}
+                         :title "a single black pixel!"
+                         :slug "/images/white-pixel.gif"
+                         :content ""
+                         :draft false})
+       (create-document +test-db+
+                        "en"
+                        "images"
+                        "Europe/Amsterdam"
+                        {:title "not a single black pixel!"
+                         :slug "/images/not-a-white-pixel.gif"
+                         :content ""
+                         :draft false}))
 
-      (is (= (:attachment (get-document +test-server+
-                                        +test-db+
+      (is (= (:attachment (get-document +test-db+
                                         "/images/white-pixel.gif"
                                         true))
              {:type "image/gif" :data gif}))
 
-      (is (nil? (:attachment (get-document +test-server+
-                                           +test-db+
+      (is (nil? (:attachment (get-document +test-db+
                                            "/images/not-a-white-pixel.gif"
                                            true)))))))
 
 (deftest test-get-feed
   (do
-    (create-feed +test-server+
-                 +test-db+
+    (create-feed +test-db+
                  {:title "Weblog"
                   :subtitle "Vix Weblog!"
                   :name "blog"
                   :default-slug-format "/{document-title}"
                   :default-document-type "with-description"
                   :language "en"})
-    (create-feed +test-server+
-                 +test-db+
+    (create-feed +test-db+
                  {:title "Weblog"
                   :subtitle "Vix Weblog!"
                   :name "blog"
@@ -336,12 +218,12 @@
                   :default-document-type "with-description"
                   :language "nl"}))
 
-  (is (nil? (get-feed +test-server+ +test-db+ "de" "blog")))
+  (is (nil? (get-feed +test-db+ "de" "blog")))
 
-  (is (= (:title (get-feed +test-server+ +test-db+ "en" "blog"))
-         (:title (get-feed +test-server+ +test-db+ "nl" "blog"))))
+  (is (= (:title (get-feed +test-db+ "en" "blog"))
+         (:title (get-feed +test-db+ "nl" "blog"))))
   
-  (let [feed (get-feed +test-server+ +test-db+ "nl" "blog")]
+  (let [feed (get-feed +test-db+ "nl" "blog")]
     (is (= (:type feed) "feed"))
     (is (couchdb-id? (:_id feed)))
     (is (couchdb-rev? (:_rev feed)))
@@ -353,11 +235,10 @@
     (is (= (:default-document-type feed) "with-description"))))
 
 (deftest test-get-unique-slug
-  (is (= (get-unique-slug +test-server+ +test-db+ "/blog/foo") "/blog/foo"))
+  (is (= (get-unique-slug +test-db+ "/blog/foo") "/blog/foo"))
 
   (do
-    (create-document +test-server+
-                     +test-db+
+    (create-document +test-db+
                      "en"
                      "blog"
                      "Europe/Amsterdam"
@@ -366,8 +247,7 @@
                       :content "bar"
                       :draft true})
 
-    (create-document +test-server+
-                     +test-db+
+    (create-document +test-db+
                      "en"
                      "blog"
                      "Europe/Amsterdam"
@@ -377,13 +257,12 @@
                       :draft true}))
 
   ; this should retrieve the next available slug:
-  (is (= (get-unique-slug +test-server+ +test-db+ "/blog/foo-1234567890")
+  (is (= (get-unique-slug +test-db+ "/blog/foo-1234567890")
          "/blog/foo-1234567892")))
 
 (deftest test-create-document
   (testing "Test document creation"
-    (let [document (create-document +test-server+
-                                    +test-db+
+    (let [document (create-document +test-db+
                                     "en"
                                     "blog"
                                     "Europe/Amsterdam"
@@ -411,8 +290,7 @@
 
   (testing "Test if slugs are correctly autoincremented"
     (dotimes [n 10]
-      (let [document (create-document +test-server+
-                                      +test-db+
+      (let [document (create-document +test-db+
                                       "en"
                                       "blog"
                                       "Europe/Amsterdam"
@@ -434,8 +312,7 @@
   (testing "Test if attachments are handled correctly."
     (let [gif (str "R0lGODlhAQABA++/vQAAAAAAAAAA77+9AQIAAAAh77+9BAQUA++/"
                    "vQAsAAAAAAEAAQAAAgJEAQA7")
-          document (create-document +test-server+
-                                    +test-db+
+          document (create-document +test-db+
                                     "en"
                                     "images"
                                     "Europe/Amsterdam"
@@ -444,23 +321,22 @@
                                      :title "a single black pixel!"
                                      :slug "pixel.gif"
                                      :content ""
-                                     :draft false})
-          attachment (couchdb/attachment-get +test-server+
-                                             +test-db+
-                                             (:_id document)
-                                             "original")]
-      (is (nil? (:attachment document)))
+                                     :draft false})]
+      (is (= (:attachment document)
+             {:type "image/gif"
+              :data (str "R0lGODlhAQABA++/vQAAAAAAAAAA77+9AQIAAAAh77+"
+                         "9BAQUA++/vQAsAAAAAAEAAQAAAgJEAQA7")}))
       (is (= (:_attachments document)
              {:original {:content_type "image/gif"
                          :revpos 2
                          :length 57
                          :stub true}}))
 
-      (is (= (Base64/encodeBase64String (:body attachment)) gif)))))
+      (is (= (get-attachment-as-base64-string +test-db+ document :original)
+             gif)))))
 
 (deftest test-create-feed
-  (let [feed (create-feed +test-server+
-                          +test-db+
+  (let [feed (create-feed +test-db+
                           {:title "Weblog"
                            :subtitle "Vix Weblog!"
                            :name "blog"
@@ -480,8 +356,7 @@
     (is (= (:default-document-type feed) "with-description"))))
 
 (deftest test-get-documents-for-feed
-  (let [doc-1 (create-document +test-server+
-                               +test-db+
+  (let [doc-1 (create-document +test-db+
                                "en"
                                "blog"
                                "Europe/Amsterdam"
@@ -490,8 +365,7 @@
                                 :content "bar"
                                 :draft true})
 
-        doc-2 (create-document +test-server+
-                               +test-db+
+        doc-2 (create-document +test-db+
                                "en"
                                "blog"
                                "Europe/Amsterdam"
@@ -500,8 +374,7 @@
                                 :content "bar"
                                 :draft true})
 
-        doc-3 (create-document +test-server+
-                               +test-db+
+        doc-3 (create-document +test-db+
                                "nl"
                                "blog"
                                "Europe/Amsterdam"
@@ -510,7 +383,7 @@
                                 :content "bar"
                                 :draft true})
         
-        feed (get-documents-for-feed +test-server+ +test-db+ "en" "blog")]
+        feed (get-documents-for-feed +test-db+ "en" "blog")]
 
     ;; FIXME: should also test other possible argument combinations!
     (is (= (count (:documents feed)) 2))
@@ -522,31 +395,25 @@
   (testing "test pagination"
     (let [now "2011-09-06T12:56:16.322Z"]
       (dotimes [n 21]
-        (couchdb/document-create +test-server+
-                                 +test-db+
-                                 {:type "document"
-                                  :title (str "doc " n)
-                                  :slug (str "/pages/doc-" n)
-                                  :content ""
-                                  :draft false
-                                  :language "en"
-                                  :feed "pages"
-                                  ; mix identical and unique dates
-                                  :published (if (< n 7)
-                                               now
-                                               (util/now-rfc3339))})))
+        (clutch/put-document +test-db+
+                             {:type "document"
+                              :title (str "doc " n)
+                              :slug (str "/pages/doc-" n)
+                              :content ""
+                              :draft false
+                              :language "en"
+                              :feed "pages"
+                                        ; mix identical and unique dates
+                              :published (if (< n 7)
+                                           now
+                                           (util/now-rfc3339))})))
     
-    (is (= (count (:documents (get-documents-for-feed +test-server+
-                                                      +test-db+
+    (is (= (count (:documents (get-documents-for-feed +test-db+
                                                       "en"
                                                       "pages")))
-            21))
+           21))
 
-    (let [first-five (get-documents-for-feed +test-server+
-                                             +test-db+
-                                             "en"
-                                             "pages"
-                                             5)]
+    (let [first-five (get-documents-for-feed +test-db+ "en" "pages" 5)]
       (is (= (count (:documents first-five)) 5))
       
       (is (= (:title (nth (:documents first-five) 0)) "doc 20"))
@@ -555,8 +422,7 @@
       (is (= (:title (nth (:documents first-five) 3)) "doc 17"))
       (is (= (:title (nth (:documents first-five) 4)) "doc 16"))
 
-      (let [next-five (get-documents-for-feed +test-server+
-                                              +test-db+
+      (let [next-five (get-documents-for-feed +test-db+
                                               "en"
                                               "pages"
                                               5
@@ -572,8 +438,7 @@
         (is (= (:title (nth (:documents next-five) 3)) "doc 12"))
         (is (= (:title (nth (:documents next-five) 4)) "doc 11"))
 
-        (let [next-ten (get-documents-for-feed +test-server+
-                                               +test-db+
+        (let [next-ten (get-documents-for-feed +test-db+
                                                "en"
                                                "pages"
                                                10
@@ -602,8 +467,7 @@
                  (:published (nth (:documents next-ten) 9))
                  "2011-09-06T12:56:16.322Z"))
 
-          (let [last-doc (get-documents-for-feed +test-server+
-                                                 +test-db+
+          (let [last-doc (get-documents-for-feed +test-db+
                                                  "en"
                                                  "pages"
                                                  1
@@ -611,8 +475,7 @@
                                                   (:next next-ten))
                                                  (:startkey_docid
                                                   (:next next-ten)))
-                x2 (get-documents-for-feed +test-server+
-                                           +test-db+
+                x2 (get-documents-for-feed +test-db+
                                            "en"
                                            "pages"
                                            10
@@ -627,8 +490,7 @@
             (is (= (:title (nth (:documents last-doc) 0)) "doc 0"))))))))
 
 (deftest test-list-feeds-and-list-feeds-by-default-document-type
-  (let [blog-feed (create-feed +test-server+
-                               +test-db+
+  (let [blog-feed (create-feed +test-db+
                                {:title "Weblog"
                                 :subtitle "Vix Weblog!"
                                 :language "en"
@@ -636,16 +498,14 @@
                                 :default-slug-format
                                 "/{feed-name}/{document-title}"
                                 :default-document-type "with-description"})
-        pages-feed (create-feed +test-server+
-                                +test-db+
+        pages-feed (create-feed +test-db+
                                 {:title "Pages"
                                  :subtitle "Web Pages"
                                  :language "en"
                                  :name "pages"
                                  :default-slug-format "/{document-title}"
                                  :default-document-type "standard"})
-        images-feed (create-feed +test-server+
-                                 +test-db+
+        images-feed (create-feed +test-db+
                                  {:title "Images"
                                   :subtitle "Internal feed with images"
                                   :language "en"
@@ -653,8 +513,7 @@
                                   :default-slug-format
                                   "/media/{document-title}"
                                   :default-document-type "image"})
-        blog-feed-nl (create-feed +test-server+
-                                  +test-db+
+        blog-feed-nl (create-feed +test-db+
                                   {:title "Weblog"
                                    :subtitle "Vix Weblog!"
                                    :language "nl"
@@ -663,16 +522,14 @@
                                    "/{feed-name}/{document-title}"
                                    :default-document-type
                                    "with-description"})
-        pages-feed-nl (create-feed +test-server+
-                                   +test-db+
+        pages-feed-nl (create-feed +test-db+
                                    {:title "Pages"
                                     :subtitle "Web Pages"
                                     :language "nl"
                                     :name "pages"
                                     :default-slug-format "/{document-title}"
                                     :default-document-type "standard"})
-        images-feed-nl (create-feed +test-server+
-                                    +test-db+
+        images-feed-nl (create-feed +test-db+
                                     {:title "Images"
                                      :subtitle "Internal feed with images"
                                      :language "nl"
@@ -688,42 +545,38 @@
               pages-feed
               images-feed
               blog-feed]
-             (list-feeds +test-server+ +test-db+))))
+             (list-feeds +test-db+))))
 
     (testing "test with a language argument"
       (is (= [pages-feed
               images-feed
               blog-feed]
-             (list-feeds +test-server+ +test-db+ "en")))
+             (list-feeds +test-db+ "en")))
 
       (is (= [pages-feed-nl
               images-feed-nl
               blog-feed-nl]
-             (list-feeds +test-server+ +test-db+ "nl"))))
+             (list-feeds +test-db+ "nl"))))
 
 
     (testing "test with default-document-type without a language argument"
-      (is (= (list-feeds-by-default-document-type +test-server+
-                                                  +test-db+
+      (is (= (list-feeds-by-default-document-type +test-db+
                                                   "image")
              [images-feed-nl images-feed])))
 
     (testing "test with default-document-type and  a language argument"
-      (is (= (list-feeds-by-default-document-type +test-server+
-                                                  +test-db+
+      (is (= (list-feeds-by-default-document-type +test-db+
                                                   "image"
                                                   "en")
              [images-feed]))
 
-      (is (= (list-feeds-by-default-document-type +test-server+
-                                                  +test-db+
+      (is (= (list-feeds-by-default-document-type +test-db+
                                                   "image"
                                                   "nl")
              [images-feed-nl])))))
 
 (deftest test-update-document
   (let [new-doc (create-document
-                  +test-server+
                   +test-db+
                   "en"
                   "blog"
@@ -738,7 +591,6 @@
                    :related-pages []
                    :related-images []})
         updated-doc (update-document
-                      +test-server+
                       +test-db+
                       "Europe/Amsterdam"
                       "/blog/bar"
@@ -752,7 +604,7 @@
                         :icon {:title "cat" :slug "/cat.png"}
                         :related-pages [{:title "foo" :slug "bar"}]
                         :related-images [{:title "cat" :slug "cat.png"}]))]
-    (is (= (get-document +test-server+ +test-db+ "/blog/bar") updated-doc))
+    (is (= (get-document +test-db+ "/blog/bar") updated-doc))
     (is (couchdb-rev? 2 (:_rev updated-doc)))
     (is (iso-date? (:updated updated-doc)))
 
@@ -803,7 +655,6 @@
                            "xcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oA"
                            "DAMBAAIRAxEAPwD3+iiigD//2Q==")
           new-doc (create-document
-                   +test-server+
                    +test-db+
                    "en"
                    "images"
@@ -814,7 +665,6 @@
                     :content ""
                     :draft false})
           updated-doc (update-document
-                       +test-server+
                        +test-db+
                        "Europe/Amsterdam"
                        "/pixel.jpeg"
@@ -822,10 +672,7 @@
                         :title "a single black pixel!"
                         :content ""
                         :draft false})
-          attachment (couchdb/attachment-get +test-server+
-                                             +test-db+
-                                             (:_id updated-doc)
-                                             "original")]
+          attachment (clutch/get-attachment +test-db+ updated-doc :original)]
 
       (is (= (:_attachments updated-doc)
              {:original {:content_type "image/gif"
@@ -833,11 +680,13 @@
                          :length 57
                          :stub true}}))
 
-      (is (= (Base64/encodeBase64String (:body attachment)) black-pixel)))))
+      (is (= (get-attachment-as-base64-string +test-db+
+                                              updated-doc
+                                              :original)
+             black-pixel)))))
 
 (deftest test-update-feed
-  (let [blog-feed (create-feed +test-server+
-                               +test-db+
+  (let [blog-feed (create-feed +test-db+
                                {:title "Weblog"
                                 :subtitle "Vix Weblog!"
                                 :name "blog"
@@ -846,8 +695,7 @@
                                 "/{feed-name}/{document-title}"
                                 :default-document-type "with-description"
                                 :searchable false})
-        blog-feed-updated (update-feed +test-server+
-                                       +test-db+
+        blog-feed-updated (update-feed +test-db+
                                        "en"
                                        "blog"
                                        {:title "Weblog Feed"
@@ -859,8 +707,7 @@
                                         :default-document-type "standard"
                                         :searchable true})]
 
-    (is (nil? (update-feed +test-server+
-                           +test-db+
+    (is (nil? (update-feed +test-db+
                            "de"
                            "blog"
                            {:title "foo"
@@ -870,7 +717,7 @@
                             :default-slug-format "/foo"
                             :default-document-type "none"})))
 
-    (is (= (get-feed +test-server+ +test-db+ "nl" "blog") blog-feed-updated))
+    (is (= (get-feed +test-db+ "nl" "blog") blog-feed-updated))
     (is (couchdb-rev? 2 (:_rev blog-feed-updated)))
     (is (iso-date? (:feed-updated blog-feed-updated)))
     (is (= (:created blog-feed) (:created blog-feed-updated)))
@@ -884,8 +731,7 @@
 
 (deftest test-delete-document
   (do
-    (create-document +test-server+
-                     +test-db+
+    (create-document +test-db+
                      "en"
                      "blog"
                      "Europe/Amsterdam"
@@ -894,22 +740,21 @@
                       :content "bar"
                       :draft false}))
 
-  (is (not (nil? (get-document +test-server+ +test-db+ "/blog/bar")))
+  (is (not (nil? (get-document +test-db+ "/blog/bar")))
       "Assure the document exists before it is deleted.")
 
   (do
-    (delete-document +test-server+ +test-db+ "/blog/bar"))
+    (delete-document +test-db+ "/blog/bar"))
   
-  (is (nil? (delete-document +test-server+ +test-db+ "/blog/bar"))
+  (is (nil? (delete-document +test-db+ "/blog/bar"))
       "Expect nil value if document is deleted twice.")
 
-  (is (nil? (get-document +test-server+ +test-db+ "/blog/bar"))
+  (is (nil? (get-document +test-db+ "/blog/bar"))
       "Assure the document is truly removed."))
 
 (deftest test-delete-feed
   (do
-    (create-feed +test-server+
-                 +test-db+
+    (create-feed +test-db+
                  {:title "Weblog"
                   :subtitle "Vix Weblog!"
                   :language "en"
@@ -917,132 +762,117 @@
                   :default-slug-format "/{feed-name}/{document-title}"
                   :default-document-type "with-description"}))
   
-  (is (nil? (delete-feed +test-server+ +test-db+ "nl" "blog")))
+  (is (nil? (delete-feed +test-db+ "nl" "blog")))
   
-  (is (not (nil? (get-feed +test-server+ +test-db+ "en" "blog")))
+  (is (not (nil? (get-feed +test-db+ "en" "blog")))
       "Assure the feed exists before it is deleted.")
 
   (do
-    (delete-feed +test-server+ +test-db+ "en" "blog"))
+    (delete-feed +test-db+ "en" "blog"))
   
-  (is (nil? (delete-feed +test-server+ +test-db+ "en" "blog"))
+  (is (nil? (delete-feed +test-db+ "en" "blog"))
       "Expect nil value if feed is deleted twice.")
 
-  (is (nil? (get-feed +test-server+ +test-db+ "en" "blog"))
+  (is (nil? (get-feed +test-db+ "en" "blog"))
       "Assure the feed is truly removed."))
 
 (deftest test-get-available-languages
   (do
-    (create-feed +test-server+
-                 +test-db+
+    (create-feed +test-db+
                  {:title "Weblog"
                   :subtitle "Vix Weblog!"
                   :name "blog"
                   :language "en"
                   :searchable true})
 
-    (create-feed +test-server+
-                 +test-db+
+    (create-feed +test-db+
                  {:title "Images"
                   :subtitle "Images"
                   :name "images"
                   :language "en"
                   :searchable true})
 
-    (create-feed +test-server+
-                 +test-db+
+    (create-feed +test-db+
                  {:title "Menu"
                   :subtitle "Menu"
                   :name "menu"
                   :language "en"
                   :searchable false})
 
-    (create-feed +test-server+
-                 +test-db+
+    (create-feed +test-db+
                  {:title "Weblog"
                   :name "blog"
                   :language "nl"
                   :searchable true}))
 
-  (is (= (get-available-languages +test-server+ +test-db+)
-         ["en" "nl"])))
+  (is (= (get-available-languages +test-db+) ["en" "nl"])))
 
 (deftest test-get-languages
   (do
-    (create-feed +test-server+
-                 +test-db+
+    (create-feed +test-db+
                  {:title "Weblog"
                   :subtitle "Vix Weblog!"
                   :name "blog"
                   :language "en"
                   :searchable true})
 
-    (create-feed +test-server+
-                 +test-db+
+    (create-feed +test-db+
                  {:title "Images"
                   :subtitle "Images"
                   :name "images"
                   :language "en"
                   :searchable true})
 
-    (create-feed +test-server+
-                 +test-db+
+    (create-feed +test-db+
                  {:title "Menu"
                   :subtitle "Menu"
                   :name "menu"
                   :language "en"
                   :searchable false})
 
-    (create-feed +test-server+
-                 +test-db+
+    (create-feed +test-db+
                  {:title "Weblog"
                   :name "blog"
                   :language "nl"
                   :searchable true}))
 
-  (is (= (get-languages (list-feeds +test-server+ +test-db+))
-         #{"en" "nl"})))
+  (is (= (get-languages (list-feeds +test-db+)) #{"en" "nl"})))
 
 (deftest test-get-searchable-feeds
   (do
-    (create-feed +test-server+
-                 +test-db+
+    (create-feed +test-db+
                  {:title "Weblog"
                   :subtitle "Vix Weblog!"
                   :name "blog"
                   :language "en"
                   :searchable true})
 
-    (create-feed +test-server+
-                 +test-db+
+    (create-feed +test-db+
                  {:title "Images"
                   :subtitle "Images"
                   :name "images"
                   :language "en"
                   :searchable true})
 
-    (create-feed +test-server+
-                 +test-db+
+    (create-feed +test-db+ 
                  {:title "Menu"
                   :subtitle "Menu"
                   :name "menu"
                   :language "en"
                   :searchable false})
 
-    (create-feed +test-server+
-                 +test-db+
+    (create-feed +test-db+
                  {:title "Weblog"
                   :name "blog"
                   :language "nl"
                   :searchable true}))
 
-  (is (= (get-searchable-feeds (list-feeds +test-server+ +test-db+))
+  (is (= (get-searchable-feeds (list-feeds +test-db+))
          {"nl" ["blog"]
           "en" ["images" "blog"]})))
 
 (deftest test-get-most-recent-event-documents
-  (let [doc-1 (create-document +test-server+
-                               +test-db+
+  (let [doc-1 (create-document +test-db+
                                "en"
                                "events"
                                "Europe/Amsterdam"
@@ -1059,8 +889,7 @@
                                 "2012-04-25 23:59"
                                 :draft false})
 
-        doc-2 (create-document +test-server+
-                               +test-db+
+        doc-2 (create-document +test-db+
                                "en"
                                "events"
                                "Europe/Amsterdam"
@@ -1079,8 +908,7 @@
                                 "2012-07-06 23:59"
                                 :draft false})
 
-        doc-3 (create-document +test-server+
-                               +test-db+
+        doc-3 (create-document +test-db+
                                "en"
                                "events"
                                "Europe/Amsterdam"
@@ -1098,16 +926,17 @@
                                 "2013-02-01 23:59"
                                 :draft false})]
 
-    (is (= (get-most-recent-event-documents +test-server+
-                                            +test-db+
+    (is (= (get-most-recent-event-documents +test-db+
+                                            "en"
+                                            "events")
+           (get-most-recent-event-documents +test-db+
                                             "en"
                                             "events"
                                             nil)
            [doc-3 doc-2 doc-1]))
 
     ;; when limited, the fn retrieves (inc limit)
-    (is (= (get-most-recent-event-documents +test-server+
-                                            +test-db+
+    (is (= (get-most-recent-event-documents +test-db+
                                             "en"
                                             "events"
                                             1)

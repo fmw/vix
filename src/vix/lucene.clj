@@ -15,13 +15,11 @@
 ;; limitations under the License.
 
 (ns vix.lucene
-  (:use [clojure.contrib.json :only [read-json json-str]]
-        [clojure.contrib.duck-streams :only (read-lines)]
+  (:use [clojure.data.json :only [read-json json-str]]
         [clojure.string :only (trim blank?)])
-  (:require [couchdb [client :as couchdb]]
-            [net.cgrand.enlive-html :as html]
+  (:require [net.cgrand.enlive-html :as html]
             [clj-time.coerce :as time-coerce]
-            [clojure.contrib.math :as math]
+            [clojure.algo.generic.math-functions :as math]
             [vix.config :as config]
             [vix.util :as util])
   (:import [org.apache.lucene.document

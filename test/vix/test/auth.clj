@@ -16,7 +16,12 @@
 (ns vix.test.auth
   (:use [vix.auth] :reload)
   (:use [clojure.test]
+        [slingshot.test]
         [vix.test.db :only [database-fixture +test-server+ +test-db+]]))
+
+(defn check-exc
+  [type exc-obj]
+  (= (:type exc-obj) type))
 
 (deftest test-fix-complex-keys
   (is (= (fix-complex-keys {:* "a" :b "b" (keyword "[:en :blog]") "c"})
@@ -36,14 +41,15 @@
               {["en" "blog"] ["GET" "PUT" "POST" "DELETE"]
                ["en" "pages"] ["GET"]}))
 
-  (are [exc-re username password]
-       (thrown-with-msg? Exception exc-re (authenticate +test-db+
-                                                        {}
-                                                        username
-                                                        password))
-       #"doesn't exist" "foo" "bar"
-       #"username and password do not match" "fmw" "ps"
-       #"doesn't exist" "not-fmw" "oops")
+  (are [type username password]
+       (thrown+? (partial check-exc type)
+                 (authenticate +test-db+
+                               {}
+                               username
+                               password))
+       :vix.auth/user-does-not-exist "foo" "bar"
+       :vix.auth/username-password-mismatch "fmw" "ps"
+       :vix.auth/user-does-not-exist "not-fmw" "oops")
   
   (is (= (authenticate +test-db+ {} "fmw" "oops")
          {:username "fmw"
@@ -80,7 +86,7 @@
        "pages" :GET)
 
   (testing "Expect exception if no :username key is provided in session map"
-    (is (thrown-with-msg? Exception #"You need to authenticate"
+    (is (thrown+? (partial check-exc :vix.auth/authentication-required)
           (authorize
            {:permissions
             {["en" "blog"] ["GET" "PUT" "POST" "DELETE"]
@@ -90,7 +96,7 @@
            "pages")
           true))
 
-    (is (thrown-with-msg? Exception #"You need to authenticate"
+    (is (thrown+? (partial check-exc :vix.auth/authentication-required)
           (authorize
            {:username :not-a-string
             :permissions
@@ -103,7 +109,7 @@
 
   (testing "Expect exception if unlisted method is requested for feed."
     (are [method]
-         (thrown-with-msg? Exception #"insufficient privileges"
+         (thrown+? (partial check-exc :vix.auth/insufficient-privileges)
            (authorize {:username "fmw"
                        :permissions
                        {["en" "blog"] ["GET" "PUT" "POST" "DELETE"]
@@ -117,7 +123,7 @@
 
   (testing "Requests on unlisted feeds should fail without global privileges"
     (are [method]
-         (thrown-with-msg? Exception #"insufficient privileges"
+         (thrown+? (partial check-exc :vix.auth/insufficient-privileges)
            (authorize {:username "fmw"
                        :permissions
                        {["en" "blog"] ["GET" "PUT" "POST" "DELETE"]
@@ -131,7 +137,7 @@
          :DELETE))
 
   (testing "Specific privileges take preference over global privileges."
-    (is (thrown-with-msg? Exception #"insufficient privileges"
+    (is (thrown+? (partial check-exc :vix.auth/insufficient-privileges)
           (authorize {:username "fmw"
                       :permissions
                       {:* ["GET" "PUT" "POST" "DELETE"]
@@ -168,7 +174,7 @@
                    "en"
                    "photos"))
 
-    (is (thrown-with-msg? Exception #"insufficient privileges"
+    (is (thrown+? (partial check-exc :vix.auth/insufficient-privileges)
           (authorize {:username "fmw"
                       :permissions
                       {["en" "blog"] ["GET" "PUT" "POST" "DELETE"]
@@ -191,7 +197,7 @@
             ["en" "pages"] ["GET"]})))
 
   (are [username]
-       (thrown-with-msg? Exception #"Username's can only contain"
+       (thrown+? (partial check-exc :vix.auth/invalid-username)
          (add-user +test-db+ username "password" {}))
        "  foo"
        "space "
@@ -201,7 +207,7 @@
        "user!"
        "user%")
   
-  (is (thrown-with-msg? Exception #"already exists"
+  (is (thrown+? (partial check-exc :vix.auth/user-exists)
         (add-user +test-db+
                   "username"
                   "password"

@@ -16,15 +16,20 @@
 
 (ns vix.test.lucene
   (:use [vix.lucene] :reload)
-  (:use [clojure.test]
-        [clojure.contrib.java-utils :only (delete-file-recursively)]
-        [clojure.contrib.reflect :only (get-field)])
-  (:require [couchdb [client :as couchdb]]
-            [clj-time.coerce :as time-coerce]
+  (:use [clojure.test])
+  (:require [clj-time.coerce :as time-coerce]
             [vix.util :as util])
   (:import [org.apache.lucene.search QueryWrapperFilter]
            [org.apache.lucene.index IndexWriter IndexWriterConfig$OpenMode]
            [org.apache.lucene.search ScoreDoc]))
+
+;; Rescued from clojure.contrib.reflect, which was dropped in 1.3
+(defn get-field
+  "Access to private or protected field.  field-name is a symbol or keyword."
+  [klass field-name obj]
+  (-> klass (.getDeclaredField (name field-name))
+      (doto (.setAccessible true))
+      (.get obj)))
 
 (def dummy-docs [{:_id "7a26ec145efeb5768e102c85a710cd1c",
                   :_rev "29-9477bcea8056b447bb16591ca866f36a",

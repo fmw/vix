@@ -1,6 +1,5 @@
 ;; src/vix/db.clj functionality that provides database interaction
-;;
-;; Copyright 2011-2012 , F.M. (Filip) de Waard <fmw@vix.io>.
+;; Copyright 2011-2012, Vixu.com, F.M. (Filip) de Waard <fmw@vixu.com>.
 ;;
 ;; Licensed under the Apache License, Version 2.0 (the "License");
 ;; you may not use this file except in compliance with the License.
@@ -15,15 +14,11 @@
 ;; limitations under the License.
 
 (ns vix.db
-  (:require [clojure.contrib [error-kit :as kit]]
-            [clojure.contrib.base64 :as base64]
-            [clojure.java.io :as io]
-            [couchdb [client :as couchdb]]
-            [clj-http.client :as http]
-            [clojure.data.json :as json]
+  (:use [slingshot.slingshot :only [try+]])
+  (:require [clojure.java.io :as io]
+            [com.ashafa.clutch :as clutch]
             [vix.util :as util])
-  (:import [java.net URLEncoder]
-           [org.apache.commons.codec.binary Base64]))
+  (:import [org.apache.commons.codec.binary Base64]))
 
 (defn load-view [path]
   (slurp (io/resource path)))
@@ -48,323 +43,305 @@
             {:map (load-view "database-views/map_languages.js")
              :reduce (load-view "database-views/reduce_languages.js")}})
 
-(defn #^{:rebind true} view-sync
-  [server db design-doc view-name view-functions]
-  "Reimplementation of clojure-couchdb's view-add function."
-  (util/log-hide!)
-  (let [doc-path (str "_design/" design-doc)]
-    (kit/with-handler
-      (let [document (couchdb/document-get server db doc-path)]
-        (couchdb/document-update
-          server
-          db
-          doc-path
-          (assoc-in document [:views (keyword view-name)] view-functions)))
-        (kit/handle couchdb/DocumentNotFound []
-          (couchdb/document-create
-            server
-            db
-            doc-path
-            {:language "javascript"
-             :views {(keyword view-name) view-functions}}))))
-  (util/log-restore!))
+(defn create-views [database design-doc views]
+  "Creates the provided views in given database and saves them in
+   design-doc."
+  (clutch/save-view database design-doc [:javascript views]))
 
-(defn create-views [db-server db-name design-doc views]
-  (doseq [view views]
-    (view-sync
-     db-server db-name design-doc (key view) (val view))))
-
-(defn encode-view-options [options]
-  (let [encode-option (fn [option]
-                        (if (or (= (key option) :startkey_docid)
-                                (= (key option) :endkey_docid))
-                          (val option) ; don't quote docids
-                          (json/json-str (val option))))
-        encoded-values (map #(URLEncoder/encode % "UTF-8")
-                            (map encode-option options))
-        opt-seq (interleave (map name (keys options)) encoded-values)]
-    (apply str (butlast (interleave opt-seq (flatten (repeat ["=" "&"])))))))
-
-(defn view-get [db-server db-name design-doc view-name & [view-options]]
-  (try
-    (let [uri (str db-server
-                   db-name
-                   "/_design/"
-                   design-doc
-                   "/_view/"
-                   view-name
-                   "?"
-                   (encode-view-options view-options))]
-
-      (json/read-json (:body (http/get uri))))
-      (catch java.lang.Exception e
-        (if (= (.getMessage e) "404")
-          (do
-            ; automatically add missing views and run again
-            (create-views db-server db-name "views" views)
-            (view-get db-server db-name design-doc view-name view-options))
-          (.printStackTrace e)))))
+(defn get-view
+  "Wraps around clutch/get-view in order to automatically create views
+   if they don't exist yet."
+  [database design-doc view-key & [query-params-map post-data-map :as args]]
+  (try+
+   (clutch/get-view database
+                    design-doc
+                    view-key
+                    query-params-map
+                    post-data-map)
+   (catch java.io.IOException _
+     (create-views database design-doc views)
+     (get-view database
+               design-doc
+               view-key
+               query-params-map
+               post-data-map))))
 
 (defn list-feeds
-  ([db-server db-name]
-     (list-feeds db-server db-name nil))
-  ([db-server db-name language]
-     (if-let [feeds (:rows (view-get db-server
-                                     db-name
-                                     "views"
-                                     "feeds"
-                                     (if language
-                                       {:descending true
-                                        :startkey [language {}]
-                                        :endkey [language nil]}
-                                       {:descending true})))]
-       (map #(:value %) feeds))))
+  "Returns a sequence of feeds in given database, optionally
+   restricting them to the provided language."
+  [database & [language]]
+  (map :value
+       (get-view database
+                 "views"
+                 :feeds
+                 (if language
+                   {:descending true
+                    :startkey [language {}]
+                    :endkey [language nil]}
+                   {:descending true}))))
 
 (defn list-feeds-by-default-document-type
-  ([db-server db-name default-document-type]
-     (list-feeds-by-default-document-type db-server
-                                          db-name
-                                          default-document-type
-                                          nil))
-  ([db-server db-name default-document-type language]
-     (if-let [feeds (:rows (view-get db-server
-                                     db-name
-                                     "views"
-                                     "feeds_by_default_document_type"
+  "Returns the feeds in database for the provided
+   default-document-type and optionally restricts them by language."
+  [database default-document-type & [language]]
+  (map :value
+       (get-view database
+                 "views"
+                 :feeds_by_default_document_type
+                 {:descending true
+                  :startkey [default-document-type
+                             (or language {})
+                             {}]
+                  :endkey [default-document-type
+                           language
+                           nil]})))
 
-                                       {:descending true
-                                        :startkey [default-document-type
-                                                   (or language {})
-                                                   {}]
-                                        :endkey [default-document-type
-                                                 language
-                                                 nil]}))]
-       (map #(:value %) feeds))))
+(defn get-feed
+  "Returns a single feed from database with given language and name."
+  [database language name]
+  (:value (first (get-view database
+                           "views"
+                           :feeds
+                           {:include_docs true
+                            :key [language name]}))))
 
-(defn get-feed [db-server db-name language feed-name]
-  (let [feed (view-get db-server
-                       db-name
-                       "views"
-                       "feeds"
-                       {:include_docs true
-                        :key [language feed-name]})]
-    (:value (first (:rows feed)))))
+(defn create-feed [database feed-map]
+  "Creates a new document in database for feed-map, with
+   :type associated to \"feed\" and :created to the current RFC3339
+   timestamp."
+  (clutch/put-document database
+                       (assoc feed-map
+                         :type "feed"
+                         :created (util/now-rfc3339))))
 
-(defn create-feed [db-server db-name data-map]
-  (couchdb/document-create
-    db-server
-    db-name
-    (assoc data-map
-           :type "feed"
-           :created (util/now-rfc3339))))
-
-(defn update-feed [db-server db-name language feed-name data-map]
-  (if-let [feed (get-feed db-server db-name language feed-name)]
-    (couchdb/document-update
-      db-server
-      db-name
-      (:_id feed)
-      (assoc feed
-             :feed-updated (util/now-rfc3339)
-             :title (:title data-map)
-             :subtitle (:subtitle data-map)
-             :language (:language data-map)
-             :default-slug-format (:default-slug-format data-map)
-             :default-document-type (:default-document-type data-map)
-             :searchable (:searchable data-map)))))
+(defn update-feed [database language name feed-map]
+  "Updates the feed identified by language and name in given database
+   using the values from feed-map. Adds a :feed-updated key with the
+   current RFC3339 timestamp and updates the existing feed by
+   associating the values for :title, :subtitle, :language,
+   :default-slug-format, :default-document-type and :searchable."
+  (if-let [feed-doc (get-feed database language name)]
+    (clutch/put-document
+     database
+     (assoc feed-doc
+       :feed-updated (util/now-rfc3339)
+       :title (:title feed-map)
+       :subtitle (:subtitle feed-map)
+       :language (:language feed-map)
+       :default-slug-format (:default-slug-format feed-map)
+       :default-document-type (:default-document-type feed-map)
+       :searchable (:searchable feed-map)))))
 
 ; TODO: delete/flag feed content
-(defn delete-feed [db-server db-name language feed-name]
-  (kit/with-handler
-    (if-let [feed (get-feed db-server db-name language feed-name)]
-      (couchdb/document-delete db-server db-name (:_id feed)))
-    (kit/handle couchdb/DocumentNotFound []
-                nil)
-    (kit/handle couchdb/ResourceConflict []
-                nil)))
+(defn delete-feed [database language name]
+  "Deletes the feed identified by language and name from database."
+  (when-let [feed-doc (get-feed database language name)]
+    (clutch/delete-document database feed-doc)))
 
 (defn get-most-recent-event-documents
-  [db-server db-name language feed-name limit]
-     (let [feed [language feed-name]
-           options {:include_docs true
-                    :startkey [feed {}]
-                    :endkey [feed nil]
-                    :descending true}
-           options (if (nil? limit)
-                     options
-                     (assoc options :limit limit))
-           result (view-get db-server
-                            db-name
-                            "views"
-                            "events_by_feed"
-                            options)]
-       (if-let [entries (:rows result)]
-         (map #(:value %) entries))))
+  "Retrieves the most recent events for an event feed identified by
+   language and feed-name from database, optionally capping results at
+   limit."
+  [database language feed-name & [limit]]
+  (let [feed [language feed-name]
+        options {:include_docs true
+                 :startkey [feed {}]
+                 :endkey [feed nil]
+                 :descending true}]
+    (map :value (get-view database
+                          "views"
+                          :events_by_feed
+                          (if (nil? limit)
+                            options
+                            (assoc options :limit limit))))))
 
 (defn get-documents-for-feed
-  ([db-server db-name language feed-name]
-     (get-documents-for-feed db-server
-                             db-name
-                             language
-                             feed-name
-                             nil
-                             nil
-                             nil))
-  ([db-server db-name language feed-name limit]
-     (get-documents-for-feed db-server
-                             db-name
-                             language
-                             feed-name
-                             limit
-                             nil
-                             nil))
-  ([db-server db-name language feed-name limit startkey startkey_docid]
-     (let [feed [language feed-name]
-           options {:endkey [feed nil]
-                    :startkey [feed (or startkey "2999")]
-                    :include_docs true
-                    :descending true}
-           options (if (nil? limit)
-                     options
-                     (assoc options :limit (+ 1 limit))) ; +1 for extra doc
-           options (if (nil? startkey_docid)
-                    options
-                    (assoc options :startkey_docid startkey_docid))
-           result (view-get db-server db-name "views" "by_feed" options)]
-       (if-let [entries (:rows result)]
-         (let [docs (map #(:value %) entries)]
-           (if (or (nil? limit) (<= (count docs) limit)) ; has next page?
-             {:next nil
-              :documents docs}
-             {:next {:startkey_docid (:_id (last docs))
-                     :published (:published (last docs))}
-              :documents (butlast docs)}))))))
+  "Returns documents for language and feed-name from the given database.
+   Accepts limit, startkey and startkey_docid as optional pagination
+   arguments. Returns a map with the documents associated to
+   :documents. When there is a next page, the result map also contains
+   a :next key pointing to a map with a :startkey_docid and :published
+   key. To retrieve the documents for the next page, simply call this
+   fn with the particular limit and the startkey_docid from the :next
+   map of the current page, with the :published value as startkey."
+  [database language feed-name & [limit startkey startkey_docid]]
+  (let [feed [language feed-name]
+        docs (map
+              :value
+              (get-view database
+                        "views"
+                        :by_feed
+                        (merge {:endkey [feed nil]
+                                :startkey [feed (or startkey "2999")]
+                                :include_docs true
+                                :descending true}
+                               (when startkey_docid
+                                 {:startkey_docid startkey_docid})
+                               (when limit
+                                 {:limit (inc limit)}))))]
+    (if (or (nil? limit) (<= (count docs) limit))
+      ;; does not have more pages
+      {:next nil
+       :documents docs}
+      ;; does have additional pages
+      {:next {:startkey_docid (:_id (last docs))
+              :published (:published (last docs))}
+       :documents (butlast docs)})))
+
+(defn get-attachment-as-base64-string
+  "Returns Base64 encoded string or nil (if the attachment wasn't
+   found) for the attachment with the given attachment-key in
+   id-or-document and database."
+  [database id-or-doc attachment-key]
+  (when-let [a (clutch/get-attachment database id-or-doc attachment-key)]
+    (let [byte-array-os (java.io.ByteArrayOutputStream.)]
+      (io/copy a byte-array-os)
+      (Base64/encodeBase64String (.toByteArray byte-array-os)))))
 
 (defn get-document
-  ([db-server db-name slug] (get-document db-server db-name slug false))
-  ([db-server db-name slug include-attachment?]
-     (let [document (view-get db-server
-                              db-name
-                              "views"
-                              "by_slug"
-                              {:include_docs true
-                               :key slug})
-           doc-row (:value (first (:rows document)))]
-       (if (and include-attachment? (:original (:_attachments doc-row)))
-         (let [content-type (:content_type (:original
-                                            (:_attachments doc-row)))
-               f (:body (couchdb/attachment-get db-server
-                                                db-name
-                                                (:_id doc-row)
-                                                "original"))]
-           (assoc doc-row :attachment {:type content-type
-                                       :data (Base64/encodeBase64String f)}))
-         doc-row))))
+  "Retrieves the document identified by slug (the URI) from the given
+   database, optionally adding an attachment if the
+   include-attachment? argument evaluates to true. In that case, the
+   attachment identified by the :original key is added to the returned
+   map under the :attachment key (pointing to a map, with :type
+   and :data keys for respectively the content type and a Base64
+   encoded string representation of the attachment)."
+  [database slug & [include-attachment?]]
+  (let [doc (:value (first (get-view database
+                                     "views"
+                                     :by_slug
+                                     {:include_docs true
+                                      :key slug})))]
+    (if (and include-attachment? (:original (:_attachments doc)))
+      (assoc doc
+        :attachment
+        {:type (get-in doc [:_attachments :original :content_type])
+         :data (get-attachment-as-base64-string database doc :original)})
+      doc)))
 
-(defn get-unique-slug [db-server db-name slug]
-  (loop [slug slug]
-    (let [document (get-document db-server db-name slug)]
+(defn get-unique-slug
+  "Checks given database if desired-slug is available. If so,
+   it is returned. Otherwise a prefix is appended (e.g. -2) and the
+   process is repeated until a unique slug is found. "
+  [database desired-slug]
+  (loop [slug desired-slug]
+    (let [document (get-document database slug)]
       (if document
         (recur (util/increment-slug slug))
         slug))))
 
 (defn create-document
-  [db-server db-name language feed-name timezone document]
-  (let [slug (get-unique-slug db-server db-name (:slug document))
-        st-rfc3339 (when (:start-time document)
-                      (util/editor-datetime-to-rfc3339
-                       (:start-time document)
-                       timezone))
-        et-rfc3339 (when (:end-time document)
-                      (util/editor-datetime-to-rfc3339
-                       (:end-time document)
-                       timezone))
-        doc (couchdb/document-create db-server
-                                     db-name
-                                     (assoc (dissoc document :attachment)
-                                       :type "document"
-                                       :feed feed-name
-                                       :language language
-                                       :slug slug
-                                       :published (util/now-rfc3339)
-                                       :start-time-rfc3339 st-rfc3339
-                                       :end-time-rfc3339 et-rfc3339))]
-
+  "Creates document in the given database, with provided language and
+   feed-name, assuming the given timezone for converting :start-time
+   and :end-time in the provided document map to UTC. Apart from
+   :start-time, :end-time and :slug, the document map is expected to
+   have values for :draft, :content and :title. Other keys are also
+   supported. Optionally saves an attachment when the document map
+   contains an :attachment map with a mime type under
+   :type and the Base64 encoded data under :data. Returns the newly
+   created document."
+  [database
+   language
+   feed-name
+   timezone
+   {:keys [slug start-time end-time] :as document}]
+  (let [unique-slug (get-unique-slug database slug)
+        doc (clutch/put-document
+             database
+             (merge (dissoc document :attachment)
+                    {:type "document"
+                     :feed feed-name
+                     :language language
+                     :slug unique-slug
+                     :published (util/now-rfc3339)}
+                    (when start-time
+                      {:start-time-rfc3339
+                       (util/editor-datetime-to-rfc3339 start-time
+                                                        timezone)})
+                    (when end-time
+                      {:end-time-rfc3339
+                       (util/editor-datetime-to-rfc3339 end-time
+                                                        timezone)})))]
     (if-not (and (nil? (:data (:attachment document)))
                  (nil? (:type (:attachment document))))
       (do
-        (couchdb/attachment-create db-server
-                                   db-name
-                                   (:_id doc)
-                                   "original"
-                                   (Base64/decodeBase64
-                                    (:data (:attachment document)))
-                                   (:type (:attachment document)))
+        (clutch/put-attachment database
+                               doc
+                               (Base64/decodeBase64
+                                (:data (:attachment document)))
+                               :filename :original
+                               :mime-type (:type (:attachment document)))
         ;; return newly fetched doc from db (including attachment)
-        (get-document db-server db-name (:slug doc)))
+        (get-document database unique-slug true))
       ;; when there is no attachment we don't need to refetch
       doc)))
 
-(defn update-document [db-server db-name timezone slug new-document]
-  (if-let [document (get-document db-server db-name slug)]
-    (let [st-rfc3339 (when (:start-time new-document)
-                       (util/editor-datetime-to-rfc3339
-                        (:start-time new-document)
-                        timezone))
-          et-rfc3339 (when (:end-time new-document)
-                       (util/editor-datetime-to-rfc3339
-                        (:end-time new-document)
-                        timezone))
-          doc (couchdb/document-update
-               db-server
-               db-name
-               (:_id document)
-               (assoc (dissoc document :attachment)
-                 :updated (util/now-rfc3339)
-                 :title (:title new-document)
-                 :subtitle (:subtitle new-document)
-                 :content (:content new-document)
-                 :description (:description new-document)
-                 :draft (:draft new-document)
-                 :start-time (:start-time new-document)
-                 :end-time (:end-time new-document)
-                 :start-time-rfc3339 st-rfc3339
-                 :end-time-rfc3339 et-rfc3339
-                 :icon (:icon new-document)
-                 :related-pages (:related-pages new-document)
-                 :related-images (:related-images new-document)))]
+(defn update-document
+  "Updates document with provided slug in given database,
+   using the values from new-doc and given timezone to convert the
+   editor datetime to UTC. The :start-time and :end-type keys are used
+   for event documents. Generates RFC3339 timestamps for :updated, as
+   well as :start-time-rfc3339 and :end-time-rfc3339 (using the values
+   from :start-time and :end-time). Updates the following document
+   keys: :title, :subtitle, :content, :description, draft, :start-time,
+   :end-time, :icon, :related-pages and :related-images. Returns the
+   updated document."
+  [database timezone slug new-doc]
+  (if-let [document (get-document database slug)]
+    (let [doc (clutch/put-document
+               database
+               (merge (dissoc document :attachment)
+                      {:updated (util/now-rfc3339)
+                       :title (:title new-doc)
+                       :subtitle (:subtitle new-doc)
+                       :content (:content new-doc)
+                       :description (:description new-doc)
+                       :draft (:draft new-doc)
+                       :start-time (:start-time new-doc)
+                       :end-time (:end-time new-doc)
+                       :icon (:icon new-doc)
+                       :related-pages (:related-pages new-doc)
+                       :related-images (:related-images new-doc)}
+                      (when (:start-time new-doc)
+                        {:start-time-rfc3339 (util/editor-datetime-to-rfc3339
+                                              (:start-time new-doc)
+                                              timezone)})
+                      (when (:end-time new-doc)
+                        {:end-time-rfc3339 (util/editor-datetime-to-rfc3339
+                                            (:end-time new-doc)
+                                            timezone)})))]
       
-      (if-not (and (nil? (:data (:attachment new-document)))
-                   (nil? (:type (:attachment new-document))))
+      (if-not (and (nil? (:data (:attachment new-doc)))
+                   (nil? (:type (:attachment new-doc))))
         (do
-          (couchdb/attachment-create db-server
-                                     db-name
-                                     (:_id doc)
-                                     "original"
-                                     (Base64/decodeBase64
-                                      (:data (:attachment new-document)))
-                                     (:type (:attachment new-document)))
+          (clutch/put-attachment database
+                                 doc
+                                 (Base64/decodeBase64
+                                  (:data (:attachment new-doc)))
+                                 :filename :original
+                                 :mime-type (:type (:attachment new-doc)))
           ;; return newly fetched doc from db (including attachment)
-          (get-document db-server db-name (:slug doc)))
+          (get-document database slug true))
         ;; when there is no attachment we don't need to refetch
         doc))))
 
-(defn delete-document [db-server db-name slug]
-  (kit/with-handler
-    (if-let [document (get-document db-server db-name slug)]
-      (couchdb/document-delete db-server db-name (:_id document)))
-    (kit/handle couchdb/DocumentNotFound []
-                nil)
-    (kit/handle couchdb/ResourceConflict []
-                nil)))
+(defn delete-document
+  "Deletes the document with the given slug from the provided database.
+   Returns a map with the :ok key mapped to true and an :id and :rev
+   if successful or nil if the document couldn't be found or in case
+   of a 409 conflict."
+  [database slug]
+  (when-let [document (get-document database slug)]
+    (try+
+     (clutch/delete-document database document)
+     ;; could possibly raise an kind of error to differentiate between
+     ;; not found and 409, but not important for now.
+     (catch java.io.IOException _ ; for 409 conflicts
+       nil))))
 
-(defn get-available-languages [db-server db-name]
+(defn get-available-languages [database]
   "Retrieve the available languages directly from the database."
-  (map :key (:rows (view-get db-server
-                             db-name
-                             "views"
-                             "languages"
-                             {:group true}))))
+  (map :key (get-view database "views" :languages {:group true})))
 
 (defn get-languages [feeds]
   "Returns a set of languages from the provided feeds"

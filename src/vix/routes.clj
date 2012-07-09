@@ -17,47 +17,45 @@
 (ns vix.routes
   (:use compojure.core
         vix.auth
-        [clojure.contrib.json :only [read-json json-str]]
-        [clojure.contrib.duck-streams :only [slurp*]]
+        [slingshot.slingshot :only [try+]]
+        [clojure.data.json :only [read-json json-str]]
         [ring.util.response :only [redirect]])
   (:require [vix.config :as config]
             [vix.db :as db]
             [vix.lucene :as lucene]
             [vix.views :as views]
             [vix.util :as util]
+            [com.ashafa.clutch :as clutch]
             [clj-time.format :as time-format]
             [clj-time.core :as time-core]
-            [clojure.contrib [error-kit :as kit]]
-            [couchdb [client :as couchdb]]
             [compojure.route :as route]
             [compojure.handler :as handler]))
 
-(def *available-languages*
-  (atom (db/get-available-languages config/db-server config/database)))
+(def available-languages
+  (atom (db/get-available-languages config/database)))
 
-(defn reset-available-languages! [db-server database]
-  (reset! *available-languages*
-          (db/get-available-languages db-server database)))
+(defn reset-available-languages! [database]
+  (reset! available-languages
+          (db/get-available-languages database)))
 
-(def *search-allowed-feeds*
+(def search-allowed-feeds
   (atom (try
-          (db/get-searchable-feeds (db/list-feeds config/db-server
-                                                  config/database))
+          (db/get-searchable-feeds (db/list-feeds config/database))
           (catch Exception e
             nil))))
 
-(defn reset-search-allowed-feeds! [db-server database]
-  (reset! *search-allowed-feeds*
-          (db/get-searchable-feeds (db/list-feeds db-server database))))
+(defn reset-search-allowed-feeds! [database]
+  (reset! search-allowed-feeds
+          (db/get-searchable-feeds (db/list-feeds database))))
 
-(def *index-reader*
+(def index-reader
   (atom (lucene/create-index-reader lucene/directory)))
 
 (defn reset-index-reader! []
-  (when @*index-reader*
-    (.close @*index-reader*))
+  (when @index-reader
+    (.close @index-reader))
   
-  (reset! *index-reader*
+  (reset! index-reader
           (lucene/create-index-reader lucene/directory)))
 
 (defn response [body & {:keys [status content-type]}]
@@ -74,13 +72,11 @@
 (defn page-not-found-response []
   (response "<h1>Page not found</h1>" :status 404))
 
-(defn image-response [db-server database document]
-  (try
-    (let [resp (response (new java.io.ByteArrayInputStream
-                              (:body (couchdb/attachment-get db-server
-                                                             database
-                                                             document
-                                                             "original")))
+(defn image-response [database document]
+  (if-let [attachment (clutch/get-attachment database
+                                             document
+                                             :original)]
+    (let [resp (response attachment
                          :content-type (:content_type
                                         (:original
                                          (:_attachments
@@ -95,8 +91,7 @@
                                    (or (:updated document)
                                        (:published document))
                                    "UTC"))))
-    (catch java.io.FileNotFoundException e
-      (page-not-found-response))))
+    (page-not-found-response)))
 
 (defmulti get-segment
   "Multimethod that retrieves the data associated with a page segment
@@ -107,22 +102,18 @@
    stored in a document attribute).
 
    They are stored in config/page-segments."
-  (fn [segment-details db-server database language timezone]
+  (fn [segment-details database language timezone]
     (:type segment-details)))
 
 (defmethod get-segment :document
-  [segment-details db-server database language timezone]
+  [segment-details database language timezone]
   (assoc segment-details
     :data
-    (db/get-document
-     db-server
-     database
-     ((:slug segment-details) language))))
+    (db/get-document database ((:slug segment-details) language))))
 
 (defmethod get-segment :most-recent-events
-  [segment-details db-server database language timezone]
-  (let [docs (db/get-most-recent-event-documents db-server
-                                                 database
+  [segment-details database language timezone]
+  (let [docs (db/get-most-recent-event-documents database
                                                  language
                                                  (:feed segment-details)
                                                  (:limit segment-details))]
@@ -133,9 +124,8 @@
         docs))))
 
 (defmethod get-segment :feed
-  [segment-details db-server database language timezone]
-  (let [docs (db/get-documents-for-feed db-server
-                                        database
+  [segment-details database language timezone]
+  (let [docs (db/get-documents-for-feed database
                                         language
                                         (:feed segment-details)
                                         (:limit segment-details))]
@@ -146,62 +136,59 @@
         docs))))
 
 (defmethod get-segment :string
-  [segment-details db-server database language timezone]
+  [segment-details database language timezone]
   segment-details)
 
-(defn get-segments [page-segments db-server database language timezone]
+(defn get-segments [page-segments database language timezone]
   (into {}
         (for [[k v] page-segments]
           [k (get-segment v
-                          db-server
                           database
                           language
                           timezone)])))
 
-(defn get-frontpage-for-language! [db-server database language timezone]
+(defn get-frontpage-for-language! [database language timezone]
   (views/frontpage-view
    language
    timezone
    (get-segments (:frontpage config/page-segments)
-                 db-server
                  database
                  language
                  timezone)))
 
-(def *frontpage-cache* (atom {}))
+(def frontpage-cache (atom {}))
 
-(defn get-cached-frontpage! [db-server database language timezone]
-  (if-let [fp (get @*frontpage-cache* language)]
+(defn get-cached-frontpage! [database language timezone]
+  (if-let [fp (get @frontpage-cache language)]
     fp
     (do
-      (swap! *frontpage-cache*
+      (swap! frontpage-cache
              assoc
              language
-             (response (get-frontpage-for-language! db-server
-                                                    database
+             (response (get-frontpage-for-language! database
                                                     language
                                                     timezone)))
-      (get-cached-frontpage! db-server database language timezone))))
+      (get-cached-frontpage! database language timezone))))
 
 (defn reset-frontpage-cache! [language]
-  (swap! *frontpage-cache* dissoc language))
+  (swap! frontpage-cache dissoc language))
 
-(def *page-cache* (atom {}))
+(def page-cache (atom {}))
 
-(defn get-cached-page! [db-server database slug timezone]
-  (if-let [p (get @*page-cache* slug)]
+(defn get-cached-page! [database slug timezone]
+  (if-let [p (get @page-cache slug)]
     p
-    (if-let [document (db/get-document db-server database slug)]
+    (if-let [document (db/get-document database slug)]
       (cond
        ;; files always skip the cache
        (:original (:_attachments document))
-       (image-response db-server database document)
+       (image-response database document)
        ;; for event-like documents
        ;;(not (nil? (:end-time-rfc3339 document)))
        ;; for all other documents
        :default
        (do
-         (swap! *page-cache*
+         (swap! page-cache
                 assoc
                 slug
                 (response
@@ -210,20 +197,19 @@
                                   document
                                   (get-segments (:default-page
                                                  config/page-segments)
-                                                db-server
                                                 database
                                                 (:language document)
                                                 timezone))))
-         (get-cached-page! db-server database slug timezone)))
+         (get-cached-page! database slug timezone)))
       
       (page-not-found-response))))
 
 (defn reset-page-cache! []
-  (reset! *page-cache* {}))
+  (reset! page-cache {}))
 
 ;; FIXME: add authorization
-(defn catch-all [db-server database slug timezone]
-  (get-cached-page! db-server database slug timezone))
+(defn catch-all [database slug timezone]
+  (get-cached-page! database slug timezone))
 
 (defn logout [session]
   {:session (dissoc session :username)
@@ -231,18 +217,18 @@
    :headers {"Location" "/"}})
 
 (defn login [session username password]
-  (kit/with-handler
-    (when-let [authenticated-session (authenticate  config/database
-                                                    session
-                                                    username
-                                                    password)]
-      {:session authenticated-session
-       :status 302
-       :headers {"Location" "/admin/"}})
-    (kit/handle UserDoesNotExist []
-                (redirect "/login"))
-    (kit/handle UsernamePasswordMismatch []
-                (redirect "/login"))))
+  (try+
+   (when-let [authenticated-session (authenticate config/database
+                                                  session
+                                                  username
+                                                  password)]
+     {:session authenticated-session
+      :status 302
+      :headers {"Location" "/admin/"}})
+   (catch [:type :vix.auth/user-does-not-exist] _
+     (redirect "/login"))
+   (catch [:type :vix.auth/username-password-mismatch] _
+     (redirect "/login"))))
 
 ;; FIXME: change order of authorize/json-response calls, so attackers
 ;; can't get a 404 from an unauthorized request to mine for existing docs
@@ -256,11 +242,10 @@
                                  (util/get-preferred-language
                                   (util/parse-accept-language-header
                                    (get headers "accept-language"))
-                                  @*available-languages*)
+                                  @available-languages)
                                  config/default-language)]
          (if (= preferred-language config/default-language)
-           (get-cached-frontpage! config/db-server
-                                  config/database
+           (get-cached-frontpage! config/database
                                   config/default-language
                                   config/default-timezone)
            (redirect (str config/base-uri preferred-language)))))
@@ -281,8 +266,7 @@
   (GET "/:language"
        {{language :language} :params}
        (if (<= (count language) 3)
-         (get-cached-frontpage! config/db-server
-                                config/database
+         (get-cached-frontpage! config/database
                                 language
                                 config/default-timezone)
          (page-not-found-response)))
@@ -305,7 +289,7 @@
                             (lucene/create-filter
                              {:language language
                               :draft false
-                              :feed (get @*search-allowed-feeds* language)})
+                              :feed (get @search-allowed-feeds language)})
                             (inc config/search-results-per-page)
                             after-doc-id-int
                             after-score-float
@@ -320,7 +304,6 @@
              false
              (get-segments (:search-page
                             config/page-segments)
-                           config/db-server
                            config/database
                            language
                            config/default-timezone))
@@ -331,11 +314,11 @@
                             (lucene/create-filter
                              {:language language
                               :draft false
-                              :feed (get @*search-allowed-feeds* language)})
+                              :feed (get @search-allowed-feeds language)})
                             (inc config/search-results-per-page)
                             after-doc-id-int
                             after-score-float
-                            @*index-reader*
+                            @index-reader
                             lucene/analyzer)
              q
              pp-after-doc-id
@@ -345,7 +328,6 @@
              true
              (get-segments (:search-page
                             config/page-segments)
-                           config/db-server
                            config/database
                            language
                            config/default-timezone))))))
@@ -358,8 +340,7 @@
          session :session}
        (when (authorize session :GET language feed-name)
          (json-response
-          (db/get-documents-for-feed config/db-server
-                                     config/database
+          (db/get-documents-for-feed config/database
                                      language
                                      feed-name
                                      (when limit
@@ -373,26 +354,23 @@
        (when (authorize session :GET nil :*)
          (json-response
           (if ddt
-            (db/list-feeds-by-default-document-type config/db-server
-                                                    config/database
+            (db/list-feeds-by-default-document-type config/database
                                                     ddt
                                                     language)
-            (db/list-feeds config/db-server config/database language)))))
+            (db/list-feeds config/database language)))))
   (POST "/json/new-feed"
         request
         (when (authorize (:session request) :POST nil :*)
-          (let [feed (db/create-feed config/db-server
-                                     config/database
-                                     (read-json (slurp* (:body request))))]
+          (let [feed (db/create-feed config/database
+                                     (read-json (slurp (:body request))))]
             (reset-frontpage-cache! (:language feed))
             (reset-index-reader!)
-            (reset-search-allowed-feeds! config/db-server config/database)
-            (reset-available-languages! config/db-server config/database)
+            (reset-search-allowed-feeds! config/database)
+            (reset-available-languages! config/database)
             (json-response feed :status 201))))
   (GET "/json/feed/:language/:name"
        {{language :language feed-name :name} :params session :session}
-       (if-let [feed (db/get-feed config/db-server
-                                  config/database
+       (if-let [feed (db/get-feed config/database
                                   language
                                   feed-name)]
          (when (authorize session :GET language feed-name)
@@ -401,35 +379,30 @@
   (PUT "/json/feed/:language/:name"
        {{language :language feed-name :name}
         :params body :body session :session}
-       (if-let [feed (db/get-feed config/db-server
-                                  config/database
+       (if-let [feed (db/get-feed config/database
                                   language
                                   feed-name)]
          (when (authorize session :PUT language feed-name)
-           (let [feed (db/update-feed config/db-server
-                                      config/database
+           (let [feed (db/update-feed config/database
                                       language
                                       feed-name
-                                      (read-json (slurp* body)))]
+                                      (read-json (slurp body)))]
              (reset-frontpage-cache! language)
              (reset-index-reader!)
-             (reset-search-allowed-feeds! config/db-server config/database)
-             (reset-available-languages! config/db-server config/database)
+             (reset-search-allowed-feeds! config/database)
+             (reset-available-languages! config/database)
              (json-response feed)))
          (json-response nil)))
   (DELETE "/json/feed/:language/:name"
           {{language :language feed-name :name} :params session :session}
-          (if-let [feed (db/get-feed config/db-server
-                                     config/database
+          (if-let [feed (db/get-feed config/database
                                      language
                                      feed-name)]
             (when (authorize session :DELETE language feed-name)
               (json-response 
-               (db/delete-feed
-                config/db-server
-                config/database
-                language
-                feed-name))
+               (db/delete-feed config/database
+                               language
+                               feed-name))
               (reset-frontpage-cache! language)
               (reset-index-reader!)
               (json-response nil))
@@ -439,20 +412,18 @@
          session :session
          body :body}
         (when (authorize session :POST language feed-name)
-          (let [document (db/create-document config/db-server
-                                             config/database
+          (let [document (db/create-document config/database
                                              language
                                              feed-name
                                              config/default-timezone
-                                             (read-json (slurp* body)))]
+                                             (read-json (slurp body)))]
             (lucene/add-documents-to-index! lucene/directory [document])
             (reset-frontpage-cache! language)
             (reset-index-reader!)
             (json-response document :status 201))))
   (GET "/json/document/*"
        {{slug :*} :params session :session}
-       (if-let [document (db/get-document config/db-server
-                                          config/database
+       (if-let [document (db/get-document config/database
                                           (util/force-initial-slash slug)
                                           true)]
          (when (authorize session :GET (:language document) (:feed document))
@@ -461,17 +432,15 @@
   (PUT "/json/document/*"
        {{slug :*} :params body :body session :session}
        (let [slug (util/force-initial-slash slug)]
-         (if-let [document (db/get-document config/db-server
-                                            config/database slug)]
+         (if-let [document (db/get-document config/database slug)]
            (when (authorize session
                             :PUT
                             (:language document)
                             (:feed document))
-             (let [document (db/update-document config/db-server
-                                                config/database
+             (let [document (db/update-document config/database
                                                 config/default-timezone
                                                 slug
-                                                (read-json (slurp* body)))]
+                                                (read-json (slurp body)))]
                (lucene/update-document-in-index! lucene/directory
                                                  slug
                                                  document)
@@ -483,8 +452,7 @@
   (DELETE "/json/document/*"
           {{slug :*} :params session :session}
           (let [slug (util/force-initial-slash slug)]
-            (if-let [document (db/get-document config/db-server
-                                               config/database
+            (if-let [document (db/get-document config/database
                                                slug)]
               (when (authorize session
                                :DELETE
@@ -493,8 +461,7 @@
                 (reset-page-cache!)
                 (reset-frontpage-cache! (:language document))
                 (reset-index-reader!)
-                (let [document (db/delete-document config/db-server
-                                                   config/database
+                (let [document (db/delete-document config/database
                                                    slug)]
                   (lucene/delete-document-from-index! lucene/directory slug)
                   (json-response document)))
@@ -502,20 +469,19 @@
   (route/resources "/static/")
   (GET "/*"
        {{slug :*} :params}
-       (catch-all config/db-server
-                  config/database
+       (catch-all config/database
                   (util/force-initial-slash slug)
                   config/default-timezone)))
 
 (defn handle-authentication-errors [handler]
   "Middleware function that redirects on insufficient privileges."
   (fn [request]
-    (kit/with-handler
-      (handler request)
-      (kit/handle InsufficientPrivileges []
-        (redirect "/permission-denied"))
-      (kit/handle AuthenticationRequired []
-                  (redirect "/login")))))
+    (try+
+     (handler request)
+     (catch [:type :vix.auth/insufficient-privileges] _
+         (redirect "/permission-denied"))
+     (catch [:type :vix.auth/authentication-required] _
+         (redirect "/login")))))
 
 (defn wrap-caching-headers [handler]
   "Middleware function that adds Cache-Control: public and Expires

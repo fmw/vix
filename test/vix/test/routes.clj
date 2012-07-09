@@ -15,14 +15,13 @@
 
 (ns vix.test.routes
   (:use [clojure.test]
+        [slingshot.slingshot :only [throw+]]
         [vix.routes] :reload
         [vix.db :only [create-document create-feed get-document list-feeds]]
-        [vix.auth :only [add-user]]
-        [clojure.contrib.json :only [json-str read-json]]
-        [vix.test.db :only [database-fixture +test-server+ +test-db+]])
+        [clojure.data.json :only [json-str read-json]]
+        [vix.test.db :only [database-fixture +test-db+]])
   (:require [clj-time.format :as time-format]
             [clj-time.core :as time-core]
-            [clojure.contrib [error-kit :as kit]]
             [net.cgrand.enlive-html :as html]
             [vix.auth :as auth]
             [vix.config :as config]
@@ -32,46 +31,6 @@
 
 (def last-modified-pattern
   #"[A-Z]{1}[a-z]{2}, \d{1,2} [A-Z]{1}[a-z]{2} \d{4} \d{2}:\d{2}:\d{2} \+0000")
-
-; Copied from Clojure 1.3.
-; Also discussed in Joy of Clojure by Fogus & Houser, page 299.
-(defn with-redefs-fn
-  "Temporarily redefines Vars during a call to func.  Each val of
-  binding-map will replace the root value of its key which must be
-  a Var.  After func is called with no args, the root values of all
-  the Vars will be set back to their old values.  These temporary
-  changes will be visible in all threads.  Useful for mocking out
-  functions during testing."
-  {:added "1.3"}
-  [binding-map func]
-  (let [root-bind (fn [m]
-                    (doseq [[a-var a-val] m]
-                      (.bindRoot ^clojure.lang.Var a-var a-val)))
-        old-vals (zipmap (keys binding-map)
-                         (map deref (keys binding-map)))]
-    (try
-      (root-bind binding-map)
-      (func)
-      (finally
-        (root-bind old-vals)))))
-
-; Copied from Clojure 1.3.
-; Also discussed in Joy of Clojure by Fogus & Houser, page 299.
-(defmacro with-redefs
-  "binding => var-symbol temp-value-expr
-
-  Temporarily redefines Vars while executing the body.  The
-  temp-value-exprs will be evaluated and each resulting value will
-  replace in parallel the root value of its Var.  After the body is
-  executed, the root values of all the Vars will be set back to their
-  old values.  These temporary changes will be visible in all threads.
-  Useful for mocking out functions during testing."
-  {:added "1.3"}
-  [bindings & body]
-  `(with-redefs-fn ~(zipmap (map #(list `var %) (take-nth 2 bindings))
-                            (take-nth 2 (next bindings)))
-                    (fn [] ~@body)))
-
 
 (defn request-map [method resource body params]
   {:request-method method
@@ -116,8 +75,7 @@
 
 (deftest test-reset-search-allowed-feeds!
   (do
-    (create-feed +test-server+
-                 +test-db+
+    (create-feed +test-db+
                  {:title "Weblog"
                   :subtitle "Vix Weblog!"
                   :name "blog"
@@ -125,8 +83,7 @@
                   :default-document-type "with-description"
                   :language "en"
                   :searchable true})
-    (create-feed +test-server+
-                 +test-db+
+    (create-feed +test-db+
                  {:title "Images"
                   :subtitle "Vix Weblog!"
                   :name "images"
@@ -135,12 +92,11 @@
                   :language "en"
                   :searchable false}))
 
-  (reset! *search-allowed-feeds* {})
-  (reset-search-allowed-feeds! +test-server+ +test-db+)
-  (is (= @*search-allowed-feeds* {"en" ["blog"]}))
+  (reset! search-allowed-feeds {})
+  (reset-search-allowed-feeds! +test-db+)
+  (is (= @search-allowed-feeds {"en" ["blog"]}))
 
-  (create-feed +test-server+
-               +test-db+
+  (create-feed +test-db+
                {:title "News"
                 :subtitle "Vix News!"
                 :name "news"
@@ -149,13 +105,12 @@
                 :language "en"
                 :searchable true})
 
-  (reset-search-allowed-feeds! +test-server+ +test-db+)
-  (is (= @*search-allowed-feeds* {"en" ["news" "blog"]})))
+  (reset-search-allowed-feeds! +test-db+)
+  (is (= @search-allowed-feeds {"en" ["news" "blog"]})))
 
 (deftest test-reset-available-languages!
   (do
-    (create-feed +test-server+
-                 +test-db+
+    (create-feed +test-db+
                  {:title "Weblog"
                   :subtitle "Vix Weblog!"
                   :name "blog"
@@ -164,12 +119,11 @@
                   :language "en"
                   :searchable true}))
 
-  (reset! *available-languages* {})
-  (reset-available-languages! +test-server+ +test-db+)
-  (is (= @*available-languages* ["en"]))
+  (reset! available-languages {})
+  (reset-available-languages! +test-db+)
+  (is (= @available-languages ["en"]))
 
-  (create-feed +test-server+
-               +test-db+
+  (create-feed +test-db+
                {:title "News"
                 :subtitle "Vix News!"
                 :name "news"
@@ -178,22 +132,22 @@
                 :language "nl"
                 :searchable true})
 
-  (reset-available-languages! +test-server+ +test-db+)
-  (is (= @*available-languages* ["en" "nl"])))
+  (reset-available-languages! +test-db+)
+  (is (= @available-languages ["en" "nl"])))
 
 (deftest test-reset-index-reader!
-  (let [ir @*index-reader*]
+  (let [ir @index-reader]
     (do
       (reset-index-reader!))
 
-    (is (not (= ir @*index-reader*))))
+    (is (not (= ir @index-reader))))
 
   (do
-    (compare-and-set! *index-reader* @*index-reader* nil)
-    (is (= @*index-reader* nil))
+    (compare-and-set! index-reader @index-reader nil)
+    (is (= @index-reader nil))
     (reset-index-reader!))
 
-  (is (= (class @*index-reader*)
+  (is (= (class @index-reader)
          org.apache.lucene.index.ReadOnlyDirectoryReader)))
 
 (deftest test-json-response
@@ -232,8 +186,7 @@
 (deftest test-image-response
   (let [gif (str "R0lGODlhAQABA++/vQAAAAAAAAAA77+9AQIAAAAh77+9BAQUA++/"
                  "vQAsAAAAAAEAAQAAAgJEAQA7")
-        white-pixel-doc (create-document +test-server+
-                                         +test-db+
+        white-pixel-doc (create-document +test-db+
                                          "en"
                                          "images"
                                          "Europe/Amsterdam"
@@ -243,8 +196,7 @@
                                           :slug "/images/white-pixel.gif"
                                           :content ""
                                           :draft false})
-        no-image-doc (create-document +test-server+
-                                      +test-db+
+        no-image-doc (create-document +test-db+
                                       "en"
                                       "images"
                                       "Europe/Amsterdam"
@@ -252,8 +204,7 @@
                                        :slug "/images/not-a-white-pixel.gif"
                                        :content ""
                                        :draft false})
-        wp-response (image-response +test-server+
-                                    +test-db+
+        wp-response (image-response +test-db+
                                     white-pixel-doc)]
     
     (testing "test if a simple gif is returned correctly"
@@ -272,11 +223,11 @@
              {"ETag" (:_rev white-pixel-doc)
               "Content-Type" "image/gif"}))
     
-      (is (= (class (:body wp-response)) java.io.ByteArrayInputStream)))
+      (is (= (class (:body wp-response))
+             clj_http.core.proxy$java.io.FilterInputStream$0)))
 
     (testing "test if a non-image document is handled correctly"
-      (is (= (image-response +test-server+
-                             +test-db+
+      (is (= (image-response +test-db+
                              no-image-doc)
              (page-not-found-response))))))
 
@@ -285,8 +236,7 @@
         (fn [language]
           (str "/" language "/menu/menu"))
         menu-doc
-        (create-document +test-server+
-                         +test-db+
+        (create-document +test-db+
                          "en"
                          "menu"
                          "Europe/Amsterdam"
@@ -296,8 +246,7 @@
                                         "/\">home</a></li></ul>")
                           :draft false})
         grote-zaal-doc
-        (create-document +test-server+
-                         +test-db+
+        (create-document +test-db+
                          "en"
                          "grote-zaal"
                          "Europe/Amsterdam"
@@ -317,8 +266,7 @@
                           :draft false})
 
         kleine-zaal-doc
-        (create-document +test-server+
-                         +test-db+
+        (create-document +test-db+
                          "en"
                          "kleine-zaal"
                          "Europe/Amsterdam"
@@ -342,8 +290,7 @@
                           :draft false})
 
         kabinet-doc
-        (create-document +test-server+
-                         +test-db+
+        (create-document +test-db+
                          "en"
                          "kabinet"
                          "Europe/Amsterdam"
@@ -361,8 +308,7 @@
                           "2013-02-01 23:59"
                           :draft false})
         kabinet-doc-2 ;; dummy doc that should not be retrieved
-        (create-document +test-server+
-                         +test-db+
+        (create-document +test-db+
                          "en"
                          "kabinet"
                          "Europe/Amsterdam"
@@ -380,8 +326,7 @@
                           "2012-02-01 23:59"
                           :draft false})
         news-1
-        (create-document +test-server+
-                         +test-db+
+        (create-document +test-db+
                          "en"
                          "news"
                          "Europe/Amsterdam"
@@ -393,8 +338,7 @@
                           ""
                           :draft false})
         news-2
-        (create-document +test-server+
-                         +test-db+
+        (create-document +test-db+
                          "en"
                          "news"
                          "Europe/Amsterdam"
@@ -437,14 +381,12 @@
     
     (testing "test (get-segment ...)"
       (is (= (:content (:data (get-segment (:menu frontpage-segments)
-                                           +test-server+
                                            +test-db+
                                            "en"
                                            "Europe/Amsterdam")))
              "<ul><li><a href=\"/\">home</a></li></ul>"))
 
       (is (= (get-segment (:primary-exposition frontpage-segments)
-                          +test-server+
                           +test-db+
                           "en"
                           "Europe/Amsterdam")
@@ -453,7 +395,6 @@
                grote-zaal-doc)))
 
       (is (= (get-segment (:secondary-exposition frontpage-segments)
-                          +test-server+
                           +test-db+
                           "en"
                           "Europe/Amsterdam")
@@ -462,7 +403,6 @@
                kleine-zaal-doc)))
 
       (is (= (get-segment (:tertiary-exposition frontpage-segments)
-                          +test-server+
                           +test-db+
                           "en"
                           "Europe/Amsterdam")
@@ -471,7 +411,6 @@
                kabinet-doc)))
 
       (is (= (get-segment (:news frontpage-segments)
-                          +test-server+
                           +test-db+
                           "en"
                           "Europe/Amsterdam")
@@ -483,7 +422,6 @@
       (is (= (get-segment {:type :string
                            :data (str "http://cdn0.baz.vixu.com/"
                                       "/static/images/baz-content-bg.jpg")}
-                          +test-server+
                           +test-db+
                           "en"
                           "Europe/Amsterdam")
@@ -493,7 +431,6 @@
 
     (testing "test (get-segments...)"
       (is (= (get-segments frontpage-segments
-                           +test-server+
                            +test-db+
                            "en"
                            "Europe/Amsterdam")
@@ -536,58 +473,54 @@
   ;; this is tested in the tests for the view
 
   ;; if it returns a string the view is executed successfully
-  (is (string? (first (get-frontpage-for-language! +test-server+
-                                                +test-db+
-                                                "nl"
-                                                "Europe/Amsterdam")))))
+  (is (string? (first (get-frontpage-for-language! +test-db+
+                                                   "nl"
+                                                   "Europe/Amsterdam")))))
 
 (deftest test-get-cached-frontpage!
-  (is (= @*frontpage-cache* {}))
-  (let [empty-cache-fp (get-cached-frontpage! +test-server+
-                                              +test-db+
+  (is (= @frontpage-cache {}))
+  (let [empty-cache-fp (get-cached-frontpage! +test-db+
                                               "nl"
                                               "Europe/Amsterdam")]
-    (is (= @*frontpage-cache* {"nl" empty-cache-fp}))
+    (is (= @frontpage-cache {"nl" empty-cache-fp}))
 
     (do  ; insert fake string to make sure pages are served from cache
-      (swap! *frontpage-cache* assoc "nl" "foo!"))
+      (swap! frontpage-cache assoc "nl" "foo!"))
 
-    (is (= (get-cached-frontpage! +test-server+
-                                 +test-db+
-                                 "nl"
-                                 "Europe/Amsterdam")
+    (is (= (get-cached-frontpage! +test-db+
+                                  "nl"
+                                  "Europe/Amsterdam")
            "foo!")))
 
   (reset-frontpage-cache! "nl"))
 
 (deftest test-reset-frontpage-cache!
   (testing "test reset-frontpage-cache! on a single language cache"
-    (swap! *frontpage-cache* assoc "nl" "foo!")
-    (is (= @*frontpage-cache* {"nl" "foo!"}))
+    (swap! frontpage-cache assoc "nl" "foo!")
+    (is (= @frontpage-cache {"nl" "foo!"}))
     (is (= (reset-frontpage-cache! "nl") {})))
   
   (testing "test reset-frontpage-cache! on a multiple language cache"
-    (swap! *frontpage-cache* assoc "nl" "foo!")
-    (swap! *frontpage-cache* assoc "en" "bar!")
-    (is (= @*frontpage-cache* {"nl" "foo!" "en" "bar!"}))
+    (swap! frontpage-cache assoc "nl" "foo!")
+    (swap! frontpage-cache assoc "en" "bar!")
+    (is (= @frontpage-cache {"nl" "foo!" "en" "bar!"}))
     (is (= (reset-frontpage-cache! "nl") {"en" "bar!"}))))
 
 (deftest test-reset-page-cache!
-  (is (= @*page-cache* {}))
-  (swap! *page-cache* assoc "/events/clojure-meetup.html" "hey!")
-  (is (not (= @*page-cache* {})))
+  (is (= @page-cache {}))
+  (swap! page-cache assoc "/events/clojure-meetup.html" "hey!")
+  (is (not (= @page-cache {})))
   (is (= (reset-page-cache!) {}))
-  (is (= @*page-cache* {})))
+  (is (= @page-cache {})))
 
 (deftest test-get-cached-page!
-  (is (= @*page-cache* {}))
+  (is (= @page-cache {}))
   
   (testing "make sure images skip the cache"
     (let [gif (str "R0lGODlhAQABA++/vQAAAAAAAAAA77+9AQIAAAAh77+9BAQUA++/"
                    "vQAsAAAAAAEAAQAAAgJEAQA7")]
       (do
-        (create-document +test-server+
-                         +test-db+
+        (create-document +test-db+
                          "en"
                          "images"
                          "Europe/Amsterdam"
@@ -599,19 +532,17 @@
                           :draft false}))
 
       (is (= (keys
-              (get-cached-page! +test-server+
-                                +test-db+
+              (get-cached-page! +test-db+
                                 "/images/white-pixel.gif"
                                 "Europe/Amsterdam"))
              ["Last-Modified" :status :headers :body]))
 
       ;; the cache should still be empty:
-      (is (= @*page-cache* {}))))
+      (is (= @page-cache {}))))
 
   (testing "test with a regular page"
     (do
-      (create-document +test-server+
-                       +test-db+
+      (create-document +test-db+
                        "en"
                        "pages"
                        "Europe/Amsterdam"
@@ -620,19 +551,17 @@
                         :content "<h3>Here be dragons!</h3>"
                         :draft false}))
     (is (= (keys
-            (get-cached-page! +test-server+
-                              +test-db+
+            (get-cached-page! +test-db+
                               "/pages/hic-sunt-dracones.html"
                               "Europe/Amsterdam"))
            [:status :headers :body]))
 
-    (is (= (keys (get @*page-cache* "/pages/hic-sunt-dracones.html"))
+    (is (= (keys (get @page-cache "/pages/hic-sunt-dracones.html"))
            [:status :headers :body]))
 
     ;; make sure the page is really served from the cache
-    (swap! *page-cache* assoc "/pages/hic-sunt-dracones.html" "hi!")
-    (is (= (get-cached-page! +test-server+
-                             +test-db+
+    (swap! page-cache assoc "/pages/hic-sunt-dracones.html" "hi!")
+    (is (= (get-cached-page! +test-db+
                              "/pages/hic-sunt-dracones.html"
                              "Europe/Amsterdam")
            "hi!")))
@@ -640,8 +569,7 @@
   ;; TODO: make this test actually meaningful
   (testing "test with event page"
     (do
-      (create-document +test-server+
-                       +test-db+
+      (create-document +test-db+
                        "en"
                        "calendar"
                        "Europe/Amsterdam"
@@ -654,19 +582,17 @@
                         :end-time-rfc3339 "2012-05-16T23:00:00.000Z"
                         :draft false}))
     (is (= (keys
-            (get-cached-page! +test-server+
-                              +test-db+
+            (get-cached-page! +test-db+
                               "/events/clojure-meetup.html"
                               "Europe/Amsterdam"))
            [:status :headers :body]))
 
-    (is (= (keys (get @*page-cache* "/events/clojure-meetup.html"))
+    (is (= (keys (get @page-cache "/events/clojure-meetup.html"))
            [:status :headers :body]))
 
     ;; make sure the page is really served from the cache
-    (swap! *page-cache* assoc "/events/clojure-meetup.html" "hello!")
-    (is (= (get-cached-page! +test-server+
-                             +test-db+
+    (swap! page-cache assoc "/events/clojure-meetup.html" "hello!")
+    (is (= (get-cached-page! +test-db+
                              "/events/clojure-meetup.html"
                              "Europe/Amsterdam")
            "hello!")))
@@ -675,19 +601,16 @@
   (reset-page-cache!))
 
 (deftest test-catch-all
-  (is (= (:status (catch-all +test-server+
-                             +test-db+
+  (is (= (:status (catch-all +test-db+
                              "/blog/bar"
                              "Europe/Amsterdam"))
          404))
-  (is (= (:body (catch-all +test-server+
-                           +test-db+
+  (is (= (:body (catch-all +test-db+
                            "/blog/bar"
                            "Europe/Amsterdam"))
          "<h1>Page not found</h1>"))
   (do
-    (create-document +test-server+
-                     +test-db+
+    (create-document +test-db+
                      "en"
                      "blog"
                      "Europe/Amsterdam"
@@ -696,8 +619,7 @@
                       :content "bar"
                       :draft false}))
 
-  (is (= (:status (catch-all +test-server+
-                             +test-db+
+  (is (= (:status (catch-all +test-db+
                              "/blog/bar"
                              "Europe/Amsterdam"))
          200))
@@ -706,7 +628,6 @@
     (let [gif (str "R0lGODlhAQABA++/vQAAAAAAAAAA77+9AQIAAAAh77+9BAQUA++/"
                    "vQAsAAAAAAEAAQAAAgJEAQA7")
           document (create-document
-                    +test-server+
                     +test-db+
                     "en"
                     "images"
@@ -716,18 +637,17 @@
                      :slug "/pixel.gif"
                      :content ""
                      :draft false})
-          catch-all (catch-all +test-server+
-                               +test-db+
+          catch-all (catch-all +test-db+
                                "/pixel.gif"
                                "Europe/Amsterdam")]
 
       (is (= (get (:headers catch-all) "Content-Type") "image/gif"))
-      (is (= (class (:body catch-all)) java.io.ByteArrayInputStream)))))
+      (is (= (class (:body catch-all))
+             clj_http.core.proxy$java.io.FilterInputStream$0)))))
 
 (deftest ^{:integration true} test-routes
   (do
-    (create-feed +test-server+
-                 +test-db+
+    (create-feed +test-db+
                  {:title "Pages"
                   :subtitle "Test Pages"
                   :name "pages"
@@ -736,8 +656,7 @@
                   :language "en"
                   :searchable true})
     
-    (create-document +test-server+
-                     +test-db+
+    (create-document +test-db+
                      "en"
                      "blog"
                      "Europe/Amsterdam"
@@ -748,15 +667,14 @@
                       :draft false}))
 
   (let [directory (lucene/create-directory :RAM)]
-    (with-redefs [*search-allowed-feeds* (atom {"en" ["pages"]})
+    (with-redefs [search-allowed-feeds (atom {"en" ["pages"]})
                   config/search-results-per-page 10
                   config/database +test-db+
                   lucene/directory directory]
       (dotimes [n 21]
         (lucene/add-documents-to-index!
          lucene/directory
-         [(create-document +test-server+
-                           +test-db+
+         [(create-document +test-db+
                            "en"
                            "pages"
                            "Europe/Amsterdam"
@@ -766,7 +684,7 @@
                             :content "bar"
                             :draft false})]))
       
-      (with-redefs [*index-reader* (atom
+      (with-redefs [index-reader (atom
                                     (lucene/create-index-reader directory))]
         (testing "test document pagination"
           (let [first-five (read-json
@@ -950,7 +868,7 @@
                201))
 
         (testing "test if the document is added to the database"
-          (let [document (get-document +test-server+ +test-db+ "/blog/test")]
+          (let [document (get-document +test-db+ "/blog/test")]
             (is (= (:title document)) "test-create")))
 
         (testing "test if the document is added to the lucene index"
@@ -964,7 +882,7 @@
     
         ;; FIXME: should add a test-case for a 409 conflict
         (testing "test if documents are updated correctly"
-          (let [document (get-document +test-server+ +test-db+ "/blog/bar")]
+          (let [document (get-document +test-db+ "/blog/bar")]
             (is (= (:status (request
                              :put
                              "/json/document/blog/bar"
@@ -972,7 +890,7 @@
                              main-routes))
                    200))
 
-            (is (= (:title (get-document +test-server+ +test-db+ "/blog/bar"))
+            (is (= (:title (get-document +test-db+ "/blog/bar"))
                    "hi!"))
 
             (is (= (:status (request
@@ -990,7 +908,7 @@
           (is (= (:status
                   (request :delete "/json/document/blog/bar" main-routes))
                  200))
-          (is (= (get-document +test-server+ +test-db+ "/blog/bar") nil)))
+          (is (= (get-document +test-db+ "/blog/bar") nil)))
 
         (testing "test if document is also deleted from the lucene index."
           (let [reader (lucene/create-index-reader directory)
@@ -1024,7 +942,7 @@
                                main-routes)]
         (is (= (:status post-feed-request) 201))
 
-        (is (= @*search-allowed-feeds* {"en" ["pages" "blog"]})
+        (is (= @search-allowed-feeds {"en" ["pages" "blog"]})
             "Test if search-allowed-feeds is updated when feed is added")
         
         (let [image-feed (read-json
@@ -1114,7 +1032,7 @@
           (is (= (:name json-put-body) "blog"))
           (is (= (:title json-put-body) "Vix!"))
           
-          (is (= @*search-allowed-feeds* {"nl" [] "en" ["pages"]})
+          (is (= @search-allowed-feeds {"nl" [] "en" ["pages"]})
               "Make sure search-allowed-feeds is updated when feeds are")))
     
       (is (:status (request :get "/json/feed/en/blog" main-routes)) 200)
@@ -1123,8 +1041,7 @@
 
 (deftest ^{:integration true} test-routes-authorization
   (do
-    (create-document +test-server+
-                     +test-db+
+    (create-document +test-db+
                      "en"
                      "blog"
                      "Europe/Amsterdam"
@@ -1133,8 +1050,7 @@
                       :content "bar"
                       :draft false})
     
-    (create-feed +test-server+
-                 +test-db+
+    (create-feed +test-db+
                  {:title "Weblog"
                   :subtitle "Vix Weblog!"
                   :name "blog"
@@ -1207,8 +1123,7 @@
 
 (deftest ^{:integration true} test-routes-authentication
   (do
-    (create-document +test-server+
-                     +test-db+
+    (create-document +test-db+
                      "en"
                      "blog"
                      "Europe/Amsterdam"
@@ -1264,10 +1179,10 @@
 
 (deftest test-login
   (do
-    (add-user +test-db+
-              "fmw"
-              "oops"
-              {:* ["GET" "POST" "PUT" "DELETE"]}))
+    (auth/add-user +test-db+
+                   "fmw"
+                   "oops"
+                   {:* ["GET" "POST" "PUT" "DELETE"]}))
 
   (with-redefs [config/database +test-db+]
     (is (= (form-request :post "/login" main-routes {"username" "fmw"
@@ -1376,7 +1291,7 @@
 
   (is (= ((handle-authentication-errors
            (fn [handler]
-             (kit/raise auth/InsufficientPrivileges)))
+             (throw+ auth/insufficient-privileges-error)))
           :should-not-work)
          {:status 302
           :headers {"Location" "/permission-denied"}
@@ -1384,7 +1299,7 @@
 
   (is (= ((handle-authentication-errors
            (fn [handler]
-             (kit/raise auth/AuthenticationRequired)))
+             (throw+ auth/authentication-required-error)))
           :should-not-work)
          {:status 302
           :headers {"Location" "/login"}

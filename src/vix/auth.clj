@@ -14,36 +14,36 @@
 ;; limitations under the License.
 
 (ns vix.auth
-  (:require [vix.db :as db]
-            [clojure.contrib [error-kit :as kit]]
-            [com.ashafa.clutch :as clutch])
+  (:require [com.ashafa.clutch :as clutch]
+            [vix.db :as db])
+  (:use [slingshot.slingshot :only [throw+ try+]])
   (:import (org.mindrot.jbcrypt BCrypt)))
 
-(kit/deferror InvalidUsername [] []
-  {:msg (str "Username's can only contain alphanumeric characters "
-             "and '-', '_', '.' and '@'")
-   :unhandled (kit/throw-msg Exception)})
+(def invalid-username-error
+  {:type ::invalid-username
+   :message (str "Username's can only contain alphanumeric characters "
+                 "and '-', '_', '.' and '@'")})
 
-(kit/deferror UserExists [] [username]
-  {:msg (str "The user '" username "' already exists.")
-   :unhandled (kit/throw-msg Exception)})
+(def user-exists-error
+  {:type ::user-exists
+   :message "The requested username is already in use."})
 
-(kit/deferror UserDoesNotExist [] [username]
-  {:msg (str "The user '" username "' doesn't exist.")
-   :unhandled (kit/throw-msg Exception)})
+(def user-does-not-exist-error
+  {:type ::user-does-not-exist
+   :message "The requested username doesn't exist."})
 
-(kit/deferror UsernamePasswordMismatch [] []
-  {:msg "The provided username and password do not match."
-   :unhandled (kit/throw-msg Exception)})
+(def username-password-mismatch-error
+  {:type ::username-password-mismatch
+   :message "The provided username and password do not match.."})
 
-(kit/deferror InsufficientPrivileges [] []
-  {:msg (str "You have insufficient privileges to perform "
-             "this action on the requested resource.")
-   :unhandled (kit/throw-msg Exception)})
+(def insufficient-privileges-error
+  {:type ::insufficient-privileges
+   :message (str "You have insufficient privileges to perform "
+                 "this action on the requested resource.")})
 
-(kit/deferror AuthenticationRequired [] []
-  {:msg "You need to authenticate before you can perform this action."
-   :unhandled (kit/throw-msg Exception)})
+(def authentication-required-error
+  {:type ::authentication-required
+   :messsage "You need to authenticate before you can perform this action."})
 
 (defn fix-complex-keys
   "Returns a new map for provided input m, with regular keys kept as is,
@@ -67,10 +67,10 @@
    a permissions vector associated to the :permissions key. "
   [database username]
   (try
-    (when-let [user (:value (first (clutch/get-view database
-                                                    "views"
-                                                    :by_username
-                                                    {:key username})))]
+    (when-let [user (:value (first (db/get-view database
+                                                "views"
+                                                :by_username
+                                                {:key username})))]
       (when (map? user)
         (assoc user :permissions (fix-complex-keys (:permissions user)))))
     ;; Create views if they don't exist yet.
@@ -92,10 +92,12 @@
    HTTP methods that are allowed for the particular key. Legal
    usernames have at least two characters and may contain alphanumeric
    characters, dots (i.e. .), dashes (i.e. -) and at
-   symbols (i.e. @). Passwords are hashed with Bcrypt."
+   symbols (i.e. @). When the provided username is invalid an
+   ::invalid-username-error will be thrown. Passwords are hashed with
+   Bcrypt."
   [database username password permissions-map]
   (if (get-user database username)
-    (kit/raise UserExists username)
+    (throw+ (assoc user-exists-error :username username))
     (if (re-matches #"^[\w-.@]{2,}" username)
       (clutch/put-document
        database
@@ -103,7 +105,7 @@
         :username username
         :password (BCrypt/hashpw password (BCrypt/gensalt 12))
         :permissions permissions-map})
-      (kit/raise InvalidUsername))))
+      (throw+ invalid-username-error))))
 
 (defn authenticate
   "Returns a copy of the provided session map with the :username
@@ -111,18 +113,19 @@
    to the permissions as stored in the database if the username and
    password can be successfully authenticated to a user document
    stored in the provided database name on the given database server.
-   Otherwise, a UserDoesNotExist error is raised when the user wasn't
-   found and a UsernamePasswordMismatch error if the username/password
-   combination isn't correct. Note that you probably shouldn't
-   distinguish between these two errors on the login page, because
-   providing a UserDoesNotExist error message would enable attackers
-   to mine for existing usernames on the system."
+   Otherwise, a ::user-does-not-exist error is raised when the user
+   wasn't found and a ::username-password-mismatch error if the
+   username/password combination isn't correct. Note that you probably
+   shouldn't distinguish between these two errors on the login page,
+   because providing a ::user-does-not-exist error message would
+   enable attackers to mine for existing usernames on the system."
+  
   [database session username password]
   (if-let [user (get-user database username)]
     (if (BCrypt/checkpw password (:password user))
       (assoc session :username username :permissions (:permissions user))
-      (kit/raise UsernamePasswordMismatch))
-    (kit/raise UserDoesNotExist username)))
+      (throw+ username-password-mismatch-error))
+    (throw+ user-does-not-exist-error username)))
 
 (defn- authorize-for-feed
   "Private convenience function that checks the value in the
@@ -145,9 +148,9 @@
    any). Global permissions (associated to :* in the permissions map)
    are only checked if there is no specific permission map for the
    provided language and feed-name. If neither succeeds an
-   InsufficientPrivileges error is raised. If there is no string value
+   ::insufficient-privileges error is raised. If there is no string value
    mapped to the :username key of the provided session map an
-   AuthenticationRequired error is raised."
+   ::authentication-required error is raised."
   [session method language feed-name]
   (if (string? (:username session))
     (if (or (authorize-for-feed (:permissions session)
@@ -163,5 +166,5 @@
                                      language
                                      :*)))
       true
-      (kit/raise InsufficientPrivileges))
-    (kit/raise AuthenticationRequired)))
+      (throw+ insufficient-privileges-error))
+    (throw+ authentication-required-error)))

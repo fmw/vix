@@ -15,8 +15,7 @@
 ;; limitations under the License.
 
 (ns vix.util
-  (:require [couchdb [client :as couchdb]]
-            [clj-time.core :as time-core]
+  (:require [clj-time.core :as time-core]
             [clj-time.coerce :as time-coerce]
             [clj-time.format :as time-format]
             [clojure.string :as string]))
