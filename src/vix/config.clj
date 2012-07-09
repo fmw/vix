@@ -17,7 +17,6 @@
 (ns vix.config)
 
 ;; database
-(def db-server "http://localhost:5984/")
 (def database "vix")
 
 (def lucene-index-path "/var/lucene/vix")
