@@ -37,7 +37,7 @@
            [org.jsoup Jsoup]
            [java.io File]))
 
-(defn #^StandardAnalyzer create-analyzer []
+(defn ^StandardAnalyzer create-analyzer []
   "Creates a StandardAnalyzer that tokenizes fulltext fields."
   (StandardAnalyzer. (. Version LUCENE_35)))
 
@@ -50,7 +50,7 @@
 (def directory (create-directory config/lucene-index-path))
 (def analyzer (create-analyzer))
 
-(defn #^IndexReader create-index-reader [#^Directory directory]
+(defn ^IndexReader create-index-reader [^Directory directory]
   "Creates IndexReader for the specified directory, but returns nil if
    the provided directory exists but doesn't contain a valid index."
   (try
@@ -58,7 +58,7 @@
     (catch IndexNotFoundException e
       nil)))
 
-(defn #^Field create-field
+(defn ^Field create-field
   "Creates a new Lucene Field object.
   The Field will be stored if a :stored keyword is passed. The index
   value has two options: :analyzed or :indexed-not-analyzed
@@ -76,7 +76,7 @@
                    (Field$Index/NO))]
        (Field. field-name (str value) store? index?))))
 
-(defn #^NumericField create-numeric-field
+(defn ^NumericField create-numeric-field
   "Creates a Lucene NumericField object set to the provided value or
    -1 if this value isn't either a Double, Float, Integer or Long
    object.
@@ -97,7 +97,7 @@
      (= (class value) java.lang.Long) (.setLongValue field value)
      :default (.setIntValue field -1))))
 
-(defn #^String distill-plaintext
+(defn ^String distill-plaintext
   "Distills the text value from an HTML string, followed by the
    values of any alt and title attributes of <img/> tags separated
    by newlines."
@@ -112,7 +112,7 @@
                  (interleave (map #(.attr % "alt") img-tags)
                              (map #(.attr % "title") img-tags)))))))
 
-(defn #^Document create-document [vix-doc]
+(defn ^Document create-document [vix-doc]
   "Creates a Lucene Document object representing the Vix document that
    is passed as a map (e.g. directly from the database).."
   (let [{:keys [feed
@@ -127,7 +127,7 @@
                 description]}
         vix-doc]
 
-    (doto #^Document (Document.)
+    (doto ^Document (Document.)
           ;; create a fulltext field with all the values to search on
           ;; mashed together in a single value. This field is not stored.
           (.add (create-field "fulltext"
@@ -168,7 +168,7 @@
                                       :stored
                                       :indexed)))))
 
-(defn #^IndexWriter create-index-writer [analyzer directory mode]
+(defn ^IndexWriter create-index-writer [analyzer directory mode]
   "Creates an IndexWriter with the provided analyzer and directory.
    The mode has three options: :create, :append or :create-or-append."
   (let [config (IndexWriterConfig. (Version/LUCENE_35) analyzer)]
@@ -222,7 +222,7 @@
                      (create-document document)
                      (create-analyzer))))
 
-(defn #^NumericRangeQuery create-date-range-query
+(defn ^NumericRangeQuery create-date-range-query
   [field-name start-date-rfc3339 end-date-rfc3339]
   "Creates a NumericRangeQuery for field-name using start and end date
    string arguments."
@@ -233,7 +233,7 @@
                (>= max min))
       (NumericRangeQuery/newLongRange field-name min max true true))))
 
-(defn #^QueryWrapperFilter create-filter [filters]
+(defn ^QueryWrapperFilter create-filter [filters]
   "Creates a Lucene BooleanQuery wrapped in a QueryWrapperFilter with one
    or more filter queries (if zero this function returns nil).
 
@@ -300,7 +300,7 @@
     (when (pos? (alength (.getClauses bq)))
       (QueryWrapperFilter. bq))))
 
-(defn #^Document get-doc [reader doc-id]
+(defn ^Document get-doc [reader doc-id]
   "Reads the document with the provided doc-id from the index."
   (.document reader doc-id))
 
