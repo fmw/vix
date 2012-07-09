@@ -1,6 +1,5 @@
 ;; src/vix/util.clj utility functions
-;;
-;; Copyright 2011, F.M. (Filip) de Waard <fmw@vix.io>.
+;; Copyright 2011-2012, Vixu.com, F.M. (Filip) de Waard <fmw@vixu.com>.
 ;;
 ;; Licensed under the Apache License, Version 2.0 (the "License");
 ;; you may not use this file except in compliance with the License.
@@ -20,58 +19,72 @@
             [clj-time.format :as time-format]
             [clojure.string :as string]))
 
-(defn read-int [possible-integer]
-  "Converts a numeric string to an integer or returns nil when
-   the number isn't formatted as expected."
+(defn read-int
+  "Converts a numeric string to an integer or returns nil when the
+   number isn't formatted as expected."
+  [possible-integer]
   (when possible-integer
     (try
       (Integer/parseInt possible-integer)
       (catch java.lang.NumberFormatException e
         nil))))
 
-(defn read-float [possible-float]
-  "Converts a numeric string to a float or returns nil when the
-   number format isn't recognized."
+(defn read-float
+  "Converts a numeric string to a float or returns nil when the number
+   format isn't recognized."
+  [possible-float]
   (when possible-float
     (try
       (Float/parseFloat possible-float)
       (catch java.lang.NumberFormatException e
         nil))))
 
-(defn force-initial-slash [slug]
+(defn force-initial-slash
+  "Returns the slug string with a / prepended to it."
+  [slug]
   (if (= (first slug) \/)
     slug
     (str "/" slug)))
 
-(defn increment-slug [slug]
+(defn increment-slug
+  "Takes the provided slug and returns it with either -2 appended to
+   it if it doesn't end in a dash followed by a number (e.g. -3) or
+   increments that number if it does."
+  [slug]
   (if-let [slug-matches (re-matches #"(.*?)-([\d]+)$" slug)]
     (str (nth slug-matches 1)
          "-"
          (inc (Integer/parseInt (last slug-matches))))
     (str slug "-2")))
 
-(defn now-rfc3339 []
+(defn now-rfc3339
+  "Returns the RFC3339 current time (e.g. 2012-07-09T09:31:01.579Z)."
+  []
   (time-format/unparse
     (time-format/formatters :date-time)
     (time-core/now)))
 
 (defn rfc3339-to-long
-  [date-string]
   "Converts RFC3339 formatted date string to microseconds since UNIX epoch.
    Throws NullPointerException on incorrect input."
+  [date-string]
   (when (and (string? date-string) (not (= date-string "")))
     (time-coerce/to-long (time-format/parse date-string))))
 
-(defn rfc3339-to-jodatime [date-string timezone]
+(defn rfc3339-to-jodatime
   "Converts a RFC3339 formatted date string into an org.joda.time.DateTime
    object for the provided timezone."
+  [date-string timezone]
   (when (and (string? date-string) (not (= date-string "")))
     (time-core/to-time-zone
      (time-format/parse
       (time-format/formatters :date-time) date-string)
      (time-core/time-zone-for-id timezone))))
 
-(defn editor-datetime-to-rfc3339 [date-string timezone]
+(defn editor-datetime-to-rfc3339
+  "Accepts a date-string (in yyyy-MM-dd HH:mm format) and returns a
+   RFC3339 timestamp converted from the given timezone."
+  [date-string timezone]
   (when (and (string? date-string) (not (= date-string "")))
     (time-format/unparse
      (time-format/formatters :date-time)
@@ -79,30 +92,6 @@
       (time-format/parse 
        (time-format/formatter "yyyy-MM-dd HH:mm") date-string)
       (time-core/time-zone-for-id timezone)))))
-
-(defn log-stream []
-  (java.io.PrintStream. (java.io.ByteArrayOutputStream.) false))
-
-(let [orig (atom nil)
-      monitor (Object.)]
-  
-  (defn log-hide! []
-    "Adapted from clojure.tools.logging/log-capture! (this version
-     works around issues when switching namespaces)."
-    (locking monitor
-      (compare-and-set! orig nil [System/out System/err])
-      (System/setErr (log-stream))
-      (System/setOut (log-stream))))
-
-    (defn log-restore!
-    "Restores System.out and System.err to their original values.
-     Copied from clojure.tools.logging/log-uncapture!"
-    []
-    (locking monitor
-      (when-let [[out err :as v] @orig]
-        (swap! orig (constantly nil))
-        (System/setOut out)
-        (System/setErr err)))))
 
 (defn parse-accept-language-header
   "Returns a lowercase sequence of language tags for the provided

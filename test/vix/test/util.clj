@@ -74,42 +74,6 @@
   (is (= (editor-datetime-to-rfc3339 "" "Europe/Amsterdam")
          nil)))
 
-(deftest test-log-stream
-  (is (= (class (log-stream)) java.io.PrintStream)))
-
-(deftest test-log-hide!
-  ;; System/err and System/out seem to be namespace-specific,
-  ;; so do a dry run first (which should set the System/err
-  ;; and System/out in this namespace to the values found in
-  ;; the vix.util namespace where the functions are run).
-  (log-hide!)
-  (log-restore!)
-  
-  (let [orig-err System/err
-        orig-out System/out]
-    (log-hide!)
-    (is (not (= orig-err System/err)))
-    (is (not (= orig-out System/out)))))
-
-(deftest test-log-restore!
-  ;; System/err and System/out seem to be namespace-specific,
-  ;; so do a dry run first (which should set the System/err
-  ;; and System/out in this namespace to the values found in
-  ;; the vix.util namespace where the functions are run).
-  (log-hide!)
-  (log-restore!)
-  
-  (let [orig-err System/err
-        orig-out System/out]
-
-    (log-hide!)
-    (is (not (= orig-err System/err)))
-    (is (not (= orig-out System/out)))
-    
-    (log-restore!)
-    (is (= orig-err System/err))
-    (is (= orig-out System/out))))
-
 (deftest test-parse-accept-language-header
   (is (= (parse-accept-language-header "en-US,en;q=0.8")
          ["en-us" "en"]))
