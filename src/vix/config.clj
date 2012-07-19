@@ -1,6 +1,5 @@
 ;; src/vix/config.clj: configuraton namespace for Vix
-;;
-;; Copyright 2011-2012, F.M. (Filip) de Waard <fmw@vix.io>.
+;; Copyright 2011-2012, Vixu.com, F.M. (Filip) de Waard <fmw@vixu.com>.
 ;;
 ;; Licensed under the Apache License, Version 2.0 (the "License");
 ;; you may not use this file except in compliance with the License.
