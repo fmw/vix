@@ -427,56 +427,30 @@
        (let [after-doc-id-int (util/read-int after-doc-id)
              after-score-float (util/read-float after-score)]
          (response
-          (if (and after-doc-id-int after-score-float)
-            (views/search-results-view
-             language
-             config/search-results-per-page
-             (lucene/search q
-                            (lucene/create-filter
-                             {:language language
-                              :draft false
-                              :feed (get @search-allowed-feeds language)})
-                            (inc config/search-results-per-page)
-                            after-doc-id-int
-                            after-score-float
-                            (lucene/create-index-reader
-                             lucene/directory)
-                            lucene/analyzer)
-             q
-             pp-after-doc-id
-             pp-after-score
-             after-doc-id-int
-             after-score-float
-             false
-             (get-segments (:search-page
-                            config/page-segments)
-                           config/database
-                           language
-                           config/default-timezone))
-            (views/search-results-view
-             language
-             config/search-results-per-page
-             (lucene/search q
-                            (lucene/create-filter
-                             {:language language
-                              :draft false
-                              :feed (get @search-allowed-feeds language)})
-                            (inc config/search-results-per-page)
-                            after-doc-id-int
-                            after-score-float
-                            @index-reader
-                            lucene/analyzer)
-             q
-             pp-after-doc-id
-             pp-after-score
-             after-doc-id-int
-             after-score-float
-             true
-             (get-segments (:search-page
-                            config/page-segments)
-                           config/database
-                           language
-                           config/default-timezone))))))
+          (views/search-results-view
+           language
+           config/search-results-per-page
+           (lucene/search q
+                          (lucene/create-filter
+                           {:language language
+                            :draft false
+                            :feed (get @search-allowed-feeds language)})
+                          (inc config/search-results-per-page)
+                          after-doc-id-int
+                          after-score-float
+                          @index-reader
+                          lucene/analyzer)
+           q
+           pp-after-doc-id
+           pp-after-score
+           after-doc-id-int
+           after-score-float
+           (not (and after-doc-id-int after-score-float))
+           (get-segments (:search-page
+                          config/page-segments)
+                         config/database
+                         language
+                         config/default-timezone)))))
   (GET "/json/:language/:feed/list-documents"
        {{language :language
          feed-name :feed
