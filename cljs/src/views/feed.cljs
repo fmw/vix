@@ -289,7 +289,8 @@
 
 (defn create-feed-form-events [status language feed-name]  
   (let [dsf-el (dom/getElement "default-slug-format")
-        title-el (dom/getElement "title")]
+        title-el (dom/getElement "title")
+        name-el (dom/getElement "name")]
     (events/listen (dom/getElement "default-slug-format-select")
                    event-type/CHANGE
                    (fn [e]
@@ -303,11 +304,11 @@
 
     (events/listen dsf-el event-type/INPUT validate-default-slug)
 
-    (events/listen (dom/getElement "name")
+    (events/listen name-el
                    event-type/INPUT
                    validate-feed-name-and-preview-in-slug)
 
-    ; remove outdated errors left by save event validation
+                                        ; remove outdated errors left by save event validation
     (events/listen title-el
                    event-type/INPUT
                    (fn [e]
@@ -320,15 +321,18 @@
                    event-type/CLICK
                    (fn [e]
                      (when (validate-feed!)
-                       (if (= :new status)
-                         (document/create-feed
-                          save-new-feed-xhr-callback
-                          (get-feed-value-map!))
-                         (document/update-feed
-                          language
-                          feed-name
-                          save-existing-feed-xhr-callback
-                          (get-feed-value-map!))))))))
+                       (let [feed-doc (get-feed-value-map!)]
+                         (if (= status :new)
+                           (document/create-feed
+                            (:language feed-doc)
+                            (:name feed-doc)
+                            save-new-feed-xhr-callback
+                            feed-doc)
+                           (document/update-feed
+                            (:language feed-doc)
+                            (:name feed-doc)
+                            save-existing-feed-xhr-callback
+                            feed-doc))))))))
 
 (defn render-feed-form [feed-data]
   (ui/render-template (dom/getElement "main-page") tpl/manage-feed feed-data)

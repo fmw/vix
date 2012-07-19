@@ -50,11 +50,8 @@
 (defn delete-doc [slug callback]
   (request-doc-with-slug slug callback "DELETE" nil))
 
-(defn create-doc [callback language feed-name json-map]
-  (request (str "/json/" language "/" feed-name "/new")
-           callback
-           "POST"
-           json-map))
+(defn create-doc [slug callback json-map]
+  (request-doc-with-slug slug callback "POST" json-map))
 
 (defn update-doc [slug callback json-map]
   (request-doc-with-slug slug callback "PUT" json-map))
@@ -95,8 +92,11 @@
 (defn get-feed [language feed-name callback]
   (request (str "/json/feed/" language "/" feed-name) callback "GET" nil))
 
-(defn create-feed [callback json-map]
-  (request "/json/new-feed" callback "POST" json-map))
+(defn create-feed [language feed-name callback json-map]
+  (request (str "/json/feed/" language "/" feed-name)
+           callback
+           "POST"
+           json-map))
 
 (defn update-feed [language feed-name callback json-map]
   (request (str "/json/feed/" language "/" feed-name)

@@ -366,7 +366,8 @@
   ([language feed-name]
      (get-document-value-map! language feed-name nil))
   ([language feed-name content]
-     {:feed [language feed-name]
+     {:feed feed-name
+      :language language
       :title (ui/get-form-value "title")
       :subtitle (when-let [subtitle-el (dom/getElement "subtitle")]
                   (ui/get-form-value subtitle-el))
@@ -423,19 +424,19 @@
                         could-not-create-document-err))))
 
 (defn save-new-document-click-callback [language feed-name e]
-  (document/create-doc save-new-document-xhr-callback
-                       language
-                       feed-name
-                       (get-document-value-map! language feed-name)))
+  (let [doc (get-document-value-map! language feed-name)]
+    (js/console.log "sndcc: " (:slug doc) (util/col-to-js (:feed doc)))
+    (document/create-doc (:slug doc)
+                         save-new-document-xhr-callback
+                         doc)))
 
 (defn save-new-menu-document-click-callback [language feed-name e]
-  (document/create-doc save-new-document-xhr-callback
-                       language
-                       feed-name
-                       (get-document-value-map!
-                        language
-                        feed-name
-                        (render-menu-content-string!))))
+  (let [doc (get-document-value-map! language
+                                     feed-name
+                                     (render-menu-content-string!))]
+    (document/create-doc (:slug doc)
+                         save-new-document-xhr-callback
+                         doc)))
 
 (defn save-existing-document-xhr-callback [e]
   (let [xhr (.-target e)]
@@ -484,25 +485,16 @@
                 (let [image-data (util/map-to-obj
                                   {:type (.-type file)
                                    :data (base64/encodeString
-                                          (.-result (.-target e)))})]
+                                          (.-result (.-target e)))})
+                      doc (assoc (get-document-value-map! language feed-name)
+                            :attachment image-data)]
                   (if create?
-                    (document/create-doc save-new-document-xhr-callback
-                                         language
-                                         feed-name
-                                         (assoc
-                                             (get-document-value-map!
-                                              language
-                                              feed-name)
-                                           :attachment
-                                           image-data))
-                    (document/update-doc (.-value (dom/getElement "slug"))
+                    (document/create-doc (:slug doc)
+                                         save-new-document-xhr-callback
+                                         doc)
+                    (document/update-doc (:slug doc)
                                          save-existing-document-xhr-callback
-                                         (assoc
-                                             (get-document-value-map!
-                                              language
-                                              feed-name)
-                                           :attachment
-                                           image-data))))))
+                                         doc)))))
         (. reader (readAsBinaryString file)))
       (if-not create?
         ;; update without changing image

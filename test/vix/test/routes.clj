@@ -17,7 +17,11 @@
   (:use [clojure.test]
         [slingshot.slingshot :only [throw+]]
         [vix.routes] :reload
-        [vix.db :only [create-document create-feed get-document list-feeds]]
+        [vix.db :only [create-document
+                       get-feed
+                       create-feed
+                       get-document
+                       list-feeds]]
         [clojure.data.json :only [json-str read-json]]
         [vix.test.db :only [database-fixture +test-db+]])
   (:require [clj-time.format :as time-format]
@@ -645,6 +649,129 @@
       (is (= (class (:body catch-all))
              clj_http.core.proxy$java.io.FilterInputStream$0)))))
 
+(deftest test-feed-request
+  (with-redefs [util/now-rfc3339 #(str "2012-07-19T15:09:16.253Z")
+                config/database +test-db+]
+    (let [blog-feed {:created "2012-07-19T15:09:16.253Z"
+                     :default-document-type "standard"
+                     :default-slug-format (str "/{language}/{feed-name}"
+                                               "/{document-title}")
+                     :language "en"
+                     :language-full "English"
+                     :name "blog"
+                     :searchable true
+                     :subtitle ""
+                     :title "Weblog"
+                     :type "feed"}]
+      (testing "test if feeds are created correctly."
+        (is (= (update-in (feed-request :POST blog-feed "en" "blog")
+                          [:body]
+                          #(dissoc (read-json %) :_rev :_id))
+               {:status 201
+                :headers {"Content-Type" "application/json; charset=UTF-8"}
+                :body blog-feed})))
+
+      (testing "test if feeds are updated correctly."
+        (is (= (update-in (feed-request :PUT
+                                        (assoc blog-feed :title "foo")
+                                        "en"
+                                        "blog")
+                          [:body]
+                          #(dissoc (read-json %) :_rev :_id))
+               {:status 200
+                :headers {"Content-Type" "application/json; charset=UTF-8"}
+                :body (assoc blog-feed
+                        :title "foo"
+                        :feed-updated "2012-07-19T15:09:16.253Z")})))
+
+      (testing "test if feeds are loaded correctly."
+        (is (= (update-in (feed-request :GET nil "en" "blog")
+                          [:body]
+                          #(dissoc (read-json %) :_rev :_id))
+               {:status 200
+                :headers {"Content-Type" "application/json; charset=UTF-8"}
+                :body (assoc blog-feed
+                        :title "foo"
+                        :feed-updated "2012-07-19T15:09:16.253Z")})))
+
+      (testing "test if feeds are deleted correctly."
+        (let [feed (get-feed +test-db+ "en" "blog")]
+          (is (= (update-in (feed-request :DELETE
+                                          feed
+                                          "en"
+                                          "blog")
+                            [:body]
+                            #(dissoc (read-json %) :rev))
+                 {:status 200
+                  :headers {"Content-Type" "application/json; charset=UTF-8"}
+                  :body {:ok true
+                         :id (:_id feed)}})))))))
+
+(deftest test-document-request
+  (with-redefs [util/now-rfc3339 #(str "2012-07-19T15:09:16.253Z")
+                config/database +test-db+]
+    (let [test-doc {:content "Hic sunt dracones."
+                    :description "A nice map."
+                    :draft false
+                    :start-time ""
+                    :start-time-rfc3339 nil
+                    :end-time ""
+                    :end-time-rfc3339 nil
+                    :feed "blog"
+                    :icon ""
+                    :language "en"
+                    :published "2012-07-19T15:09:16.253Z"
+                    :related-pages []
+                    :related-images []
+                    :slug "/en/blog/hsd"
+                    :subtitle "Here be dragons"
+                    :title "Hello, world!"
+                    :type "document"}]
+      (testing "test if feeds are created correctly."
+        (is (= (update-in (document-request :POST test-doc nil "en" "blog")
+                          [:body]
+                          #(dissoc (read-json %) :_rev :_id))
+               {:status 201
+                :headers {"Content-Type" "application/json; charset=UTF-8"}
+                :body test-doc})))
+
+      (testing "test if documents are updated correctly."
+        (let [test-doc-fresh (get-document +test-db+ "/en/blog/hsd")]
+          (is (= (update-in (document-request :PUT
+                                              (assoc test-doc-fresh
+                                                :title "foo")
+                                              test-doc-fresh
+                                              "en"
+                                              "blog")
+                            [:body]
+                            #(dissoc (read-json %) :_rev))
+                 {:status 200
+                  :headers {"Content-Type" "application/json; charset=UTF-8"}
+                  :body (assoc (dissoc test-doc-fresh :_rev)
+                          :title "foo"
+                          :updated "2012-07-19T15:09:16.253Z")}))))
+
+      (testing "test if feeds are loaded correctly."
+        (let [existing-doc (get-document +test-db+ "/en/blog/hsd")]
+          (is (= (document-request :GET nil existing-doc "en" "blog")
+                 {:status 200
+                  :headers {"Content-Type" "application/json; charset=UTF-8"}
+                  :body (json-str existing-doc)}))))
+
+      (testing "test if feeds are deleted correctly."
+        (let [existing-doc (get-document +test-db+ "/en/blog/hsd")]
+          (is (= (update-in (document-request :DELETE
+                                              existing-doc
+                                              existing-doc
+                                              "en"
+                                              "blog")
+                            [:body]
+                            #(dissoc (read-json %) :rev))
+                 {:status 200
+                  :headers {"Content-Type" "application/json; charset=UTF-8"}
+                  :body {:ok true
+                         :id (:_id existing-doc)}})))))))
+
 (deftest ^{:integration true} test-routes
   (do
     (create-feed +test-db+
@@ -849,7 +976,7 @@
             (is (=  (html/select third-page [:a#next-search-results-page])
                     []))))
     
-                                        ;(is (= (:status (request :get "/" main-routes)) 200))
+        (is (= (:status (request :get "/" main-routes)) 200))
         (is (= (:status (request :get "/login" main-routes)) 200))
         (is (= (:status (request :get "/logout" main-routes)) 302))
         (is (= (:status (request :get "/admin" main-routes)) 200))
@@ -860,9 +987,11 @@
 
         (is (= (:status (request
                          :post
-                         "/json/en/blog/new"
+                         "/json/document/blog/test"
                          (json-str {:title "test-create"
                                     :slug "/blog/test"
+                                    :language "en"
+                                    :feed "blog"
                                     :content "hic sunt dracones"})
                          main-routes))
                201))
@@ -930,7 +1059,7 @@
    
       (let [post-feed-request (request
                                :post
-                               "/json/new-feed"
+                               "/json/feed/en/blog"
                                (json-str {:name "blog"
                                           :title "Vix Weblog"
                                           :language "en"
@@ -949,7 +1078,7 @@
                           (:body
                            (request
                             :post
-                            "/json/new-feed"
+                            "/json/feed/en/image"
                             (json-str {:name "image"
                                        :title "Images"
                                        :language "en"
@@ -965,7 +1094,7 @@
                              (:body
                               (request
                                :post
-                               "/json/new-feed"
+                               "/json/feed/nl/image"
                                (json-str {:name "image"
                                           :title "Images"
                                           :language "nl"
@@ -1069,7 +1198,7 @@
              302))
       (is (= (:status (unauthorized-request
                        :post
-                       "/json/en/blog/new"
+                       "/json/document/blog/test"
                        (json-str {:title "test-create"
                                   :slug "/blog/test"
                                   :content "hic sunt dracones"})
@@ -1099,7 +1228,7 @@
       ;; feed
       (is (= (:status (unauthorized-request
                        :post
-                       "/json/new-feed"
+                       "/json/feed/foo/bar"
                        main-routes))
              302))
       
@@ -1143,7 +1272,7 @@
              302))
       (is (= (:status (unauthenticated-request
                        :post
-                       "/json/en/blog/new"
+                       "/json/document/blog/test"
                        (json-str {:title "test-create"
                                   :slug "/blog/test"
                                   :content "hic sunt dracones"})
@@ -1320,6 +1449,8 @@
   (test-reset-frontpage-cache!)
   (test-reset-page-cache!)
   (database-fixture test-catch-all)
+  (database-fixture test-feed-request)
+  (database-fixture test-document-request)
   (database-fixture test-routes)
   (database-fixture test-routes-authorization)
   (database-fixture test-routes-authentication)

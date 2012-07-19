@@ -1,6 +1,5 @@
 ;; src/vix/routes.clj core routes for the application.
-;;
-;; Copyright 2011-2012, F.M. (Filip) de Waard <fmw@vix.io>.
+;; Copyright 2011-2012, Vixu.com, F.M. (Filip) de Waard <fmw@vixu.com>.
 ;;
 ;; Licensed under the Apache License, Version 2.0 (the "License");
 ;; you may not use this file except in compliance with the License.
@@ -230,11 +229,89 @@
    (catch [:type :vix.auth/username-password-mismatch] _
      (redirect "/login"))))
 
-;; FIXME: change order of authorize/json-response calls, so attackers
-;; can't get a 404 from an unauthorized request to mine for existing docs
-;; -
-;; consider escaping json calls (e.g. /json/document/_new
-;; instead of just /new)
+(defn reset-all!
+  "Resets caches."
+  [database language]
+  (reset-frontpage-cache! language)
+  (reset-page-cache!)
+  (reset-index-reader!)
+  (reset-search-allowed-feeds! database)
+  (reset-available-languages! database))
+
+(defmulti feed-request
+  "Handles json feed CRUD or GET request based on HTTP method."
+  (fn [method & _]
+    method))
+
+(defmethod feed-request :GET [method new-doc language feed-name]
+  (json-response (db/get-feed config/database language feed-name)))
+
+(defmethod feed-request :POST [method new-doc language feed-name]
+  (let [feed (db/create-feed config/database new-doc)]
+    (reset-all! config/database language)
+    (json-response feed :status 201)))
+
+(defmethod feed-request :PUT [method new-doc language feed-name]
+  (let [feed (db/update-feed config/database language feed-name new-doc)]
+    (reset-all! config/database language)
+    (json-response feed)))
+
+(defmethod feed-request :DELETE [method new-doc language feed-name]
+  (if-let [feed (db/delete-feed config/database language feed-name)]
+    (do
+      (reset-all! config/database language)
+      (json-response feed))
+    (json-response nil)))
+
+(defmulti document-request
+  "Handles json document CRUD or GET request based on HTTP method."
+  (fn [method & _]
+    method))
+
+(defmethod document-request :GET
+  [method new-doc existing-doc language feed-name]
+  (json-response existing-doc))
+
+(defmethod document-request :POST
+  [method new-doc existing-doc language feed-name]
+  (let [document (db/create-document config/database
+                                     language
+                                     feed-name
+                                     config/default-timezone
+                                     new-doc)]
+    (reset-index-reader!)
+    (lucene/add-documents-to-index! lucene/directory [new-doc])
+    (reset-all! config/database language)
+    (json-response document :status 201)))
+
+(defmethod document-request :PUT
+  [method new-doc {:keys [slug feed] :as existing-doc} language feed-name]
+  (if (and existing-doc
+           (= slug (:slug new-doc))
+           (= feed (:feed new-doc))
+           (= language (:language existing-doc) (:language new-doc)))
+    (let [document (db/update-document config/database
+                                       config/default-timezone
+                                       slug
+                                       new-doc)]
+      (reset-index-reader!)
+      (lucene/update-document-in-index! lucene/directory slug document)
+      (reset-all! config/database language)
+      (json-response document))
+    (json-response nil)))
+
+(defmethod document-request :DELETE
+  [method new-doc {:keys [slug] :as existing-doc} language feed-name]
+  (if existing-doc
+    (let [document (db/delete-document config/database slug)]
+      (reset-index-reader!)
+      (lucene/delete-document-from-index! lucene/directory slug)
+      (reset-all! config/database language)
+      (json-response document))
+    (json-response nil)))
+
+(def http-methods {:get :GET :post :POST :put :PUT :delete :DELETE})
+
 (defroutes main-routes
   (GET "/"
        {headers :headers}
@@ -358,120 +435,58 @@
                                                     ddt
                                                     language)
             (db/list-feeds config/database language)))))
-  (POST "/json/new-feed"
-        request
-        (when (authorize (:session request) :POST nil :*)
-          (let [feed (db/create-feed config/database
-                                     (read-json (slurp (:body request))))]
-            (reset-frontpage-cache! (:language feed))
-            (reset-index-reader!)
-            (reset-search-allowed-feeds! config/database)
-            (reset-available-languages! config/database)
-            (json-response feed :status 201))))
-  (GET "/json/feed/:language/:name"
-       {{language :language feed-name :name} :params session :session}
-       (if-let [feed (db/get-feed config/database
-                                  language
-                                  feed-name)]
-         (when (authorize session :GET language feed-name)
-           (json-response feed))
-         (json-response nil)))
-  (PUT "/json/feed/:language/:name"
-       {{language :language feed-name :name}
-        :params body :body session :session}
-       (if-let [feed (db/get-feed config/database
-                                  language
-                                  feed-name)]
-         (when (authorize session :PUT language feed-name)
-           (let [feed (db/update-feed config/database
-                                      language
-                                      feed-name
-                                      (read-json (slurp body)))]
-             (reset-frontpage-cache! language)
-             (reset-index-reader!)
-             (reset-search-allowed-feeds! config/database)
-             (reset-available-languages! config/database)
-             (json-response feed)))
-         (json-response nil)))
-  (DELETE "/json/feed/:language/:name"
-          {{language :language feed-name :name} :params session :session}
-          (if-let [feed (db/get-feed config/database
-                                     language
-                                     feed-name)]
-            (when (authorize session :DELETE language feed-name)
-              (json-response 
-               (db/delete-feed config/database
-                               language
-                               feed-name))
-              (reset-frontpage-cache! language)
-              (reset-index-reader!)
-              (json-response nil))
-            (json-response nil)))
-  (POST "/json/:language/:feed/new"
-        {{language :language feed-name :feed} :params
-         session :session
-         body :body}
-        (when (authorize session :POST language feed-name)
-          (let [document (db/create-document config/database
-                                             language
-                                             feed-name
-                                             config/default-timezone
-                                             (read-json (slurp body)))]
-            (lucene/add-documents-to-index! lucene/directory [document])
-            (reset-frontpage-cache! language)
-            (reset-index-reader!)
-            (json-response document :status 201))))
-  (GET "/json/document/*"
-       {{slug :*} :params session :session}
-       (if-let [document (db/get-document config/database
-                                          (util/force-initial-slash slug)
-                                          true)]
-         (when (authorize session :GET (:language document) (:feed document))
-           (json-response document))
-         (json-response nil)))
-  (PUT "/json/document/*"
-       {{slug :*} :params body :body session :session}
-       (let [slug (util/force-initial-slash slug)]
-         (if-let [document (db/get-document config/database slug)]
-           (when (authorize session
-                            :PUT
-                            (:language document)
-                            (:feed document))
-             (let [document (db/update-document config/database
-                                                config/default-timezone
-                                                slug
-                                                (read-json (slurp body)))]
-               (lucene/update-document-in-index! lucene/directory
-                                                 slug
-                                                 document)
-               (reset-frontpage-cache! (:language document))
-               (reset-index-reader!)
-               (reset-page-cache!)
-               (json-response document)))
-           (json-response nil))))
-  (DELETE "/json/document/*"
-          {{slug :*} :params session :session}
-          (let [slug (util/force-initial-slash slug)]
-            (if-let [document (db/get-document config/database
-                                               slug)]
-              (when (authorize session
-                               :DELETE
-                               (:language document)
-                               (:feed document))
-                (reset-page-cache!)
-                (reset-frontpage-cache! (:language document))
-                (reset-index-reader!)
-                (let [document (db/delete-document config/database
-                                                   slug)]
-                  (lucene/delete-document-from-index! lucene/directory slug)
-                  (json-response document)))
-              (json-response nil))))
+  (ANY "/json/feed/:language/:name"
+       {lowercase-method :request-method
+        {language :language feed-name :name} :params
+        body :body
+        session :session}
+       (let [method (http-methods lowercase-method)]
+         (when (if (= method :POST)
+                 (authorize session :POST nil :*)
+                 (authorize session method language feed-name))
+           (feed-request method
+                         (try
+                           (read-json (slurp body))
+                           (catch java.io.EOFException _
+                             nil))
+                         language
+                         feed-name))))
+  (ANY "/json/document/*"
+       {lowercase-method :request-method
+        {raw-slug :*} :params
+        body :body
+        session :session}
+       (let [method
+             (http-methods lowercase-method)
+             {:keys [slug feed language] :as new-doc}
+             (try
+               (read-json (slurp body))
+               (catch java.io.EOFException _
+                 nil))
+             existing-doc
+             (db/get-document config/database
+                              (util/force-initial-slash raw-slug)
+                              true)]
+         (when (if (= method :GET)
+                 (authorize session
+                            method
+                            (:language existing-doc)
+                            (:feed existing-doc))
+                 (authorize session method language feed))
+           (document-request method
+                             new-doc
+                             existing-doc
+                             language
+                             feed))))
   (route/resources "/static/")
   (GET "/*"
        {{slug :*} :params}
        (catch-all config/database
                   (util/force-initial-slash slug)
-                  config/default-timezone)))
+                  config/default-timezone))
+  (ANY "/*"
+       []
+       (page-not-found-response)))
 
 (defn handle-authentication-errors [handler]
   "Middleware function that redirects on insufficient privileges."

@@ -120,7 +120,7 @@
    current RFC3339 timestamp and updates the existing feed by
    associating the values for :title, :subtitle, :language,
    :default-slug-format, :default-document-type and :searchable."
-  (if-let [feed-doc (get-feed database language name)]
+  (when-let [feed-doc (get-feed database language name)]
     (clutch/put-document
      database
      (assoc feed-doc
@@ -132,7 +132,6 @@
        :default-document-type (:default-document-type feed-map)
        :searchable (:searchable feed-map)))))
 
-; TODO: delete/flag feed content
 (defn delete-feed [database language name]
   "Deletes the feed identified by language and name from database."
   (when-let [feed-doc (get-feed database language name)]
