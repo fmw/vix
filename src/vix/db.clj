@@ -339,7 +339,7 @@
        nil))))
 
 (defn get-available-languages [database]
-  "Retrieve the available languages directly from the database."
+  "Returns a sequence of available languages directly from the database."
   (map :key (get-view database "views" :languages {:group true})))
 
 (defn get-languages [feeds]

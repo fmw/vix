@@ -31,47 +31,82 @@
             [compojure.handler :as handler]))
 
 (def available-languages
+  "Atom; Sequence of available languages used for language selection."
   (atom (db/get-available-languages config/database)))
 
-(defn reset-available-languages! [database]
+(defn reset-available-languages!
+  "Updates the available-languages atom to the currently available
+   languages in the given database."
+  [database]
   (reset! available-languages
           (db/get-available-languages database)))
 
 (def search-allowed-feeds
+  "Sequence of feeds that have :searchable set to true."
   (atom (try
           (db/get-searchable-feeds (db/list-feeds config/database))
           (catch Exception e
             nil))))
 
-(defn reset-search-allowed-feeds! [database]
+(defn reset-search-allowed-feeds!
+  "Resets the search-allowed-feeds atom to the current state of the
+   feeds in the database (i.e. all feeds that currently
+   have :searchable set to true)."
+  [database]
   (reset! search-allowed-feeds
           (db/get-searchable-feeds (db/list-feeds database))))
 
 (def index-reader
+  "Atom containing a Lucene IndexReader."
   (atom (lucene/create-index-reader lucene/directory)))
 
-(defn reset-index-reader! []
+(defn reset-index-reader!
+  "Closes the active IndexReader (if any) in the index-reader atom and
+   creates a new one."
+  []
   (when @index-reader
     (.close @index-reader))
   
   (reset! index-reader
           (lucene/create-index-reader lucene/directory)))
 
-(defn response [body & {:keys [status content-type]}]
+(defn response
+  "Returns a map containing the given body that is provided to Ring as
+   a response. Optionally accepts :status (HTTP status code integer)
+   and :content-type (HTTP Content-Type header) keywords, followed by
+   their value. The :status value defaults to 200, unless the body
+   value is nil, in which case it defaults to 404. The content-type
+   value defaults to text/html; charset=UTF-8."
+  [body & {:keys [status content-type]}]
   {:status (or status (if (nil? body) 404 200))
    :headers {"Content-Type" (or content-type "text/html; charset=UTF-8")}
    :body body})
 
-(defn json-response [body & {:keys [status]}]
+(defn json-response
+  "Calls the response function with an application/json; charset=UTF-8
+   content-type and the provided body. Optionally accepts a :status
+   keyword, followed by a HTTP status code integer. When the provided
+   body is not nil it is converted to a json-str. The status defaults
+   to 200, unless the body is nil, in which case it defaults to 404."
+  [body & {:keys [status]}]
   (response (when-not (nil? body) (json-str body))
             :status (or status (if (nil? body) 404 200))
             :content-type "application/json; charset=UTF-8"))
 
 ;; FIXME: add a nice 404 page
-(defn page-not-found-response []
+(defn page-not-found-response
+  "Calls the response function with a 404 :status and <h1>Page not
+   found</h1> as the body."
+  []
   (response "<h1>Page not found</h1>" :status 404))
 
-(defn image-response [database document]
+(defn image-response
+  "Returns the attachment for the :original key for the given document
+   in database, or a page-not-found-response if the attachment wasn't
+   found. Uses the CouchDB revision identifier as the value for the HTTP
+   ETag header and uses the most recent date from the document (either
+   :updated or published) as the value of the Last-Modified header."
+  [database document]
   (if-let [attachment (clutch/get-attachment database
                                              document
                                              :original)]
@@ -146,7 +181,12 @@
                           language
                           timezone)])))
 
-(defn get-frontpage-for-language! [database language timezone]
+(defn get-frontpage-for-language!
+  "Renders the views/frontpage-view for the given language, using the
+   provided database and timezone. Uses the value corresponding to
+   the :frontpage key in the config/page-segments map to populate the
+   segments."
+  [database language timezone]
   (views/frontpage-view
    language
    timezone
@@ -155,9 +195,17 @@
                  language
                  timezone)))
 
-(def frontpage-cache (atom {}))
+(def frontpage-cache
+  "Atom pointing to a map that stores frontpages for each language
+   identified by the language code as a key."
+  (atom {}))
 
-(defn get-cached-frontpage! [database language timezone]
+(defn get-cached-frontpage!
+  "Returns the frontpage for the given language from the
+   frontpage-cache map. If it hasn't been cached yet, the function
+   loads the frontpage from given database using the provided timezone
+   and caches it, before recurring."
+  [database language timezone]
   (if-let [fp (get @frontpage-cache language)]
     fp
     (do
@@ -169,12 +217,24 @@
                                                     timezone)))
       (get-cached-frontpage! database language timezone))))
 
-(defn reset-frontpage-cache! [language]
+(defn reset-frontpage-cache!
+  "Takes the the frontpage-cache map, removes the value corresponding
+   to the given language key and points the atom to the resulting
+   map."
+   [language]
   (swap! frontpage-cache dissoc language))
 
-(def page-cache (atom {}))
+(def page-cache
+  "Atom pointing to a map with slugs as a keyword and the cached pages
+   as a value."
+  (atom {}))
 
-(defn get-cached-page! [database slug timezone]
+(defn get-cached-page!
+  "Returns the page for provided slug from the page-cache map, or
+   saves it to the atom using the given database and timezone and
+   recurs. Images skip the cache. When the document isn't found a
+   page-not-found-response is returned."
+  [database slug timezone]
   (if-let [p (get @page-cache slug)]
     p
     (if-let [document (db/get-document database slug)]
@@ -199,23 +259,30 @@
                                                 database
                                                 (:language document)
                                                 timezone))))
-         (get-cached-page! database slug timezone)))
-      
+         (get-cached-page! database slug timezone)))   
       (page-not-found-response))))
 
-(defn reset-page-cache! []
+(defn reset-page-cache!
+  "Resets the page-cache atom to an empty map."
+  []
   (reset! page-cache {}))
 
-;; FIXME: add authorization
-(defn catch-all [database slug timezone]
-  (get-cached-page! database slug timezone))
-
-(defn logout [session]
-  {:session (dissoc session :username)
+(defn logout
+  "Returns a map that can be passed to Ring, which clears
+   the :username and :permissions keys from the given session map and
+   redirects the request to /."
+  [session]
+  {:session (dissoc session :username :permissions)
    :status 302
    :headers {"Location" "/"}})
 
-(defn login [session username password]
+(defn login
+  "Attempts a login for given username and password. Authenticates the
+  provided session if successful (i.e. associating :username to the
+  particular user and :permissions to the relevant permissions) and
+  redirects to /admin. Redirects to /login if the user doesn't exist
+  or in case of a username/password mismatch."
+  [session username password]
   (try+
    (when-let [authenticated-session (authenticate config/database
                                                   session
@@ -310,7 +377,9 @@
       (json-response document))
     (json-response nil)))
 
-(def http-methods {:get :GET :post :POST :put :PUT :delete :DELETE})
+(def http-methods
+  "HTTP method as keywords, with lowercase keys and uppercase values."
+  {:get :GET :post :POST :put :PUT :delete :DELETE})
 
 (defroutes main-routes
   (GET "/"
@@ -481,9 +550,9 @@
   (route/resources "/static/")
   (GET "/*"
        {{slug :*} :params}
-       (catch-all config/database
-                  (util/force-initial-slash slug)
-                  config/default-timezone))
+       (get-cached-page! config/database
+                         (util/force-initial-slash slug)
+                         config/default-timezone))
   (ANY "/*"
        []
        (page-not-found-response)))

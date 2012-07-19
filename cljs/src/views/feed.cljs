@@ -308,7 +308,7 @@
                    event-type/INPUT
                    validate-feed-name-and-preview-in-slug)
 
-                                        ; remove outdated errors left by save event validation
+    ;; remove outdated errors left by save event validation
     (events/listen title-el
                    event-type/INPUT
                    (fn [e]

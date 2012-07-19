@@ -119,7 +119,6 @@
    shouldn't distinguish between these two errors on the login page,
    because providing a ::user-does-not-exist error message would
    enable attackers to mine for existing usernames on the system."
-  
   [database session username password]
   (if-let [user (get-user database username)]
     (if (BCrypt/checkpw password (:password user))

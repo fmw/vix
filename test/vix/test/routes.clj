@@ -602,17 +602,18 @@
            "hello!")))
 
   ;; clean up
-  (reset-page-cache!))
+  (reset-page-cache!)
 
-(deftest test-catch-all
-  (is (= (:status (catch-all +test-db+
-                             "/blog/bar"
-                             "Europe/Amsterdam"))
+  (is (= (:status (get-cached-page! +test-db+
+                                    "/blog/bar"
+                                    "Europe/Amsterdam"))
          404))
-  (is (= (:body (catch-all +test-db+
-                           "/blog/bar"
-                           "Europe/Amsterdam"))
+  
+  (is (= (:body (get-cached-page! +test-db+
+                                  "/blog/bar"
+                                  "Europe/Amsterdam"))
          "<h1>Page not found</h1>"))
+  
   (do
     (create-document +test-db+
                      "en"
@@ -623,9 +624,9 @@
                       :content "bar"
                       :draft false}))
 
-  (is (= (:status (catch-all +test-db+
-                             "/blog/bar"
-                             "Europe/Amsterdam"))
+  (is (= (:status (get-cached-page! +test-db+
+                                    "/blog/bar"
+                                    "Europe/Amsterdam"))
          200))
 
   (testing "Test if attachments are handled correctly."
@@ -641,13 +642,16 @@
                      :slug "/pixel.gif"
                      :content ""
                      :draft false})
-          catch-all (catch-all +test-db+
-                               "/pixel.gif"
-                               "Europe/Amsterdam")]
+          image-response (get-cached-page! +test-db+
+                                           "/pixel.gif"
+                                           "Europe/Amsterdam")]
 
-      (is (= (get (:headers catch-all) "Content-Type") "image/gif"))
-      (is (= (class (:body catch-all))
-             clj_http.core.proxy$java.io.FilterInputStream$0)))))
+      (is (= (get (:headers image-response) "Content-Type") "image/gif"))
+      (is (= (class (:body image-response))
+             clj_http.core.proxy$java.io.FilterInputStream$0))))
+
+  ;; clean up
+  (reset-page-cache!))
 
 (deftest test-feed-request
   (with-redefs [util/now-rfc3339 #(str "2012-07-19T15:09:16.253Z")
@@ -1300,7 +1304,7 @@
              302)))))
 
 (deftest test-logout
-  (is (= (logout {:username "johndoe"})
+  (is (= (logout {:username "johndoe" :permissions {:* [:DELETE]}})
          {:session {}
           :status 302
           :headers {"Location" "/"}})
@@ -1448,7 +1452,6 @@
   (database-fixture test-get-cached-page!)
   (test-reset-frontpage-cache!)
   (test-reset-page-cache!)
-  (database-fixture test-catch-all)
   (database-fixture test-feed-request)
   (database-fixture test-document-request)
   (database-fixture test-routes)
