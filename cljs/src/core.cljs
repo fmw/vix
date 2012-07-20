@@ -47,7 +47,7 @@
                      (navigate (.substr (get-path (.-href (.-target e))) 7)
                                (.-title (.-target e)))))))
 
-(defn start-history! [uri-path]
+(defn start-history! []
   (compare-and-set! *h* nil (new goog.history.Html5History))
   (.setUseFragment @*h* false)
   (.setPathPrefix @*h* "/admin/")
@@ -134,6 +134,6 @@
   (. @*h* (replaceToken token title)))
 
 (defn ^:export start-app [uri-path]
-  (start-history!) ; in Chrome this triggers an event,
-                   ; leading to a (routes) call
+  ;; in Chrome this triggers an event, leading to a (routes) call
+  (start-history!)
   (execute-routes! uri-path))

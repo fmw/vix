@@ -178,14 +178,15 @@
                                   ;; (because only vectors have the
                                   ;; expected order), so make sure an
                                   ;; empty vector is passed instead of nil.
-                                           (display-images feed
-                                                           all-feeds
-                                                           (last
-                                                            previous-pages)
-                                                           (or
-                                                            (butlast
-                                                             previous-pages)
-                                                            [])))))
+                                  (display-images language
+                                                  feed-name
+                                                  all-feeds
+                                                  (last
+                                                   previous-pages)
+                                                  (or
+                                                   (butlast
+                                                    previous-pages)
+                                                   [])))))
                (when (.-next json)
                  (events/listen
                   (dom/getElement "editor-images-pagination-next-link")
