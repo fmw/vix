@@ -466,7 +466,7 @@
 (def *file* (atom {}))
 
 (defn display-image-preview [file title]
-  (let [reader (FileReader.)]
+  (let [reader (new js/FileReader)]
     (set! (.-onload reader)
           (fn [e]
             (ui/render-template (dom/getElement "image-preview")
@@ -478,7 +478,7 @@
 (defn save-image-document-click-callback [create? language feed-name]
   (let [file (:obj @*file*)]
     (if file
-      (let [reader (FileReader.)]
+      (let [reader (new js/FileReader)]
         (set! (.-onload reader)
               (fn [e]
                 (let [image-data (util/map-to-obj
