@@ -153,7 +153,8 @@ Create a directory to store Apache Lucene indexes (you can change the
 path in src/vix/lucene.clj)::
 
     sudo mkdir /var/lucene
-    sudo chown yourusername:yourusergroup /var/lucene
+    sudo mkdir /var/lucene/vix
+    sudo chown yourusername:yourusergroup /var/lucene/vix
 
 Start the ClojureScript REPL to compile the client-side code::
 
