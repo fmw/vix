@@ -423,14 +423,13 @@
       (ui/display-error (dom/getElement "status-message")
                         could-not-create-document-err))))
 
-(defn save-new-document-click-callback [language feed-name e]
+(defn save-new-document-click-callback [language feed-name & e]
   (let [doc (get-document-value-map! language feed-name)]
-    (js/console.log "sndcc: " (:slug doc) (util/col-to-js (:feed doc)))
     (document/create-doc (:slug doc)
                          save-new-document-xhr-callback
                          doc)))
 
-(defn save-new-menu-document-click-callback [language feed-name e]
+(defn save-new-menu-document-click-callback [language feed-name & _]
   (let [doc (get-document-value-map! language
                                      feed-name
                                      (render-menu-content-string!))]
@@ -445,12 +444,12 @@
       (ui/display-error (dom/getElement "status-message")
                         could-not-save-document-err))))
 
-(defn save-existing-document-click-callback [language feed-name e]
+(defn save-existing-document-click-callback [language feed-name & _]
   (document/update-doc (.-value (dom/getElement "slug"))
                        save-existing-document-xhr-callback
                        (get-document-value-map! language feed-name)))
 
-(defn save-existing-menu-document-click-callback [language feed-name e]
+(defn save-existing-menu-document-click-callback [language feed-name & _]
   (document/update-doc (.-value (dom/getElement "slug"))
                        save-existing-document-xhr-callback
                        (get-document-value-map!
@@ -467,7 +466,7 @@
 (def *file* (atom {}))
 
 (defn display-image-preview [file title]
-  (let [reader (new (js* "FileReader"))]
+  (let [reader (FileReader.)]
     (set! (.-onload reader)
           (fn [e]
             (ui/render-template (dom/getElement "image-preview")
@@ -479,7 +478,7 @@
 (defn save-image-document-click-callback [create? language feed-name]
   (let [file (:obj @*file*)]
     (if file
-      (let [reader (new (js* "FileReader"))]
+      (let [reader (FileReader.)]
         (set! (.-onload reader)
               (fn [e]
                 (let [image-data (util/map-to-obj
