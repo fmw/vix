@@ -14,9 +14,10 @@
 ;; limitations under the License.
 
 (ns vix.core
-  (:use-macros [vix.macros :only [routes]])
+  (:use-macros [vix.crossover.macros :only [routes]])
   (:require [vix.views.editor :as editor]
             [vix.views.feed :as feed]
+            [clojure.browser.repl :as repl]
             [goog.global :as global]
             [goog.events :as events]
             [goog.history.EventType :as event-type]
@@ -137,3 +138,6 @@
   ;; in Chrome this triggers an event, leading to a (routes) call
   (start-history!)
   (execute-routes! uri-path))
+
+(defn ^:export repl-connect []
+  (repl/connect "http://localhost:9000/repl"))

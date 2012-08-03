@@ -423,7 +423,7 @@
       (ui/display-error (dom/getElement "status-message")
                         could-not-create-document-err))))
 
-(defn save-new-document-click-callback [language feed-name & e]
+(defn save-new-document-click-callback [language feed-name & _]
   (let [doc (get-document-value-map! language feed-name)]
     (document/create-doc (:slug doc)
                          save-new-document-xhr-callback
