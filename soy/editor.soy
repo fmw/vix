@@ -479,7 +479,7 @@
       <ul draggable="false">
         {call .menu_items}
           {param links: $children /}
-          {param new: false /}
+          {param new_item: false /}
           {param nested: true /}
         {/call}
       </ul>
@@ -490,7 +490,7 @@
 /**
  *
  * @param links
- * @param new
+ * @param new_item
  * @param nested
  */
 {template .menu_items}
@@ -503,10 +503,10 @@
     {/call}
   {/foreach}
 
-  {if $new}
+  {if $new_item}
     {call .menu_item_li}
-      {param label: $new.label /}
-      {param uri: $new.uri /}
+      {param label: $new_item.label /}
+      {param uri: $new_item.uri /}
       {param nested: $nested /}
     {/call}
   {/if}

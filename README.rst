@@ -33,11 +33,13 @@ pre-compiled package as well. If you are a non-technical user
 `Vixu.com`_ is happy to set up a free demo account for you in return
 for your feedback (use the contact information below to get in touch).
 
-Vix has the following dependencies: `Leiningen`_, `ClojureScript`_ and
-`CouchDB`_. The compiler for the Soy templates is a separate download
-that you can find here: `download Soy`_. For production use you also
-need an application server like `Apache Tomcat`_, but for testing and
-development you just need a working Java environment.
+Vix requires a working Java environment with `Leiningen`_ and
+`CouchDB`_ installed. The compiler for the Soy templates is a separate
+download that you can find here: `download Soy`_. The other
+dependencies are installed through Leiningen. For production use you
+also need an application server like `Apache Tomcat`_, but for testing
+and development you can launch a simple server using the Ring plugin
+for Leiningen.
 
 This is the sequence of commands used to install Vix on a clean Ubuntu
 12.04 LTS installation (if you already installed some of the
@@ -119,35 +121,10 @@ Install rlwrap::
 
     sudo apt-get install rlwrap
 
-Add the following lines to your your ~/.bash_profile or ~/.bashrc file
-using your favorite text editor::
-
-    export CLOJURESCRIPT_HOME="$HOME/clj/clojurescript"
-
-    alias cotpl="java -jar SoyToJsSrcCompiler.jar --shouldProvideRequireSoyNamespaces --shouldGenerateJsdoc --outputPathFormat resources/public/js/soy/{INPUT_FILE_NAME_NO_EXT}.soy.js soy/editor.soy soy/feed.soy"
-    alias cljs="rlwrap java -cp \"$CLOJURESCRIPT_HOME/lib/*:$CLOJURESCRIPT_HOME/src/clj:$CLOJURESCRIPT_HOME/src/cljs/:$CLOJURESCRIPT_HOME/test/cljs:cljs/macros\" clojure.main"
-
-If you don't want to restart your terminal emulator after creating
-this file you can run, e.g.::
-
-    source ~/.bash_profile
-
-Compile the templates (this command must be executed in the vix
-directory)::
+Compile the templates::
 
     cd ~/clj/vix
-    cotpl
-
-Create the output directory for the compiled JavaScript::
-
-    mkdir ~/clj/vix/resources/public/js/vix
-
-Install ClojureScript::
-
-    cd ~/clj
-    git clone git://github.com/clojure/clojurescript.git
-    cd clojurescript/
-    script/bootstrap --closure-library-head
+    java -jar SoyToJsSrcCompiler.jar --shouldProvideRequireSoyNamespaces --shouldGenerateJsdoc --outputPathFormat resources/public/js/soy/{INPUT_FILE_NAME_NO_EXT}.soy.js soy/editor.soy soy/feed.soy
 
 Create a directory to store Apache Lucene indexes (you can change the
 path in src/vix/lucene.clj)::
@@ -156,21 +133,10 @@ path in src/vix/lucene.clj)::
     sudo mkdir /var/lucene/vix
     sudo chown yourusername:yourusergroup /var/lucene/vix
 
-Start the ClojureScript REPL to compile the client-side code::
+You can compile the client-side ClojureScript code using the
+`lein-cljsbuild`_ plugin::
 
-    cd ~/clj/vix
-    cljs
-
-Execute this code to compile the ClojureScript, but change the
-directory "/home/fmw/clj/vix" to reflect the right path on your
-system::
-
-    (use 'cljs.closure)
-    (defn b [] (build "/home/fmw/clj/vix/cljs/src" {:pretty-print true :output-to "/home/fmw/clj/vix/resources/public/js/vix/vix.js" :output-dir "/home/fmw/clj/vix/resources/public/js/out" :libs ["/home/fmw/clj/vix/resources/public/js/soy/"]}))
-    (b)
-
-You can ignore any undeclared Var errors; just run (b) again to
-recompile in that case.
+    lein cljsbuild once
 
 Start the server::
 
@@ -212,3 +178,4 @@ touch!
 .. _`ClojureScript quickstart instructions`: https://github.com/clojure/clojurescript/wiki/Quick-Start
 .. _`Apache Tomcat`: http://tomcat.apache.org/
 .. _`CouchDB`: http://couchdb.apache.org/
+.. _`lein-cljsbuild`: https://github.com/emezeske/lein-cljsbuild

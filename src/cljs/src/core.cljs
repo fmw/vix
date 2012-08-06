@@ -15,48 +15,11 @@
 
 (ns vix.core
   (:use-macros [vix.crossover.macros :only [routes]])
-  (:require [vix.views.editor :as editor]
+  (:require [vix.util :as util]
+            [vix.views.editor :as editor]
             [vix.views.feed :as feed]
             [clojure.browser.repl :as repl]
-            [goog.global :as global]
-            [goog.events :as events]
-            [goog.history.EventType :as event-type]
-            [goog.history.Html5History :as Html5History]
-            [goog.Uri :as Uri]
-            [goog.dom :as dom]
             [clojure.string :as string]))
-
-(def *h* (atom nil))
-
-(defn get-path [uri]
-  (. (new goog.Uri uri false) (getPath)))
-
-(defn get-internal-links! []
-  (filter #(= (.substr (get-path (.-href %)) 0 7) "/admin/")
-          (cljs.core.Vector/fromArray
-           (. global/document (getElementsByTagName "a")))))
-
-; FIXME: figure out while only nested calls (e.g. in
-; create-document-list-events and render-editor-template)
-; work and replace with a centralized call
-(defn xhrify-internal-links! [link-elements]
-  (doseq [element link-elements]
-    (events/listen element
-                   "click"
-                   (fn [e]
-                     (. e (preventDefault))
-                     (navigate (.substr (get-path (.-href (.-target e))) 7)
-                               (.-title (.-target e)))))))
-
-(defn start-history! []
-  (compare-and-set! *h* nil (new goog.history.Html5History))
-  (.setUseFragment @*h* false)
-  (.setPathPrefix @*h* "/admin/")
-  (.setEnabled @*h* true)
-  (events/listen @*h*
-                 event-type/NAVIGATE
-                 (fn [e]
-                   (execute-routes! global/document.location.pathname))))
 
 (defn chop-path [path]
   (rest (string/split path #"/")))
@@ -126,17 +89,12 @@
           ["admin" :language :feed-name "overview"]
           (feed/list-documents (:language params) (:feed-name params))
           :fallback
-          (navigate-replace-state "" "Vix overview")))
-
-(defn navigate [token title]
-  (. @*h* (setToken token title)))
-
-(defn navigate-replace-state [token title]
-  (. @*h* (replaceToken token title)))
+          (util/navigate-replace-state "" "Vix overview")))
 
 (defn ^:export start-app [uri-path]
   ;; in Chrome this triggers an event, leading to a (routes) call
-  (start-history!)
+  (util/start-history! (fn [e]
+                         (execute-routes! js/document.location.pathname)))
   (execute-routes! uri-path))
 
 (defn ^:export repl-connect []

@@ -20,7 +20,7 @@
                  [org.apache.lucene/lucene-queries "3.5.0"]]
   :plugins [[lein-ring "0.7.1"]
             [lein-cljsbuild "0.2.5"]]
-  :ring vix.routes/app
+  :ring {:handler vix.routes/app}
   :min-lein-version "2.0.0"
   :hooks [leiningen.cljsbuild]
   :source-paths ["src" "src/clj"]
@@ -78,16 +78,21 @@
                                          "-i"
                                          "~/Pictures/clojure-glyph.svg"
                                          "lein-cljsbuild"]
-                        :compiler {:output-to (str "resources/public/js/"
-                                                   "main-debug.js")
-                                   :optimizations :whitespace
-                                   :pretty-print true}}
+                        :compiler {:output-to
+                                   "resources/public/js/main-debug.js"
+                                   :libs
+                                   ["resources/public/js/soy/"]
+                                   :optimizations
+                                   :whitespace
+                                   :pretty-print
+                                   true}}
                        ;; This build has the highest level of
                        ;; optimizations, so it is efficient when
                        ;; running the app in production.
                        :prod
                        {:source-path "src/cljs"
                         :compiler {:output-to "resources/public/js/main.js"
+                                   :libs ["resources/public/js/soy/"]
                                    :optimizations :advanced
                                    :pretty-print false}}
                        ;; This build is for the ClojureScript unit
@@ -96,7 +101,11 @@
                        ;; how it's run.
                        :test
                        {:source-path "test/cljs"
-                        :compiler {:output-to (str "resources/private/js/"
-                                                   "unit-test.js")
-                                   :optimizations :whitespace
-                                   :pretty-print true}}}})
+                        :compiler {:output-to
+                                   "resources/private/js/unit-test.js"
+                                   :libs
+                                   ["resources/public/js/soy/"]
+                                   :optimizations
+                                   :whitespace
+                                   :pretty-print
+                                   true}}}})

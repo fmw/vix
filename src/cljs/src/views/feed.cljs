@@ -14,14 +14,12 @@
 ;; limitations under the License.
 
 (ns vix.views.feed
-  (:require [vix.core :as core]
-            [vix.document :as document]
+  (:require [vix.document :as document]
             [vix.util :as util]
             [vix.ui :as ui]
             [clojure.set :as set]
             [clojure.string :as string]
             [vix.templates.feed :as tpl]
-            [goog.global :as global]
             [goog.events :as events]
             [goog.events.EventType :as event-type]
             [goog.dom :as dom]
@@ -111,11 +109,11 @@
   (list-documents language feed-name))
 
 (defn create-document-list-events [language feed-name]
-  (core/xhrify-internal-links! (core/get-internal-links!))
+  (util/xhrify-internal-links! (util/get-internal-links!))
   (events/listen (dom/getElement "add-document")
                  "click"
                  (fn [e]
-                   (core/navigate (str language "/" feed-name "/new")
+                   (util/navigate (str language "/" feed-name "/new")
                                   "New Document")))
 
   (ui/trigger-on-class "delete-document"
@@ -130,11 +128,11 @@
                                                          language
                                                          feed-name))))))
 (defn create-feed-list-events [feed]
-  (core/xhrify-internal-links! (core/get-internal-links!))
+  (util/xhrify-internal-links! (util/get-internal-links!))
   (events/listen (dom/getElement "add-feed")
                  "click"
                  (fn [e]
-                   (core/navigate "new-feed") "New Feed"))
+                   (util/navigate "new-feed") "New Feed"))
   
   ; converting to vector to avoid issues with doseq and arrays
   (doseq [delete-link (cljs.core.Vector/fromArray
@@ -261,7 +259,7 @@
   (let [xhr (.-target e)]
     (if (= (. xhr (getStatus)) 201)
       (let [json (js->clj (. xhr (getResponseJson)))]
-        (core/navigate-replace-state (str "edit-feed/"
+        (util/navigate-replace-state (str "edit-feed/"
                                           ("language" json)
                                           "/"
                                           ("name" json))
@@ -276,7 +274,7 @@
   (let [xhr (.-target e)]
     (if (= (. xhr (getStatus)) 200)
       (let [json (js->clj (. xhr (getResponseJson)))]
-        (core/navigate-replace-state (str "edit-feed/"
+        (util/navigate-replace-state (str "edit-feed/"
                                           ("language" json)
                                           "/"
                                           ("name" json))
@@ -335,7 +333,7 @@
 
 (defn render-feed-form [feed-data]
   (ui/render-template (dom/getElement "main-page") tpl/manage-feed feed-data)
-  (core/xhrify-internal-links! (core/get-internal-links!))
+  (util/xhrify-internal-links! (util/get-internal-links!))
 
   (when (:language feed-data)
     (ui/set-form-value (dom/getElement "language") (:language feed-data))))

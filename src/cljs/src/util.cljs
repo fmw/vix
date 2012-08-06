@@ -15,16 +15,30 @@
 
 (ns vix.util
   (:require [goog.array :as goog.array]
-            [goog.global :as global]
             [goog.dom :as dom]
             [goog.date :as date]
+            [goog.events :as events]
+            [goog.history.EventType :as event-type]
+            [goog.history.Html5History :as Html5History]
+            [goog.Uri :as Uri]
             [clojure.string :as string]))
 
-(defn col-to-js [c]
-  (cond
-   (map? c) (map-to-obj c)
-   (convertable-to-array? c) (convert-to-array c)
-   :default c))
+(defn convertable-to-array? [col]
+  (or (vector? col) (seq? col) (set? col)))
+
+(defn convert-to-array [col]
+  (when (convertable-to-array? col)
+    (loop [c (vec col) rv []]    ; "todo" nodes c and result vector rv
+      (if (pos? (count c))
+        (recur (rest c)
+               (conj rv
+                     (let [node (first c)]
+                       (cond
+                        (keyword? node) (name node)
+                        (map? node) (map-to-obj node)
+                        (convertable-to-array? node) (convert-to-array node)
+                        :default node))))
+        (to-array rv)))))   ; convert result vector to array when done
 
 (defn map-to-obj [m]
   (when (map? m)
@@ -43,23 +57,11 @@
           (recur (rest keys) (rest values) o))
         o))))
 
-(defn convertable-to-array? [col]
-  (or (vector? col) (seq? col) (set? col)))
-
-(defn convert-to-array [col]
-  (when (convertable-to-array? col)
-    (loop [c (vec col) rv []] ; "todo" nodes c and result vector rv
-      (if (pos? (count c))
-        (recur
-         (rest c)
-         (conj ; add value to the result vector
-          rv
-          (cond ; handle value differently depending on what it is
-           (keyword? (first c)) (name (first c))
-           (map? (first c)) (map-to-obj (first c))
-           (convertable-to-array? (first c)) (convert-to-array (first c))
-           :default (first c))))
-        (to-array rv))))) ; convert result vector to array when done
+(defn col-to-js [c]
+  (cond
+   (map? c) (map-to-obj c)
+   (convertable-to-array? c) (convert-to-array c)
+   :default c))
 
 (defn pair-from-string [s]
   (let [matches (re-matches #"\['([a-z]+)','([a-zA-Z0-9\-/ ]+)'\]" s)]
@@ -67,7 +69,7 @@
       (rest matches))))
 
 (defn set-page-title! [title]
-  (set! global/document.title title))
+  (set! js/document.title title))
 
 (defn has-consecutive-dashes-or-slashes? [slug]
   (if (re-find #"[\-/]{2,}" slug) true false))
@@ -143,3 +145,40 @@
                              (last (first substitutions)))
              (rest substitutions))
       slug)))
+
+(defn get-path [uri]
+  (. (new goog.Uri uri false) (getPath)))
+
+(defn get-internal-links! []
+  (filter #(= (.substr (get-path (.-href %)) 0 7) "/admin/")
+          (cljs.core.Vector/fromArray
+           (get-children-by-tag js/document.body "a"))))
+
+(def *h* (atom nil))
+
+(defn start-history! [route-fn]
+  (compare-and-set! *h* nil (new goog.history.Html5History))
+  (.setUseFragment @*h* false)
+  (.setPathPrefix @*h* "/admin/")
+  (.setEnabled @*h* true)
+  (events/listen @*h*
+                 event-type/NAVIGATE
+                 route-fn))
+
+(defn navigate [token title]
+  (. @*h* (setToken token title)))
+
+(defn navigate-replace-state [token title]
+  (. @*h* (replaceToken token title)))
+
+; FIXME: figure out while only nested calls (e.g. in
+; create-document-list-events and render-editor-template)
+; work and replace with a centralized call
+(defn xhrify-internal-links! [link-elements]
+  (doseq [element link-elements]
+    (events/listen element
+                   "click"
+                   (fn [e]
+                     (. e (preventDefault))
+                     (navigate (.substr (get-path (.-href (.-target e))) 7)
+                               (.-title (.-target e)))))))

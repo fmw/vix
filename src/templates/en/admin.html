@@ -53,13 +53,12 @@
     <div id="main-page">
     </div>
 
-    <!-- In unoptimized mode, additional script tags are required -->
-    <script type="text/javascript" src="/static/js/out/goog/base.js"></script>
-    <script type="text/javascript" src="/static/js/vix/vix.js"></script>
+    <script type="text/javascript">
+      var CLOSURE_NO_DEPS = true;
+    </script>
+    <script type="text/javascript" src="/static/js/main-debug.js"></script>
     <script type="text/javascript">
       goog.require('vix.core');
-    </script>
-    <script type="text/javascript">
       vix.core.start_app(location.pathname);
     </script>
 

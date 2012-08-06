@@ -14,8 +14,7 @@
 ;; limitations under the License.
 
 (ns vix.views.editor
-  (:require [vix.core :as core]
-            [vix.document :as document]
+  (:require [vix.document :as document]
             [vix.ui :as ui]
             [vix.util :as util]
             [vix.templates.editor :as tpl]
@@ -108,19 +107,6 @@
              (butlast img-uri-pairs))
       modified-html))))
 
-(defn display-image-feeds [language]
-  (document/get-feeds-list
-   (fn [e]
-     (let [xhr (.-target e)
-           json (. xhr (getResponseJson))
-           first-feed (first json)]
-       (if (pos? (count json))
-         (display-images (.-language first-feed) (.-name first-feed) json)
-         (ui/render-template (dom/getElement "editor-images")
-                             tpl/no-image-feeds-found))))
-   "image"
-   language))
-
 (defn display-images
   ([language feed-name all-feeds]
      (display-images language feed-name all-feeds nil []))
@@ -205,6 +191,19 @@
                                         6
                                         (:startkey-published current-page)
                                         (:startkey_docid current-page)))))
+
+(defn display-image-feeds [language]
+  (document/get-feeds-list
+   (fn [e]
+     (let [xhr (.-target e)
+           json (. xhr (getResponseJson))
+           first-feed (first json)]
+       (if (pos? (count json))
+         (display-images (.-language first-feed) (.-name first-feed) json)
+         (ui/render-template (dom/getElement "editor-images")
+                             tpl/no-image-feeds-found))))
+   "image"
+   language))
 
 (defn create-editor-field [element-id]
   (goog.editor.Field. element-id))
@@ -299,6 +298,8 @@
      :else (when (= (. status-el -textContent) slug-not-unique-err)
              (ui/remove-error status-el slug-el slug-label-el)))))
 
+(def *file* (atom {}))
+
 (defn create-slug! [title feed]
   (util/create-slug (:default-slug-format feed)
                     title
@@ -362,6 +363,25 @@
 (def editor-field (atom nil))
 (def description-editor-field (atom nil))
 
+(defn get-related-pages [related-page-el]
+  (when related-page-el
+    (map (fn [li-el]
+           (let [slug-el (first (util/get-children-by-tag li-el "input"))
+                 title-el (first (util/get-children-by-tag li-el "span"))]
+             {:slug (.-value slug-el)
+              :title (.-textContent title-el)}))
+         (util/get-children related-page-el))))
+
+(defn get-related-image [li-el]
+  (let [slug-el (first (util/get-children-by-tag li-el "input"))
+        title-el (first (util/get-children-by-tag li-el "span"))]
+    {:slug (.-value slug-el)
+     :title (.-textContent title-el)}))
+
+(defn get-related-images [related-images-el]
+  (when related-images-el
+    (map get-related-image (util/get-children related-images-el))))
+
 (defn get-document-value-map!
   ([language feed-name]
      (get-document-value-map! language feed-name nil))
@@ -413,7 +433,7 @@
   (let [xhr (.-target e)]
     (if (= (.getStatus xhr e) 201)
       (let [json (js->clj (. xhr (getResponseJson)))]
-        (core/navigate-replace-state (str ("language" json)
+        (util/navigate-replace-state (str ("language" json)
                                           "/"
                                           ("feed" json)
                                           "/edit"
@@ -428,6 +448,29 @@
     (document/create-doc (:slug doc)
                          save-new-document-xhr-callback
                          doc)))
+
+(defn get-link-data-from-li [el]
+  (when-not (classes/has el "add-item-node") ; ignore "Add Item" in nested ul
+    ;; remove meta tag (sometimes added due to a bug in Chrome)
+    (let [children (remove #(= (.-tagName %) "meta") (util/get-children el))
+          item-detail-elements (vec (util/get-children (first children)))
+          label-el (nth item-detail-elements 0)
+          uri-el (nth item-detail-elements 1)]
+      {:label (. label-el -textContent)
+       :uri (. uri-el -textContent)
+       :children (when (= (.-tagName (last children)) "UL")
+                   (get-links-from-ul (last children)))})))
+
+(defn get-links-from-ul [el]
+  (filter #(not (nil? %))
+          (map get-link-data-from-li (util/get-children el))))
+
+(defn render-menu-content-string! []
+  (let [links (get-links-from-ul (dom/getElement "menu-container"))
+        menu-string (ui/render-template-as-string tpl/rendered-menu
+                                                  {:links links})]
+    (when (not (= menu-string "<ul></ul>"))
+      menu-string)))
 
 (defn save-new-menu-document-click-callback [language feed-name & _]
   (let [doc (get-document-value-map! language
@@ -462,8 +505,6 @@
     (if (= (count pieces) 2)
       (nth pieces 1)
       filename)))
-
-(def *file* (atom {}))
 
 (defn display-image-preview [file title]
   (let [reader (new js/FileReader)]
@@ -547,44 +588,20 @@
                        (= mode :menu) tpl/menu-mode
                        :default tpl/default-mode)
                       data)
-  (core/xhrify-internal-links! (core/get-internal-links!)))
+  (util/xhrify-internal-links! (util/get-internal-links!)))
 
 (defn render-document-not-found-template []
   (ui/render-template (dom/getElement "main-page") tpl/document-not-found))
 
-(defn render-menu-content-string! []
-  (let [links (get-links-from-ul (dom/getElement "menu-container"))
-        menu-string (ui/render-template-as-string tpl/rendered-menu
-                                                  {:links links})]
-    (when (not (= menu-string "<ul></ul>"))
-      menu-string)))
-
-(defn get-link-data-from-li [el]
-  (when-not (classes/has el "add-item-node") ; ignore "Add Item" in nested ul
-    ;; remove meta tag (sometimes added due to a bug in Chrome)
-    (let [children (remove #(= (.-tagName %) "meta") (util/get-children el))
-          item-detail-elements (vec (util/get-children (first children)))
-          label-el (nth item-detail-elements 0)
-          uri-el (nth item-detail-elements 1)]
-      {:label (. label-el -textContent)
-       :uri (. uri-el -textContent)
-       :children (when (= (.-tagName (last children)) "UL")
-                   (get-links-from-ul (last children)))})))
-
-(defn get-links-from-ul [el]
-  (filter #(not (nil? %))
-          (map get-link-data-from-li (util/get-children el))))
-
-(defn parse-menu-data-li [el]
-  (let [children (util/get-children el)
-        last-child (last children)]
-    {:label (.-textContent (first children))
-     :uri (. (first children) (getAttribute "href"))
-     :children (when (= (.-tagName last-child) "UL")
-                 (parse-menu-data-ul last-child))}))
-
-(defn parse-menu-data-ul [el]
-  (map parse-menu-data-li (util/get-children el)))
+(defn parse-menu-data-ul [element]
+  (map (fn [el]
+         (let [children (util/get-children el)
+               last-child (last children)]
+           {:label (.-textContent (first children))
+            :uri (. (first children) (getAttribute "href"))
+            :children (when (= (.-tagName last-child) "UL")
+                        (parse-menu-data-ul last-child))}))
+       (util/get-children element)))
 
 (defn parse-menu-content-string [s]
   (let [dummy-list-el (dom/createElement "ul")]
@@ -606,16 +623,16 @@
                        (dom/getElement "link-label-label")
                        (dom/getElement "link-label")))))
 
+(defn menu-item-is-internal! []
+  (= (ui/get-form-value-by-name "add-menu-item-dialog-form"
+                                "link-type")
+     "internal"))
+
 (defn menu-item-link-details-from-dialog! []
   {:label (.-value (dom/getElement "link-label"))
    :uri (if (menu-item-is-internal!)
           (.-value (dom/getElement "internal-link"))
           (.-value (dom/getElement "external-link")))})
-
-(defn menu-item-is-internal! []
-  (= (ui/get-form-value-by-name "add-menu-item-dialog-form"
-                                "link-type")
-     "internal"))
 
 (defn menu-link-type-change-callback [e]
   (if (menu-item-is-internal!)
@@ -648,28 +665,6 @@
               (f feeds documents)))))))
    nil
    language))
-
-(defn update-menu-builder [el links new nested feeds documents]
-  (ui/render-template el
-                      tpl/menu-items
-                      {:links links
-                       :new new
-                       :nested nested})
-  (create-menu-builder-events feeds documents)
-  (make-menu-builder-sortable feeds documents))
-
-(defn display-menu-builder [links feeds documents]
-  (update-menu-builder (dom/getElement "menu-container")
-                        links
-                        nil
-                        false
-                        feeds
-                        documents))
-
-(defn update-menu-builder-from-data [content-string feeds documents]
-  (display-menu-builder (parse-menu-content-string content-string)
-                        feeds
-                        documents))
 
 (defn create-menu-builder-events [feeds documents]                  
   (ui/trigger-on-class
@@ -714,22 +709,32 @@
                                (.-target evt)))
                              evt))))
 
-(defn make-menu-builder-sortable [feeds documents]
-  (let [menu-container-el (dom/getElement "menu-container")]
-    (ui/to-sortable-tree (dom/getElement menu-container-el)
-                         #(display-menu-builder
-                           (get-links-from-ul menu-container-el)
-                           feeds
-                           documents))))
+(defn update-menu-builder [el links new nested feeds documents]
+  (ui/render-template el
+                      tpl/menu-items
+                      {:links links
+                       :new-item new
+                       :nested nested})
+  (create-menu-builder-events feeds documents)
+  (make-menu-builder-s1ortable feeds documents))
+
+(defn display-menu-builder [links feeds documents]
+  (update-menu-builder (dom/getElement "menu-container")
+                        links
+                        nil
+                        false
+                        feeds
+                        documents))
+
 
 (defn menu-item-dialog-callback [feeds documents parent-el e]
   (. e (preventDefault))
  
-  (let [active-el (or parent-el menu-container-el)]
+  (let [menu-container-el (dom/getElement "menu-container")
+        active-el (or parent-el menu-container-el)]
     (if (= "ok" (.-key e))
       (let [nested (classes/has parent-el "new-node")
-            new-link-details (menu-item-link-details-from-dialog!)
-            menu-container-el (dom/getElement "menu-container")]
+            new-link-details (menu-item-link-details-from-dialog!)]
         (validate-link-label! (:label new-link-details))
         (when-not (classes/has (dom/getElement "add-link-status") "error")
           (let [dummy-el (dom/createElement "ul")]
@@ -751,6 +756,57 @@
                    (not (= (.-id active-el) "menu-container")))
           (dom/removeNode active-el))
         (ui/remove-dialog)))))
+
+(defn add-menu-item-callback
+  ([feeds documents evt]
+     (add-menu-item-callback feeds
+                             documents
+                             (dom/getElement "menu-container")
+                             evt))
+  ([feeds documents el evt]
+     (. evt (preventDefault))
+     
+     (ui/display-dialog "Add Menu Item"
+                        (ui/render-template-as-string
+                         tpl/add-menu-item-dialog
+                         {:feeds feeds
+                          :documents documents})
+                        (partial menu-item-dialog-callback
+                                 feeds
+                                 documents
+                                 el))
+      
+     (let [feed-el (dom/getElement "internal-link-feed")]
+       (events/listen feed-el
+                      "change"
+                      (fn []
+                        (let [feed-pair (util/pair-from-string
+                                         (.-value feed-el))]
+                          (document/get-documents-for-feed
+                           (first feed-pair)
+                           (last feed-pair)
+                           menu-dialog-upd-link-mode-xhr-callback)))))
+      
+     (events/listen (dom/getElement "link-type-external")
+                    "change"
+                    menu-link-type-change-callback)
+      
+     (events/listen (dom/getElement "link-type-internal")
+                    "change"
+                    menu-link-type-change-callback)))
+
+(defn update-menu-builder-from-data [content-string feeds documents]
+  (display-menu-builder (parse-menu-content-string content-string)
+                        feeds
+                        documents))
+
+(defn make-menu-builder-sortable [feeds documents]
+  (let [menu-container-el (dom/getElement "menu-container")]
+    (ui/to-sortable-tree (dom/getElement menu-container-el)
+                         #(display-menu-builder
+                           (get-links-from-ul menu-container-el)
+                           feeds
+                           documents))))
 
 (defn update-related-pages [related-pages]
   (when (not-empty related-pages)
@@ -888,44 +944,6 @@
 
     (update-image-in-dialog (first documents))))
 
-(defn add-menu-item-callback
-  ([feeds documents evt]
-     (add-menu-item-callback feeds
-                             documents
-                             (dom/getElement "menu-container")
-                             evt))
-  ([feeds documents el evt]
-     (. evt (preventDefault))
-     
-     (ui/display-dialog "Add Menu Item"
-                        (ui/render-template-as-string
-                         tpl/add-menu-item-dialog
-                         {:feeds feeds
-                          :documents documents})
-                        (partial menu-item-dialog-callback
-                                 feeds
-                                 documents
-                                 el))
-      
-     (let [feed-el (dom/getElement "internal-link-feed")]
-       (events/listen feed-el
-                      "change"
-                      (fn []
-                        (let [feed-pair (util/pair-from-string
-                                         (.-value feed-el))]
-                          (document/get-documents-for-feed
-                           (first feed-pair)
-                           (last feed-pair)
-                           menu-dialog-upd-link-mode-xhr-callback)))))
-      
-     (events/listen (dom/getElement "link-type-external")
-                    "change"
-                    menu-link-type-change-callback)
-      
-     (events/listen (dom/getElement "link-type-internal")
-                    "change"
-                    menu-link-type-change-callback)))
-
 (defn update-image-in-dialog [image]
   (ui/render-template (dom/getElement "image-preview-in-dialog-container")
                       tpl/related-image {:image image}))
@@ -1028,25 +1046,6 @@
                              (partial
                               related-pages-dialog-change-feed-xhr-callback
                               self-slug)))))))))))
-
-(defn get-related-pages [related-page-el]
-  (when related-page-el
-    (map (fn [li-el]
-           (let [slug-el (first (util/get-children-by-tag li-el "input"))
-                 title-el (first (util/get-children-by-tag li-el "span"))]
-             {:slug (.-value slug-el)
-              :title (.-textContent title-el)}))
-         (util/get-children related-page-el))))
-
-(defn get-related-image [li-el]
-  (let [slug-el (first (util/get-children-by-tag li-el "input"))
-        title-el (first (util/get-children-by-tag li-el "span"))]
-    {:slug (.-value slug-el)
-     :title (.-textContent title-el)}))
-
-(defn get-related-images [related-images-el]
-  (when related-images-el
-    (map get-related-image (util/get-children related-images-el))))
 
 (defn add-related-page-dialog-callback [related-pages-el evt]
   (when (= "ok" (.-key evt))
