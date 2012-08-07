@@ -9,3 +9,7 @@ classes
 .#*
 out
 *.soy.js
+.lein-cljsbuild*
+.crossover*
+stale
+target
