@@ -17,11 +17,8 @@
   (:use [vix.auth] :reload)
   (:use [clojure.test]
         [slingshot.test]
+        [vix.test.test]
         [vix.test.db :only [database-fixture +test-server+ +test-db+]]))
-
-(defn check-exc
-  [type exc-obj]
-  (= (:type exc-obj) type))
 
 (deftest test-fix-complex-keys
   (is (= (fix-complex-keys {:* "a" :b "b" (keyword "[:en :blog]") "c"})

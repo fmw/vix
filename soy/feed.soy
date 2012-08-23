@@ -3,7 +3,7 @@
 /**
  * Displays all the documents for the given feed.
  *
- * @param json
+ * @param docs
  *
  */
 {template .list_documents}
@@ -14,7 +14,7 @@
   </h3>
 
   <ul id="document-list">
-    {foreach $doc in $json.documents}
+    {foreach $doc in $docs.documents}
       <li>
         <a href="/admin/{$doc.language}/{$doc.feed}/edit{$doc.slug}"
            class="edit-link">{$doc.title}</a>
@@ -47,7 +47,7 @@
     <h4>{$language}</h4>
     <table class="feed-list" id="feed-list-{$language}">
       {foreach $feed in $feeds}
-        {if $language == $feed['language-full']}
+        {if $language == $feed['language_full']}
         <tr>
           <td>
               <a href="/admin/{$feed.language}/{$feed.name}/overview"

@@ -16,7 +16,7 @@
 (ns vix.routes
   (:use compojure.core
         vix.auth
-        [slingshot.slingshot :only [try+]]
+        [slingshot.slingshot :only [try+ throw+]]
         [clojure.data.json :only [read-json json-str]]
         [ring.util.response :only [redirect]])
   (:require [vix.config :as config]
@@ -29,6 +29,10 @@
             [clj-time.core :as time-core]
             [compojure.route :as route]
             [compojure.handler :as handler]))
+
+(def invalid-request-body-error
+  {:type ::invalid-request-body
+   :message "The JSON or Clojure request body is invalid."})
 
 (def available-languages
   "Atom; Sequence of available languages used for language selection."
@@ -82,16 +86,26 @@
    :headers {"Content-Type" (or content-type "text/html; charset=UTF-8")}
    :body body})
 
-(defn json-response
-  "Calls the response function with an application/json; charset=UTF-8
-   content-type and the provided body. Optionally accepts a :status
-   keyword, followed by a HTTP status code integer. When the provided
-   body is not nil it is converted to a json-str. The status defaults
-   to 200, unless the body is nil, in which case it defaults to 404."
-  [body & {:keys [status]}]
-  (response (when-not (nil? body) (json-str body))
+(defn data-response
+  "Returns API response map for body in either JSON or a native
+   Clojure datastructure that is converted to a string using the
+   pr-str function, depending on whether :json or :clj is passed as a
+   type. Uses a native Clojure datastructure by default. The status
+   code is either the provided HTTP status code integer. Otherwise 200
+   or 404 is used by default depending on whether the body is nil. The
+   value of the HTTP Content-Type header is either 'application/json;
+   charset=UTF-8' or 'text/plain; charset=UTF-8', depending on
+   the provided type."
+  [body & {:keys [type status]}]
+  (response (if (= type :json)
+              (when-not (nil? body)
+                (json-str body))
+              (pr-str body))
             :status (or status (if (nil? body) 404 200))
-            :content-type "application/json; charset=UTF-8"))
+            :content-type (get {:json "application/json; charset=UTF-8"
+                                :clj "text/plain; charset=UTF-8"}
+                               type
+                               "text/plain; charset=UTF-8")))
 
 ;; FIXME: add a nice 404 page
 (defn page-not-found-response
@@ -306,41 +320,52 @@
   (reset-available-languages! database))
 
 (defmulti feed-request
-  "Handles json feed CRUD or GET request based on HTTP method."
+  "Handles feed API request based on HTTP method.
+   Accepts method (HTTP method), response-type (response Content-Type
+   indicator, either :json or :clj), new-doc (the new feed document),
+   language (feed language) and feed-name."
   (fn [method & _]
     method))
 
-(defmethod feed-request :GET [method new-doc language feed-name]
-  (json-response (db/get-feed config/database language feed-name)))
+(defmethod feed-request :GET
+  [method response-type new-doc language feed-name]
+  (data-response (db/get-feed config/database language feed-name)
+                 :type response-type))
 
-(defmethod feed-request :POST [method new-doc language feed-name]
+(defmethod feed-request :POST
+  [method response-type new-doc language feed-name]
   (let [feed (db/create-feed config/database new-doc)]
     (reset-all! config/database language)
-    (json-response feed :status 201)))
+    (data-response feed :status 201 :type response-type)))
 
-(defmethod feed-request :PUT [method new-doc language feed-name]
+(defmethod feed-request :PUT
+  [method response-type new-doc language feed-name]
   (let [feed (db/update-feed config/database language feed-name new-doc)]
     (reset-all! config/database language)
-    (json-response feed)))
+    (data-response feed :type response-type)))
 
-(defmethod feed-request :DELETE [method new-doc language feed-name]
+(defmethod feed-request :DELETE
+  [method response-type new-doc language feed-name]
   (if-let [feed (db/delete-feed config/database language feed-name)]
     (do
       (reset-all! config/database language)
-      (json-response feed))
-    (json-response nil)))
+      (data-response feed :type response-type))
+    (data-response nil :type response-type)))
 
 (defmulti document-request
-  "Handles json document CRUD or GET request based on HTTP method."
+  "Handles document API request based on HTTP method.
+   Accepts method (HTTP method), response-type (response Content-Type
+   indicator, either :json or :clj), new-doc (new document),
+   existing-doc (old document), language and feed-name."
   (fn [method & _]
     method))
 
 (defmethod document-request :GET
-  [method new-doc existing-doc language feed-name]
-  (json-response existing-doc))
+  [method response-type new-doc existing-doc language feed-name]
+  (data-response existing-doc :type response-type))
 
 (defmethod document-request :POST
-  [method new-doc existing-doc language feed-name]
+  [method response-type new-doc existing-doc language feed-name]
   (let [document (db/create-document config/database
                                      language
                                      feed-name
@@ -349,10 +374,15 @@
     (reset-index-reader!)
     (lucene/add-documents-to-index! lucene/directory [new-doc])
     (reset-all! config/database language)
-    (json-response document :status 201)))
+    (data-response document :status 201 :type response-type)))
 
 (defmethod document-request :PUT
-  [method new-doc {:keys [slug feed] :as existing-doc} language feed-name]
+  [method
+   response-type
+   new-doc
+   {:keys [slug feed] :as existing-doc}
+   language
+   feed-name]
   (if (and existing-doc
            (= slug (:slug new-doc))
            (= feed (:feed new-doc))
@@ -364,22 +394,45 @@
       (reset-index-reader!)
       (lucene/update-document-in-index! lucene/directory slug document)
       (reset-all! config/database language)
-      (json-response document))
-    (json-response nil)))
+      (data-response document :type response-type))
+    (data-response nil :type response-type)))
 
 (defmethod document-request :DELETE
-  [method new-doc {:keys [slug] :as existing-doc} language feed-name]
+  [method
+   response-type
+   new-doc
+   {:keys [slug] :as existing-doc}
+   language ; FIXME: take language from doc, not uri
+   feed-name]
   (if existing-doc
     (let [document (db/delete-document config/database slug)]
       (reset-index-reader!)
       (lucene/delete-document-from-index! lucene/directory slug)
       (reset-all! config/database language)
-      (json-response document))
-    (json-response nil)))
+      (data-response document :type response-type))
+    (data-response nil :type response-type)))
 
 (def http-methods
   "HTTP method as keywords, with lowercase keys and uppercase values."
   {:get :GET :post :POST :put :PUT :delete :DELETE})
+
+(defn read-body
+  "Returns a string representation of body, treated like the provided
+   type. Supported types are json and clj (with the lattter as the
+   default option). Types are passed as strings, not keywords. Returns
+   nil on empty input, throws invalid-request-error if input is
+   malformed."
+  [type body]
+  (let [data (try
+               (str (slurp body))
+               (catch java.lang.NullPointerException _ nil))]
+    (when (pos? (count data))
+      (try
+        (if (= type "json")
+          (read-json data)
+          (read-string data))
+        (catch java.lang.Exception _
+          (throw+ invalid-request-body-error))))))
 
 (defroutes main-routes
   (GET "/"
@@ -419,11 +472,10 @@
   (GET "/:language/search"
        {{language :language
          q :q
-         after-doc-id :after-doc-id
-         after-score :after-score
          pp-after-doc-id :pp-aid
-         pp-after-score :pp-as}
-        :params}
+         pp-after-score :pp-as
+         after-doc-id :after-doc-id
+         after-score :after-score} :params}
        (let [after-doc-id-int (util/read-int after-doc-id)
              after-score-float (util/read-float after-score)]
          (response
@@ -441,8 +493,12 @@
                           @index-reader
                           lucene/analyzer)
            q
-           pp-after-doc-id
-           pp-after-score
+           (if (string? pp-after-doc-id)
+             (vector pp-after-doc-id)
+             pp-after-doc-id)
+           (if (string? pp-after-score)
+             (vector pp-after-score)
+             pp-after-score)
            after-doc-id-int
            after-score-float
            (not (and after-doc-id-int after-score-float))
@@ -451,65 +507,69 @@
                          config/database
                          language
                          config/default-timezone)))))
-  (GET "/json/:language/:feed/list-documents"
-       {{language :language
+  (GET "/_api/:type/:language/:feed/_list-documents"
+       {headers :headers
+        session :session
+        {type :type
+         language :language
          feed-name :feed
          limit :limit
          startkey-published :startkey-published
-         startkey_docid :startkey_docid} :params
-         session :session}
+         startkey_docid :startkey_docid} :params}
        (when (authorize session :GET language feed-name)
-         (json-response
+         (data-response
           (db/get-documents-for-feed config/database
                                      language
                                      feed-name
                                      (when limit
                                        (Integer/parseInt limit))
                                      startkey-published
-                                     startkey_docid))))
-  (GET "/json/list-feeds"
+                                     startkey_docid)
+          :type (if (= type "json") :json :clj))))
+  (GET "/_api/:type/_list-feeds"
        {session :session
-        {ddt :default-document-type
-         language :language} :params}
+        {type :type ddt :default-document-type language :language} :params}
        (when (authorize session :GET nil :*)
-         (json-response
+         (data-response
           (if ddt
             (db/list-feeds-by-default-document-type config/database
                                                     ddt
                                                     language)
-            (db/list-feeds config/database language)))))
-  (ANY "/json/feed/:language/:name"
+            (db/list-feeds config/database language))
+          :type (if (= type "json") :json :clj))))
+  (ANY "/_api/:type/_feed/:language/:name"
        {lowercase-method :request-method
-        {language :language feed-name :name} :params
+        {type :type language :language feed-name :name} :params
         body :body
         session :session}
-       (let [method (http-methods lowercase-method)]
+       (let [method (http-methods lowercase-method)
+             new-doc (read-body type body)]
+         ;; FIXME: add authenticate for both old and new feed
+         ;; if not :POST/GET
          (when (if (= method :POST)
                  (authorize session :POST nil :*)
                  (authorize session method language feed-name))
            (feed-request method
-                         (try
-                           (read-json (slurp body))
-                           (catch java.io.EOFException _
-                             nil))
+                         (keyword type)
+                         new-doc
                          language
                          feed-name))))
-  (ANY "/json/document/*"
+  (ANY "/_api/:type/_document/*"
        {lowercase-method :request-method
-        {raw-slug :*} :params
+        {type :type raw-slug :*} :params
         body :body
         session :session}
-       (let [method
-             (http-methods lowercase-method)
-             {:keys [slug feed language] :as new-doc}
-             (try
-               (read-json (slurp body))
-               (catch java.io.EOFException _
-                 nil))
-             existing-doc
-             (db/get-document config/database
-                              (util/force-initial-slash raw-slug)
-                              true)]
+       (let [method (http-methods lowercase-method)
+             existing-doc (db/get-document
+                           config/database
+                           (util/force-initial-slash raw-slug)
+                           true)
+             new-doc (read-body type body)
+             feed (or (:feed new-doc)
+                      (:feed existing-doc))
+             language (or (:language new-doc)
+                          (:language existing-doc))]
+         ;; FIXME: authenticate both new & old if not GET/POST/HEAD
          (when (if (= method :GET)
                  (authorize session
                             method
@@ -517,6 +577,7 @@
                             (:feed existing-doc))
                  (authorize session method language feed))
            (document-request method
+                             (keyword type)
                              new-doc
                              existing-doc
                              language
@@ -531,15 +592,19 @@
        []
        (page-not-found-response)))
 
-(defn handle-authentication-errors [handler]
+(defn handle-exceptions [handler]
   "Middleware function that redirects on insufficient privileges."
   (fn [request]
     (try+
      (handler request)
      (catch [:type :vix.auth/insufficient-privileges] _
-         (redirect "/permission-denied"))
+       (redirect "/permission-denied"))
      (catch [:type :vix.auth/authentication-required] _
-         (redirect "/login")))))
+       (redirect "/login"))
+     (catch [:type :vix.routes/invalid-request-body] e
+       {:status 400
+        :headers {"Content-Type" "text/plain; charset=UTF-8"}
+        :body (:message e)}))))
 
 (defn wrap-caching-headers [handler]
   "Middleware function that adds Cache-Control: public and Expires
@@ -598,6 +663,6 @@
 
 (def app
   (-> (handler/site main-routes)
-      (redirection-handler)
+ ;;     (redirection-handler)
       (wrap-caching-headers)
-      (handle-authentication-errors)))
+      (handle-exceptions)))

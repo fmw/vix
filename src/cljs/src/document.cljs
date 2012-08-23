@@ -14,10 +14,10 @@
 ;; limitations under the License.
 
 (ns vix.document
-  (:require [vix.util :as util]
+  (:require [cljs.reader :as reader]
+            [vix.util :as util]
             [goog.net.XhrIo :as xhrio]
             [goog.net.EventType :as event-type]
-            [goog.json :as gjson]
             [goog.events :as events]
             [goog.structs.Map :as Map]))
 
@@ -26,82 +26,83 @@
     slug
     (str "/" slug)))
 
-(defn request [uri callback method content]
-  (let [req (new goog.net.XhrIo)
-        content (if (map? content)
-                  (goog.json/serialize (util/map-to-obj content))
-                  content)]
+(defn request [uri callback method data]
+  (let [req (new goog.net.XhrIo)]
     (events/listen req goog.net.EventType/COMPLETE callback)
-    (. req (send
-            uri
-            method
-            content
-            (new goog.structs.Map "Content-Type"
-                                  "application/json;charset=utf-8")))))
+    (. req (send uri
+                 method
+                 (pr-str data)
+                 (new goog.structs.Map
+                      "Content-Type" "text/plain; charset=utf-8")))))
 
-(defn request-doc-with-slug [slug callback method content]
-  (let [slug (str "/json/document" slug)]
-    (request slug callback method content)))
+(defn request-doc [slug callback method data]
+  (request (str "/_api/clj/_document" slug) callback method data))
+
+(defn request-feed [language feed-name callback method data]
+  (request (str "/_api/clj/_feed/" language "/" feed-name)
+           callback
+           method
+           data))
 
 (defn get-doc [slug callback]
-  (request-doc-with-slug slug callback "GET" nil))
+  (request-doc slug callback "GET" nil))
 
 (defn delete-doc [slug callback]
-  (request-doc-with-slug slug callback "DELETE" nil))
+  (request-doc slug callback "DELETE" nil))
 
-(defn create-doc [slug callback json-map]
-  (request-doc-with-slug slug callback "POST" json-map))
+(defn create-doc [slug callback doc]
+  (request-doc slug callback "POST" doc))
 
-(defn update-doc [slug callback json-map]
-  (request-doc-with-slug slug callback "PUT" json-map))
+(defn update-doc [slug callback doc]
+  (request-doc slug callback "PUT" doc))
 
 (defn get-documents-for-feed
-  ([language feed-name callback]
-     (get-documents-for-feed language feed-name callback nil nil nil))
-  ([language feed-name callback limit]
-     (get-documents-for-feed language feed-name callback limit nil nil))
-  ([language feed-name callback limit startkey-published startkey_docid]
-     (let [base-uri (str "/json/" language "/" feed-name "/list-documents")
-           uri  (if (or (nil? startkey-published)
-                        (nil? startkey_docid) (nil? limit))
+  [language feed-name callback & [limit startkey-published startkey_docid]]
+  (let [base-uri (str "/_api/clj/"
+                      language
+                      "/"
+                      feed-name
+                      "/_list-documents")]
+    (xhrio/send (if (some nil? [startkey-published startkey_docid limit])
                   (if limit
                     (str base-uri "?limit=" limit)
                     base-uri)
                   (str base-uri
                        "?limit=" limit
                        "&startkey-published=" startkey-published
-                       "&startkey_docid=" startkey_docid))]
-       (xhrio/send uri callback))))
+                       "&startkey_docid=" startkey_docid))
+                callback)))
 
 (defn get-feeds-list
-  ([callback]
-     (get-feeds-list callback nil nil))
-  ([callback default-document-type]
-     (get-feeds-list callback default-document-type nil))
-  ([callback default-document-type language]
-     (let [uri (str "/json/list-feeds"
-                    (when default-document-type
-                      (str "?default-document-type=" default-document-type))
-                    (when language
-                      (if default-document-type
-                        (str "&language=" language)
-                        (str "?language=" language))))]
-       (xhrio/send uri callback))))
+  [callback & [default-document-type language]]
+  (xhrio/send (str "/_api/clj/_list-feeds"
+                   (when default-document-type
+                     (str "?default-document-type=" default-document-type))
+                   (when language
+                     (if default-document-type
+                       (str "&language=" language)
+                       (str "?language=" language))))
+              callback))
 
 (defn get-feed [language feed-name callback]
-  (request (str "/json/feed/" language "/" feed-name) callback "GET" nil))
+  (request-feed language feed-name callback "GET" nil))
 
-(defn create-feed [language feed-name callback json-map]
-  (request (str "/json/feed/" language "/" feed-name)
-           callback
-           "POST"
-           json-map))
+(defn create-feed [{:keys [language name] :as feed-doc} callback]
+  (request-feed language name callback "POST" feed-doc))
 
-(defn update-feed [language feed-name callback json-map]
-  (request (str "/json/feed/" language "/" feed-name)
-           callback
-           "PUT"
-           json-map))
+(defn update-feed [{:keys [language name] :as feed-doc} callback]
+  (request-feed language name callback "PUT" feed-doc))
 
-(defn delete-feed [language feed-name callback]
-  (request (str "/json/feed/" language "/" feed-name) callback "DELETE" nil))
+(defn delete-feed [{:keys [language name] :as feed-doc} callback]
+  (request-feed language name callback "DELETE" feed-doc))
+
+(defn delete-feed-shortcut [language feed-name callback]
+  (get-feed language
+            feed-name
+            (fn [e]
+              (let [xhr (.-target e)
+                    status (. xhr (getStatus))]
+                (if (= status 200)
+                  (let [feed (reader/read-string
+                              (. xhr (getResponseText)))]
+                    (delete-feed feed callback)))))))

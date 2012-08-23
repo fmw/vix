@@ -154,16 +154,16 @@
 (deftemplates content-page-model
   {:nl "templates/nl/content-page.html"
    :en "templates/en/content-page.html"}
-  [{:keys [content description subtitle]}]
+  [{:keys [content description subtitle] :as document}]
   [:h1#page-title]
   (if (not-empty subtitle)
     (html/content subtitle)
     (html/substitute nil))
   [:div#leader-text]
-  (when description
+  (when (not-empty description)
     (html/html-content description))
   [:div#content]
-  (when content
+  (when (not-empty content)
     (html/html-content content)))
 
 (defn page-view

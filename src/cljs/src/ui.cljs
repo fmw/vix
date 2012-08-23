@@ -192,6 +192,19 @@
       (set! (.-textContent add-link-el)
             (. (.-textContent add-link-el) (substr 2))))))
 
+(defn clean-drop-data
+  "Removes META elements from provided html string and returns
+   innerHTML string. This is necessary because some versions of Chrome
+   append a meta tag to the drop data."
+  [html]
+  (let [unclean-dummy-el (dom/createElement "div")
+        clean-dummy-el (dom/createElement "div")]
+    (set! (.-innerHTML unclean-dummy-el) html)
+    (doseq [non-meta-child (filter #(not (= (.-tagName %) "META"))
+                                   (util/get-children unclean-dummy-el))]
+      (dom/appendChild clean-dummy-el non-meta-child))
+    (.-innerHTML clean-dummy-el)))
+
 (defn to-sortable-tree [parent-el after-drop-fn]
   (let [top-level-drop-zone-el (dom/getElement "menu-top-level-drop-zone")
         li-elements (filter not-fixed?
@@ -270,32 +283,32 @@
                   :default
                   ;; when dropped on another node
                   (when-not (= @active-el drop-target)
-                    (if
-                        ;; when dropped on an ancestor or descendant node
-                        (or (dom/contains drop-target @active-el)
-                            (dom/contains @active-el drop-target))
-                      (let [dt-item-details-el (get-item-details-el
-                                                drop-target)
-                            data-dummy-el (dom/createElement "div")]
+                    (let [drop-data (clean-drop-data
+                                     (. (.-dataTransfer e)
+                                        (getData "text/html")))]
+                      (if
+                          ;; when dropped on an ancestor or descendant node
+                          (or (dom/contains drop-target @active-el)
+                              (dom/contains @active-el drop-target))
+                        (let [dt-item-details-el (get-item-details-el
+                                                  drop-target)
+                              data-dummy-el (dom/createElement "div")]
+                          (do
+                            ;; use dummy el to access the item-details
+                            ;; child node of the dragged element
+                            (set! (.-innerHTML data-dummy-el) drop-data)
+                            (set! (.-innerHTML (get-item-details-el
+                                                @active-el))
+                                  (.-innerHTML dt-item-details-el))
+                            (set! (.-innerHTML dt-item-details-el)
+                                  (.-innerHTML (first
+                                                (util/get-children
+                                                 data-dummy-el))))))
+                        ;; when dropped on an unrelated node
                         (do
-                          ;; use dummy el to access the item-details
-                          ;; child node of the dragged element
-                          (set! (.-innerHTML data-dummy-el)
-                                (. (.-dataTransfer e) (getData "text/html")))
-                          (set! (.-innerHTML (get-item-details-el
-                                              @active-el))
-                                (.-innerHTML dt-item-details-el))
-                          (set! (.-innerHTML dt-item-details-el)
-                                (.-innerHTML (first
-                                             (util/get-children
-                                              data-dummy-el))))))
-                      ;; when dropped on an unrelated node
-                      (do
-                        (set! (.-innerHTML @active-el)
-                              (.-innerHTML drop-target))
-                        (set! (.-innerHTML drop-target)
-                              (. (.-dataTransfer e)
-                                 (getData "text/html"))))))))
+                          (set! (.-innerHTML @active-el)
+                                (.-innerHTML drop-target))
+                          (set! (.-innerHTML drop-target) drop-data)))))))
                (after-drop-fn))))
 
       (. el (addEventListener
@@ -330,8 +343,8 @@
                               (. animation (destroy))))))
        (. animation (play)))))
 
-(def fade-in! (partial fx! fx-dom/FadeInAndShow true))
-(def fade-out! (partial fx! fx-dom/FadeOutAndHide true)))
+  (def fade-in! (partial fx! fx-dom/FadeInAndShow true))
+  (def fade-out! (partial fx! fx-dom/FadeOutAndHide true)))
 
 (comment
   ; TODO: implement a nice animation for displaying status messages

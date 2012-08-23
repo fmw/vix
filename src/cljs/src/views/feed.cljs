@@ -14,7 +14,8 @@
 ;; limitations under the License.
 
 (ns vix.views.feed
-  (:require [vix.document :as document]
+  (:require [cljs.reader :as reader]
+            [vix.document :as document]
             [vix.util :as util]
             [vix.ui :as ui]
             [clojure.set :as set]
@@ -66,15 +67,14 @@
 (defn display-document-list [main-el xhr]
   (ui/render-template main-el
                       tpl/list-documents
-                      {:json (. xhr (getResponseJson))}))
+                      {:docs (reader/read-string
+                              (. xhr (getResponseText)))}))
 
-(defn display-feed-list [main-el xhr]
-  (let [feeds (. xhr (getResponseJson))]
-    (ui/render-template main-el
+(defn display-feed-list [main-el feeds]
+  (ui/render-template main-el
                         tpl/list-feeds
                         {:feeds feeds
-                         :languages (set (map #("language-full" %)
-                                              (js->clj feeds)))})))
+                         :languages (set (map :language-full feeds))}))
 
 (defn list-documents [language feed-name]
   (util/set-page-title! (str "List of documents for feed \"" feed-name "\""))
@@ -94,10 +94,11 @@
 (defn list-feeds-callback [e]
   (let [main-el (dom/getElement "main-page")
         xhr (.-target e)
+        feeds (reader/read-string (. xhr (getResponseText)))
         status (. xhr (getStatus))]
     (if (= status 200)
       (do
-        (display-feed-list main-el xhr)
+        (display-feed-list main-el feeds)
         (create-feed-list-events))
       (ui/render-template main-el tpl/list-feeds-error))))
 
@@ -127,14 +128,14 @@
                                                 (partial delete-doc-callback
                                                          language
                                                          feed-name))))))
-(defn create-feed-list-events [feed]
+(defn create-feed-list-events []
   (util/xhrify-internal-links! (util/get-internal-links!))
   (events/listen (dom/getElement "add-feed")
                  "click"
                  (fn [e]
                    (util/navigate "new-feed") "New Feed"))
   
-  ; converting to vector to avoid issues with doseq and arrays
+  ;; converting to vector to avoid issues with doseq and arrays
   (doseq [delete-link (cljs.core.Vector/fromArray
                        (dom/getElementsByTagNameAndClass "a" "delete-feed"))]
     (events/listen delete-link
@@ -144,9 +145,9 @@
                      (let [id-segments (string/split (.-id (.-target e)) ":")
                            language (nth id-segments 1)
                            feed-name (nth id-segments 2)]
-                       (document/delete-feed language
-                                             feed-name
-                                             list-feeds))))))
+                       (document/delete-feed-shortcut language
+                                                      feed-name
+                                                      list-feeds))))))
 (defn get-invalid-tokens [slug]
   (set/difference (set (re-seq #"\{[^\}]{0,}}" slug))
                   #{"{language}"
@@ -258,13 +259,13 @@
 (defn save-new-feed-xhr-callback [e]
   (let [xhr (.-target e)]
     (if (= (. xhr (getStatus)) 201)
-      (let [json (js->clj (. xhr (getResponseJson)))]
+      (let [feed (reader/read-string (. xhr (getResponseText)))]
         (util/navigate-replace-state (str "edit-feed/"
-                                          ("language" json)
+                                          (:language feed)
                                           "/"
-                                          ("name" json))
+                                          (:name feed))
                                      (str "Edit feed \""
-                                          ("name" json)
+                                          (:name feed)
                                           "\"")))
       (ui/display-error (dom/getElement "status-message")
                         could-not-save-feed-err))))
@@ -273,13 +274,13 @@
 (defn save-existing-feed-xhr-callback [e]
   (let [xhr (.-target e)]
     (if (= (. xhr (getStatus)) 200)
-      (let [json (js->clj (. xhr (getResponseJson)))]
+      (let [feed (reader/read-string (. xhr (getResponseText)))]
         (util/navigate-replace-state (str "edit-feed/"
-                                          ("language" json)
+                                          (:language feed)
                                           "/"
-                                          ("name" json))
+                                          (:name feed))
                                      (str "Edit feed \""
-                                          ("name" json)
+                                          (:name feed)
                                           "\"")))
       (ui/display-error (dom/getElement "status-message")
                         could-not-save-feed-err))))
@@ -321,22 +322,22 @@
                        (let [feed-doc (get-feed-value-map!)]
                          (if (= status :new)
                            (document/create-feed
-                            (:language feed-doc)
-                            (:name feed-doc)
-                            save-new-feed-xhr-callback
-                            feed-doc)
+                            feed-doc
+                            save-new-feed-xhr-callback)
                            (document/update-feed
-                            (:language feed-doc)
-                            (:name feed-doc)
-                            save-existing-feed-xhr-callback
-                            feed-doc))))))))
+                            feed-doc
+                            save-existing-feed-xhr-callback))))))))
 
-(defn render-feed-form [feed-data]
-  (ui/render-template (dom/getElement "main-page") tpl/manage-feed feed-data)
+(defn render-feed-form [feed]
+  (ui/render-template (dom/getElement "main-page")
+                      tpl/manage-feed
+                      feed)
   (util/xhrify-internal-links! (util/get-internal-links!))
 
-  (when (:language feed-data)
-    (ui/set-form-value (dom/getElement "language") (:language feed-data))))
+  (when (:language feed)
+    (ui/set-form-value (dom/getElement "language")
+                       (str "['" (:language feed) "',"
+                            "'" (:language-full feed) "']"))))
 
 (defn display-new-feed-form []
   (render-feed-form {:status "new"
@@ -354,24 +355,12 @@
   (let [xhr (.-target e)
         status (. xhr (getStatus))]
     (if (= status 200)
-      (let [json (js->clj (. xhr (getResponseJson)))]
+      (let [feed (reader/read-string (. xhr (getResponseText)))]
         (util/set-page-title!
-         (str "Edit feed \"" ("title" json) "\""))
-        (render-feed-form {:status "edit"
-                           :name ("name" json)
-                           :title ("title" json)
-                           :subtitle (or ("subtitle" json) "")
-                           :language (str "['"
-                                          ("language" json)
-                                          "','"
-                                          ("language-full" json)
-                                          "']")
-                           :default_slug_format ("default-slug-format" json)
-                           :default_document_type
-                           ("default-document-type" json)
-                           :searchable ("searchable" json)})
+         (str "Edit feed \"" (:title feed) "\""))
+        (render-feed-form (assoc feed :status "new"))
         (preview-slug!)
-        (let [dsf ("default-slug-format" json)
+        (let [dsf (:default-slug-format feed)
               select-option (partial ui/set-form-value
                                      (dom/getElement
                                       "default-slug-format-select"))]
@@ -392,6 +381,7 @@
                (ui/enable-element "default-slug-format"))))
           
         (ui/disable-element "name")
+        (ui/disable-element "language")
         (create-feed-form-events :edit language feed-name))
       ; else clause
       (ui/render-template (dom/getElement "main-page") tpl/feed-not-found))))

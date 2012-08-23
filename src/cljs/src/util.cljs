@@ -47,7 +47,7 @@
         (let [k (first keys)
               v (first values)
               key (if (keyword? k)
-                    (name k)
+                    (string/replace (name k) "-" "_")
                     k)
               value (cond
                      (map? v) (map-to-obj v)

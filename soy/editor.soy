@@ -555,7 +555,7 @@
  * @param hasPrev
  * @param feeds
  * @param feed
- * @param json
+ * @param images
  */
 {template .editor_images}
   <label for="image-feeds">Image feed: </label>
@@ -567,28 +567,28 @@
     {/foreach}
   </select>
 
-  {if length($json.documents) > 0}
+  {if length($images.documents) > 0}
     <p>Drag the image you want to include into the editor box below.</p>
   {/if}
 
   <div class="editor-image-bar">
     {for $i in range(3)}
-      {if $json.documents[$i]}
+      {if $images.documents[$i]}
         <div class="editor-image-preview-box">
-          <img src="{$json.documents[$i]['slug']}"
-               alt="{$json.documents[$i]['title']}"
-               title="{$json.documents[$i]['title']}" />
+          <img src="{$images.documents[$i]['slug']}"
+               alt="{$images.documents[$i]['title']}"
+               title="{$images.documents[$i]['title']}" />
         </div>
       {/if}
     {/for}
   </div>
   <div class="editor-image-bar">
     {for $i in range(3,6)}
-      {if $json.documents[$i]}
+      {if $images.documents[$i]}
         <div class="editor-image-preview-box">
-          <img src="{$json.documents[$i]['slug']}"
-               alt="{$json.documents[$i]['title']}"
-               title="{$json.documents[$i]['title']}" />
+          <img src="{$images.documents[$i]['slug']}"
+               alt="{$images.documents[$i]['title']}"
+               title="{$images.documents[$i]['title']}" />
         </div>
        {/if}
     {/for}
@@ -601,7 +601,7 @@
       <a id="editor-images-pagination-prev-link" href="#">Previous</a>
     </div>
     {/if}
-    {if $json.next}
+    {if $images.next}
       <div id="editor-images-pagination-next">
         <a id="editor-images-pagination-next-link" href="#">Next</a>
       </div>

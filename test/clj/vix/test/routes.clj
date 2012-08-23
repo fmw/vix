@@ -15,7 +15,14 @@
 
 (ns vix.test.routes
   (:use [clojure.test]
+        [ring.middleware params
+                         keyword-params
+                         nested-params
+                         multipart-params
+                         cookies
+                         flash]
         [slingshot.slingshot :only [throw+]]
+        [slingshot.test]
         [vix.routes] :reload
         [vix.db :only [create-document
                        get-feed
@@ -23,7 +30,8 @@
                        get-document
                        list-feeds]]
         [clojure.data.json :only [json-str read-json]]
-        [vix.test.db :only [database-fixture +test-db+]])
+        [vix.test.db :only [database-fixture +test-db+]]
+        [vix.test.test])
   (:require [clj-time.format :as time-format]
             [clj-time.core :as time-core]
             [net.cgrand.enlive-html :as html]
@@ -35,6 +43,18 @@
 
 (def last-modified-pattern
   #"[A-Z]{1}[a-z]{2}, \d{1,2} [A-Z]{1}[a-z]{2} \d{4} \d{2}:\d{2}:\d{2} \+0000")
+
+(def mock-app
+  "Mock app without session middleware, so session is preserved."
+  (-> main-routes
+      wrap-keyword-params
+      wrap-nested-params
+      wrap-params
+      (wrap-multipart-params)
+      (wrap-flash)
+      (redirection-handler)
+      (wrap-caching-headers)
+      (handle-exceptions)))
 
 (defn request-map [method resource body params]
   {:request-method method
@@ -50,26 +70,25 @@
   ([method resource body my-routes]
      (request method resource body my-routes {}))
   ([method resource body my-routes params]
-   (my-routes (assoc (request-map method resource body params)
-                     :session
-                     {:username "someone"
-                      :permissions {:* ["GET" "POST" "PUT" "DELETE"]}}))))
+     (mock-app (assoc (request-map method resource body params)
+                 :session
+                 {:username "someone"
+                  :permissions {:* ["GET" "POST" "PUT" "DELETE"]}}))))
 
 (defn unauthorized-request
   ([method resource my-routes]
-   (unauthorized-request method resource "" my-routes))
+     (unauthorized-request method resource "" my-routes))
   ([method resource body my-routes & params]
-   (app (assoc (request-map method resource body params)
-                     :session
-                     {:username "nemo"
-                      :permissions {:* ["GET" "POST" "PUT"]
-                                    :blog []}}))))
+     (mock-app (assoc (request-map method resource body params)
+                 :session
+                 {:username "nemo"
+                  :permissions {:blog []}}))))
 
 (defn unauthenticated-request
   ([method resource my-routes]
-   (unauthorized-request method resource "" my-routes))
+     (unauthorized-request method resource "" my-routes))
   ([method resource body my-routes & params]
-     (app (request-map method resource body params))))
+     (mock-app (request-map method resource body params))))
 
 (defn form-request [method resource my-routes form-params]
   (app (dissoc (assoc (request-map method resource nil nil)
@@ -154,16 +173,23 @@
   (is (= (class @index-reader)
          org.apache.lucene.index.ReadOnlyDirectoryReader)))
 
-(deftest test-json-response
-  (is (= (:status (json-response nil)) 404))
+(deftest test-data-response
+  (is (= (:status (data-response nil))
+         (:status (data-response nil :type :json))
+         (:status (data-response nil :type :clj)) 404))
 
-  ; FIXME: fix charset issues
-  (is (= (json-response {:foo "bar"})
+  (is (= (data-response {:foo "bar"} :type :json)
          {:status 200
           :headers {"Content-Type" "application/json; charset=UTF-8"}
           :body "{\"foo\":\"bar\"}"}))
 
-  (is (= (json-response {:foo "bar"} :status 201)
+  (is (= (data-response {:foo "bar"})
+         (data-response {:foo "bar"} :type :clj)
+         {:status 200
+          :headers {"Content-Type" "text/plain; charset=UTF-8"}
+          :body "{:foo \"bar\"}"}))
+
+  (is (= (data-response {:foo "bar"} :status 201 :type :json)
          {:status 201
           :headers {"Content-Type" "application/json; charset=UTF-8"}
           :body "{\"foo\":\"bar\"}"})))
@@ -666,17 +692,39 @@
                      :searchable true
                      :subtitle ""
                      :title "Weblog"
-                     :type "feed"}]
+                     :type "feed"}
+          image-feed {:created "2012-07-19T15:09:16.253Z"
+                       :default-document-type "image"
+                       :default-slug-format (str "/{language}/{feed-name}"
+                                                 "/{document-title}.{ext}")
+                       :language "en"
+                       :language-full "English"
+                       :name "images"
+                       :searchable false
+                       :subtitle ""
+                       :title "Images"
+                       :type "feed"}]
       (testing "test if feeds are created correctly."
-        (is (= (update-in (feed-request :POST blog-feed "en" "blog")
+        ;; test json request
+        (is (= (update-in (feed-request :POST :json blog-feed "en" "blog")
                           [:body]
                           #(dissoc (read-json %) :_rev :_id))
                {:status 201
                 :headers {"Content-Type" "application/json; charset=UTF-8"}
-                :body blog-feed})))
+                :body blog-feed}))
+
+        ;; test clojure request
+        (is (= (update-in (feed-request :POST :clj image-feed "en" "blog")
+                          [:body]
+                          #(dissoc (read-string %) :_rev :_id))
+               {:status 201
+                :headers {"Content-Type" "text/plain; charset=UTF-8"}
+                :body image-feed})))
 
       (testing "test if feeds are updated correctly."
+        ;; test json request
         (is (= (update-in (feed-request :PUT
+                                        :json
                                         (assoc blog-feed :title "foo")
                                         "en"
                                         "blog")
@@ -686,21 +734,48 @@
                 :headers {"Content-Type" "application/json; charset=UTF-8"}
                 :body (assoc blog-feed
                         :title "foo"
+                        :feed-updated "2012-07-19T15:09:16.253Z")}))
+
+        ;; test clojure request
+        (is (= (update-in (feed-request :PUT
+                                        :clj
+                                        (assoc image-feed :title "foo")
+                                        "en"
+                                        "images")
+                          [:body]
+                          #(dissoc (read-string %) :_rev :_id))
+               {:status 200
+                :headers {"Content-Type" "text/plain; charset=UTF-8"}
+                :body (assoc image-feed
+                        :title "foo"
                         :feed-updated "2012-07-19T15:09:16.253Z")})))
 
       (testing "test if feeds are loaded correctly."
-        (is (= (update-in (feed-request :GET nil "en" "blog")
+        ;; test json request
+        (is (= (update-in (feed-request :GET :json nil "en" "blog")
                           [:body]
                           #(dissoc (read-json %) :_rev :_id))
                {:status 200
                 :headers {"Content-Type" "application/json; charset=UTF-8"}
                 :body (assoc blog-feed
                         :title "foo"
+                        :feed-updated "2012-07-19T15:09:16.253Z")}))
+
+        ;; test clojure request
+        (is (= (update-in (feed-request :GET :clj nil "en" "images")
+                          [:body]
+                          #(dissoc (read-string %) :_rev :_id))
+               {:status 200
+                :headers {"Content-Type" "text/plain; charset=UTF-8"}
+                :body (assoc image-feed
+                        :title "foo"
                         :feed-updated "2012-07-19T15:09:16.253Z")})))
 
       (testing "test if feeds are deleted correctly."
+        ;; test json request
         (let [feed (get-feed +test-db+ "en" "blog")]
           (is (= (update-in (feed-request :DELETE
+                                          :json
                                           feed
                                           "en"
                                           "blog")
@@ -709,12 +784,26 @@
                  {:status 200
                   :headers {"Content-Type" "application/json; charset=UTF-8"}
                   :body {:ok true
+                         :id (:_id feed)}})))
+
+        ;; test clojure request
+        (let [feed (get-feed +test-db+ "en" "images")]
+          (is (= (update-in (feed-request :DELETE
+                                          :clj
+                                          feed
+                                          "en"
+                                          "images")
+                            [:body]
+                            #(dissoc (read-string %) :rev))
+                 {:status 200
+                  :headers {"Content-Type" "text/plain; charset=UTF-8"}
+                  :body {:ok true
                          :id (:_id feed)}})))))))
 
 (deftest test-document-request
   (with-redefs [util/now-rfc3339 #(str "2012-07-19T15:09:16.253Z")
                 config/database +test-db+]
-    (let [test-doc {:content "Hic sunt dracones."
+    (let [json-doc {:content "Hic sunt dracones."
                     :description "A nice map."
                     :draft false
                     :start-time ""
@@ -730,41 +819,107 @@
                     :slug "/en/blog/hsd"
                     :subtitle "Here be dragons"
                     :title "Hello, world!"
-                    :type "document"}]
+                    :type "document"}
+          clj-doc {:content "Hic sunt dracones."
+                   :description "A nice map."
+                   :draft false
+                   :start-time ""
+                   :start-time-rfc3339 nil
+                   :end-time ""
+                   :end-time-rfc3339 nil
+                   :feed "blog"
+                   :icon ""
+                   :language "en"
+                   :published "2012-07-19T15:09:16.253Z"
+                   :related-pages []
+                   :related-images []
+                   :slug "/en/blog/hsd-clj"
+                   :subtitle "Here be dragons"
+                   :title "Hello, world!"
+                   :type "document"}]
       (testing "test if feeds are created correctly."
-        (is (= (update-in (document-request :POST test-doc nil "en" "blog")
+        ;; test json request
+        (is (= (update-in (document-request :POST
+                                            :json
+                                            json-doc
+                                            nil
+                                            "en"
+                                            "blog")
                           [:body]
                           #(dissoc (read-json %) :_rev :_id))
                {:status 201
                 :headers {"Content-Type" "application/json; charset=UTF-8"}
-                :body test-doc})))
+                :body json-doc}))
+
+        ;; test clojure request
+        (is (= (update-in (document-request :POST
+                                            :clj
+                                            clj-doc
+                                            nil
+                                            "en"
+                                            "blog")
+                          [:body]
+                          #(dissoc (read-string %) :_rev :_id))
+               {:status 201
+                :headers {"Content-Type" "text/plain; charset=UTF-8"}
+                :body clj-doc})))
 
       (testing "test if documents are updated correctly."
-        (let [test-doc-fresh (get-document +test-db+ "/en/blog/hsd")]
+        ;; test json request
+        (let [json-doc-fresh (get-document +test-db+ "/en/blog/hsd")]
           (is (= (update-in (document-request :PUT
-                                              (assoc test-doc-fresh
+                                              :json
+                                              (assoc json-doc-fresh
                                                 :title "foo")
-                                              test-doc-fresh
+                                              json-doc-fresh
                                               "en"
                                               "blog")
                             [:body]
                             #(dissoc (read-json %) :_rev))
                  {:status 200
                   :headers {"Content-Type" "application/json; charset=UTF-8"}
-                  :body (assoc (dissoc test-doc-fresh :_rev)
+                  :body (assoc (dissoc json-doc-fresh :_rev)
                           :title "foo"
-                          :updated "2012-07-19T15:09:16.253Z")}))))
+                          :updated "2012-07-19T15:09:16.253Z")})))
+        
+        ;; test clojure request
+        (let [clj-doc-fresh (get-document +test-db+ "/en/blog/hsd-clj")]
+          (is (= (update-in (document-request :PUT
+                                              :clj
+                                              (assoc clj-doc-fresh
+                                                :title "foo")
+                                              clj-doc-fresh
+                                              "en"
+                                              "blog")
+                            [:body]
+                            #(dissoc (read-string %) :_rev))
+                 {:status 200
+                  :headers {"Content-Type" "text/plain; charset=UTF-8"}
+                  :body (assoc (dissoc clj-doc-fresh :_rev)
+                          :title "foo"
+                          :updated "2012-07-19T15:09:16.253Z")})))
+        )
 
       (testing "test if feeds are loaded correctly."
+        ;; test json request
         (let [existing-doc (get-document +test-db+ "/en/blog/hsd")]
-          (is (= (document-request :GET nil existing-doc "en" "blog")
+          (is (= (document-request :GET :json nil existing-doc "en" "blog")
                  {:status 200
                   :headers {"Content-Type" "application/json; charset=UTF-8"}
-                  :body (json-str existing-doc)}))))
+                  :body (json-str existing-doc)})))
+
+        ;; test clojure request
+        (let [existing-doc (get-document +test-db+ "/en/blog/hsd-clj")]
+          (is (= (document-request :GET :clj nil existing-doc "en" "blog")
+                 {:status 200
+                  :headers {"Content-Type" "text/plain; charset=UTF-8"}
+                  :body (pr-str existing-doc)}))))
 
       (testing "test if feeds are deleted correctly."
+        ;; test json request
         (let [existing-doc (get-document +test-db+ "/en/blog/hsd")]
           (is (= (update-in (document-request :DELETE
+                                              :json
                                               existing-doc
                                               existing-doc
                                               "en"
@@ -773,6 +928,21 @@
                             #(dissoc (read-json %) :rev))
                  {:status 200
                   :headers {"Content-Type" "application/json; charset=UTF-8"}
+                  :body {:ok true
+                         :id (:_id existing-doc)}})))
+
+        ;; test clojure request
+        (let [existing-doc (get-document +test-db+ "/en/blog/hsd-clj")]
+          (is (= (update-in (document-request :DELETE
+                                              :clj
+                                              existing-doc
+                                              existing-doc
+                                              "en"
+                                              "blog")
+                            [:body]
+                            #(dissoc (read-string %) :rev))
+                 {:status 200
+                  :headers {"Content-Type" "text/plain; charset=UTF-8"}
                   :body {:ok true
                          :id (:_id existing-doc)}})))))))
 
@@ -816,25 +986,50 @@
                             :draft false})]))
       
       (with-redefs [index-reader (atom
-                                    (lucene/create-index-reader directory))]
+                                  (lucene/create-index-reader directory))]
         (testing "test document pagination"
+          ;; test json request
           (let [first-five (read-json
-                            (:body (request :get
-                                            "/json/en/pages/list-documents"
-                                            nil
-                                            main-routes
-                                            {:limit "5"})))]
+                            (:body
+                             (request :get
+                                      "/_api/json/en/pages/_list-documents"
+                                      nil
+                                      main-routes
+                                      {:limit "5"})))]
             (is (= (count (:documents first-five)) 5))
 
             (let [next-five (read-json
-                             (:body (request :get
-                                             "/json/en/pages/list-documents"
-                                             nil
-                                             main-routes
-                                             {:limit "5"
-                                              :startkey-published
-                                              (:published
-                                               (:next first-five))})))]
+                             (:body
+                              (request :get
+                                       "/_api/json/en/pages/_list-documents"
+                                       nil
+                                       main-routes
+                                       {:limit "5"
+                                        :startkey-published
+                                        (:published
+                                         (:next first-five))})))]
+              (is (= (count (:documents next-five)) 5))))
+
+          ;; test clojure request
+          (let [first-five (read-string
+                            (:body
+                             (request :get
+                                      "/_api/clj/en/pages/_list-documents"
+                                      nil
+                                      main-routes
+                                      {:limit "5"})))]
+            (is (= (count (:documents first-five)) 5))
+
+            (let [next-five (read-string
+                             (:body
+                              (request :get
+                                       "/_api/clj/en/pages/_list-documents"
+                                       nil
+                                       main-routes
+                                       {:limit "5"
+                                        :startkey-published
+                                        (:published
+                                         (:next first-five))})))]
               (is (= (count (:documents next-five)) 5)))))
 
         (testing "test search page and search pagination"
@@ -938,7 +1133,8 @@
                       (html/select second-page
                                    [:a#next-search-results-page]))
                      :href))
-                   (str "/en/search?q=bar&after-doc-id=19&after-score=0.47674"
+                   (str "/en/search?q=bar&after-doc-id=19"
+                        "&after-score=0.47674"
                         "&pp-aid[]=9&pp-as[]=0.47674"))))
         
           (let [third-page (html/html-resource
@@ -976,7 +1172,7 @@
                     :href)
                                    
                    #{"/en/search?q=bar&after-doc-id=9&after-score=0.47674"}))
-          
+
             (is (=  (html/select third-page [:a#next-search-results-page])
                     []))))
     
@@ -985,13 +1181,17 @@
         (is (= (:status (request :get "/logout" main-routes)) 302))
         (is (= (:status (request :get "/admin" main-routes)) 200))
         (is (= (:status (request :get
-                                 "/json/en/blog/list-documents"
+                                 "/_api/json/en/blog/_list-documents"
+                                 main-routes))
+               (:status (request :get
+                                 "/_api/clj/en/blog/_list-documents"
                                  main-routes))
                200))
 
+        ;; test json request
         (is (= (:status (request
                          :post
-                         "/json/document/blog/test"
+                         "/_api/json/_document/blog/test"
                          (json-str {:title "test-create"
                                     :slug "/blog/test"
                                     :language "en"
@@ -1000,25 +1200,56 @@
                          main-routes))
                201))
 
+        ;; test clojure request
+        (is (= (:status (request
+                         :post
+                         "/_api/clj/_document/blog/test-clj"
+                         (pr-str {:title "test-create"
+                                  :slug "/blog/test-clj"
+                                  :language "en"
+                                  :feed "blog"
+                                  :content "hic sunt dracones"})
+                         main-routes))
+               201))
+
         (testing "test if the document is added to the database"
+          ;; test for json request
           (let [document (get-document +test-db+ "/blog/test")]
+            (is (= (:title document)) "test-create"))
+
+          ;; test for clojure request
+          (let [document (get-document +test-db+ "/blog/test-clj")]
             (is (= (:title document)) "test-create")))
 
         (testing "test if the document is added to the lucene index"
           (let [reader (lucene/create-index-reader directory)]
-            (is (= (.get (lucene/get-doc reader 21) "title") "test-create"))))
+            (is (= (.get (lucene/get-doc reader 21) "title")
+                   (.get (lucene/get-doc reader 22) "title")
+                   "test-create"))))
 
-        (is (= (:status (request :get "/json/document/blog/bar" main-routes))
+        (is (= (:status (request :get
+                                 "/_api/json/_document/blog/bar"
+                                 main-routes))
+               (:status (request :get
+                                 "/_api/clj/_document/blog/bar"
+                                 main-routes))
                200))
-        (is (= (:status (request :get "/json/document/blog/t3" main-routes))
+        
+        (is (= (:status (request :get
+                                 "/_api/json/_document/blog/t3"
+                                 main-routes))
+               (:status (request :get
+                                 "/_api/clj/_document/blog/t3"
+                                 main-routes))
                404))
     
         ;; FIXME: should add a test-case for a 409 conflict
         (testing "test if documents are updated correctly"
+          ;; test json request
           (let [document (get-document +test-db+ "/blog/bar")]
             (is (= (:status (request
                              :put
-                             "/json/document/blog/bar"
+                             "/_api/json/_document/blog/bar"
                              (json-str (assoc document :title "hi!"))
                              main-routes))
                    200))
@@ -1028,8 +1259,27 @@
 
             (is (= (:status (request
                              :put
-                             "/json/document/blog/doesnt-exist"
+                             "/_api/json/_document/blog/doesnt-exist"
                              (json-str (assoc document :title "hi!"))
+                             main-routes))
+                   404)))
+
+          ;; test clojure request
+          (let [document (get-document +test-db+ "/blog/test-clj")]
+            (is (= (:status (request
+                             :put
+                             "/_api/clj/_document/blog/test-clj"
+                             (pr-str (assoc document :title "hi!"))
+                             main-routes))
+                   200))
+
+            (is (= (:title (get-document +test-db+ "/blog/test-clj"))
+                   "hi!"))
+
+            (is (= (:status (request
+                             :put
+                             "/_api/clj/_document/blog/doesnt-exist"
+                             (pr-str (assoc document :title "hi!"))
                              main-routes))
                    404))))
 
@@ -1038,10 +1288,21 @@
             (is (= (.get (lucene/get-doc reader 22) "title") "hi!"))))
 
         (testing "test if document is deleted from the database correctly"
+          ;; test json request
           (is (= (:status
-                  (request :delete "/json/document/blog/bar" main-routes))
+                  (request :delete
+                           "/_api/json/_document/blog/bar"
+                           main-routes))
                  200))
-          (is (= (get-document +test-db+ "/blog/bar") nil)))
+          (is (= (get-document +test-db+ "/blog/bar") nil))
+
+          ;; test clojure request
+          (is (= (:status
+                  (request :delete
+                           "/_api/clj/_document/blog/test-clj"
+                           main-routes))
+                 200))
+          (is (= (get-document +test-db+ "/blog/test-clj") nil)))
 
         (testing "test if document is also deleted from the lucene index."
           (let [reader (lucene/create-index-reader directory)
@@ -1063,7 +1324,7 @@
    
       (let [post-feed-request (request
                                :post
-                               "/json/feed/en/blog"
+                               "/_api/json/_feed/en/blog"
                                (json-str {:name "blog"
                                           :title "Vix Weblog"
                                           :language "en"
@@ -1082,7 +1343,7 @@
                           (:body
                            (request
                             :post
-                            "/json/feed/en/image"
+                            "/_api/json/_feed/en/image"
                             (json-str {:name "image"
                                        :title "Images"
                                        :language "en"
@@ -1093,40 +1354,50 @@
                             main-routes)))
               all-feeds (read-json
                          (:body
-                          (request :get "/json/list-feeds" main-routes)))
-              image-feed-nl (read-json
+                          (request :get
+                                   "/_api/json/_list-feeds"
+                                   main-routes)))
+              image-feed-nl (read-string
                              (:body
                               (request
                                :post
-                               "/json/feed/nl/image"
-                               (json-str {:name "image"
-                                          :title "Images"
-                                          :language "nl"
-                                          :subtitle "Pictures."
-                                          :default-slug-format
-                                          "/static/{document-title}.{ext}"
-                                          :default-document-type "image"})
+                               "/_api/clj/_feed/nl/image"
+                               (pr-str {:name "image"
+                                        :title "Images"
+                                        :language "nl"
+                                        :subtitle "Pictures."
+                                        :default-slug-format
+                                        "/static/{document-title}.{ext}"
+                                        :default-document-type "image"})
                                main-routes)))]
 
           (is (= (count all-feeds) 3))
 
-          (testing "test language argument for /json/list-feeds"
+          (testing "test language argument for /_api/x/_list-feeds"
             (is (= (sort-by :name all-feeds)
                    (sort-by :name
                             (read-json
                              (:body
                               (request :get
-                                       "/json/list-feeds"
+                                       "/_api/json/_list-feeds"
+                                       nil
+                                       main-routes
+                                       {:language "en"}))))
+                   (sort-by :name
+                            (read-string
+                             (:body
+                              (request :get
+                                       "/_api/clj/_list-feeds"
                                        nil
                                        main-routes
                                        {:language "en"}))))))
 
             (is (= [image-feed-nl]
-                   (read-json
+                   (read-string
                     (:body
                      (request
                       :get
-                      "/json/list-feeds"
+                      "/_api/clj/_list-feeds"
                       nil
                       main-routes
                       {:default-document-type "image"
@@ -1134,43 +1405,134 @@
           
           (is (= (count (read-json
                          (:body (request :get
-                                         "/json/list-feeds"
+                                         "/_api/json/_list-feeds"
                                          main-routes))))
                  4))
+
+          (is (= (read-json
+                  (:body (request :get
+                                  "/_api/json/_list-feeds"
+                                  main-routes)))
+                 (read-string
+                  (:body (request :get
+                                  "/_api/clj/_list-feeds"
+                                  main-routes)))))
           
           (is (= [image-feed-nl image-feed]
                  (read-json
                   (:body (request
                           :get
-                          "/json/list-feeds"
+                          "/_api/json/_list-feeds"
+                          nil
+                          main-routes
+                          {:default-document-type
+                           "image"})))
+                 (read-string
+                  (:body (request
+                          :get
+                          "/_api/clj/_list-feeds"
                           nil
                           main-routes
                           {:default-document-type
                            "image"})))))))
 
-      (let [get-feed-request (request :get "/json/feed/en/blog" main-routes)
-            json-body (read-json (:body get-feed-request))]
-        (is (= (:status get-feed-request) 200))
-        (is (= (:name json-body) "blog"))
-        (is (= (:title json-body) "Vix Weblog"))
+      (let [{:keys [status body] :as get-feed-json}
+            (update-in (request :get
+                                "/_api/json/_feed/en/blog"
+                                main-routes)
+                       [:body]
+                       read-json)
+            get-feed-clj
+            (update-in (request :get
+                                "/_api/clj/_feed/en/blog"
+                                main-routes)
+                       [:body]
+                       read-string)]
+        (is (= (dissoc get-feed-json :headers)
+               (dissoc get-feed-clj :headers)))
+        (is (= status 200))
+        (is (= (:name body) "blog"))
+        (is (= (:title body) "Vix Weblog"))
 
-        (let [put-feed-request (request :put
-                                        "/json/feed/en/blog"
-                                        (json-str (assoc json-body
-                                                    :title "Vix!"
-                                                    :searchable false))
-                                        main-routes)
-              json-put-body (read-json (:body put-feed-request))]
-          (is (= (:status put-feed-request) 200))
-          (is (= (:name json-put-body) "blog"))
-          (is (= (:title json-put-body) "Vix!"))
+        ;; test json put request
+        (let [{:keys [body status] :as put-request-json}
+              (update-in (request :put
+                                  "/_api/json/_feed/en/blog"
+                                  (json-str (assoc body
+                                              :title "Vix!"
+                                              :searchable false))
+                                  main-routes)
+                         [:body]
+                         read-json)]
+          (is (= status 200))
+          (is (= (:name body) "blog"))
+          (is (= (:title body) "Vix!"))
           
           (is (= @search-allowed-feeds {"nl" [] "en" ["pages"]})
               "Make sure search-allowed-feeds is updated when feeds are")))
-    
-      (is (:status (request :get "/json/feed/en/blog" main-routes)) 200)
-      (is (:status (request :delete "/json/feed/en/blog" main-routes)) 200)
-      (is (:status (request :get "/json/feed/en/blog" main-routes)) 404))))
+
+      ;; test clojure put request
+      (let [{:keys [body status] :as put-request-clj}
+            (update-in (request :put
+                                "/_api/clj/_feed/en/blog"
+                                (pr-str
+                                 (assoc (read-string
+                                         (:body
+                                          (request :get
+                                                   "/_api/clj/_feed/en/blog"
+                                                   main-routes)))
+                                   :title "Fix!"
+                                   :searchable false))
+                                main-routes)
+                       [:body]
+                       read-string)]
+        (is (= status 200))
+        (is (= (:name body) "blog"))
+        (is (= (:title body) "Fix!")))
+
+      (is (= (:status (request :get "/_api/json/_feed/en/blog" main-routes))
+             (:status (request :delete
+                               "/_api/json/_feed/en/blog"
+                               main-routes))
+             (:status (request :get "/_api/clj/_feed/en/image" main-routes))
+             (:status (request :delete
+                               "/_api/clj/_feed/en/image"
+                               main-routes))
+             200))
+      
+      (is (= (:status (request :get "/_api/clj/_feed/en/blog" main-routes))
+             404))))
+
+  (testing "test invalid api requests"
+    (are [uri]
+         (= (request :post
+                     uri
+                     "[}"
+                     main-routes)
+            {:status 400
+             :headers {"Content-Type" "text/plain; charset=UTF-8"}
+             :body "The JSON or Clojure request body is invalid."})
+         "/_api/clj/_feed/nl/invalid-image"
+         "/_api/json/_feed/nl/invalid-image"
+         "/_api/clj/_document/blog/invalid-test"
+         "/_api/json/_document/blog/invalid-test")))
+
+(deftest test-read-body
+  (is (= (read-body "json" (java.io.StringReader. ""))
+         (read-body "clj" (java.io.StringReader. ""))
+         nil))
+
+  (is (= (read-body "json" (java.io.StringReader. "{\"foo\":\"bar\"}"))
+         {:foo "bar"}))
+
+  (is (= (read-body "clj" (java.io.StringReader. "{:foo :bar}"))
+         {:foo :bar}))
+
+  (is (thrown+? (partial check-exc :vix.routes/invalid-request-body)
+                (read-body "json" (java.io.StringReader. "{]"))))
+
+  (is (thrown+? (partial check-exc :vix.routes/invalid-request-body)
+                (read-body "clj" (java.io.StringReader. "{]")))))
 
 (deftest ^{:integration true} test-routes-authorization
   (do
@@ -1195,62 +1557,92 @@
                 lucene/directory (lucene/create-directory :RAM)]
     (testing "Test if authorization is enforced correctly."
       (is (= (:status (unauthorized-request :get "/admin/" main-routes))
-             302))
-      (is (= (:status (unauthorized-request :get
-                                            "/json/en/blog/list-documents"
-                                            main-routes))
-             302))
-      (is (= (:status (unauthorized-request
+             ;; test json requests
+             (:status (unauthorized-request
+                       :get
+                       "/_api/json/en/blog/_list-documents"
+                       main-routes))
+             (:status (unauthorized-request
                        :post
-                       "/json/document/blog/test"
+                       "/_api/json/_document/blog/test"
                        (json-str {:title "test-create"
                                   :slug "/blog/test"
                                   :content "hic sunt dracones"})
-
                        main-routes))
-             302))
-      (is (= (:status (unauthorized-request
+             (:status (unauthorized-request
                        :get
-                       "/json/document/blog/test"
+                       "/_api/json/_document/blog/test"
                        main-routes))
-             302))
-      (is (= (:status (unauthorized-request
+             (:status (unauthorized-request
                        :put
-                       "/json/document/blog/test"
+                       "/_api/json/_document/blog/test"
                        (json-str {:title "test-create"
                                   :slug "/blog/test"
                                   :content "hic sunt dracones"})
-
                        main-routes))
-             302))
-      (is (= (:status (unauthorized-request
+             (:status (unauthorized-request
                        :delete
-                       "/json/document/blog/test"
+                       "/_api/json/_document/blog/test"
                        main-routes))
-             302))
-
-      ;; feed
-      (is (= (:status (unauthorized-request
+             (:status (unauthorized-request
                        :post
-                       "/json/feed/foo/bar"
+                       "/_api/clj/_feed/foo/bar"
                        main-routes))
-             302))
-      
-      (is (= (:status (unauthorized-request
+             (:status (unauthorized-request
                        :get
-                       "/json/feed/en/blog"
+                       "/_api/clj/_feed/en/blog"
                        main-routes))
-             302))
-      
-      (is (= (:status (unauthorized-request
+             (:status (unauthorized-request
                        :put
-                       "/json/feed/en/blog"
+                       "/_api/clj/_feed/en/blog"
                        main-routes))
-             302))
-
-      (is (= (:status (unauthorized-request
+             (:status (unauthorized-request
                        :delete
-                       "/json/feed/en/blog"
+                       "/_api/clj/_feed/en/blog"
+                       main-routes))
+
+             ;; test clojure requests
+             (:status (unauthorized-request
+                       :get
+                       "/_api/clj/en/blog/_list-documents"
+                       main-routes))
+             (:status (unauthorized-request
+                       :post
+                       "/_api/clj/_document/blog/test"
+                       (pr-str {:title "test-create"
+                                  :slug "/blog/test"
+                                  :content "hic sunt dracones"})
+                       main-routes))
+             (:status (unauthorized-request
+                       :get
+                       "/_api/clj/_document/blog/test"
+                       main-routes))
+             (:status (unauthorized-request
+                       :put
+                       "/_api/clj/_document/blog/test"
+                       (pr-str {:title "test-create"
+                                  :slug "/blog/test"
+                                  :content "hic sunt dracones"})
+                       main-routes))
+             (:status (unauthorized-request
+                       :delete
+                       "/_api/clj/_document/blog/test"
+                       main-routes))
+             (:status (unauthorized-request
+                       :post
+                       "/_api/clj/_feed/foo/bar"
+                       main-routes))
+             (:status (unauthorized-request
+                       :get
+                       "/_api/clj/_feed/en/blog"
+                       main-routes))
+             (:status (unauthorized-request
+                       :put
+                       "/_api/clj/_feed/en/blog"
+                       main-routes))
+             (:status (unauthorized-request
+                       :delete
+                       "/_api/clj/_feed/en/blog"
                        main-routes))
              302)))))
 
@@ -1269,37 +1661,63 @@
     (with-redefs [config/database +test-db+
                   lucene/directory (lucene/create-directory :RAM)]
       (is (= (:status (unauthenticated-request :get "/admin" main-routes))
-             302))
-      (is (= (:status (unauthenticated-request :get
-                                               "/json/en/blog/list-documents"
-                                               main-routes))
-             302))
-      (is (= (:status (unauthenticated-request
-                       :post
-                       "/json/document/blog/test"
-                       (json-str {:title "test-create"
-                                  :slug "/blog/test"
-                                  :content "hic sunt dracones"})
-
-                       main-routes))
-             302))
-      (is (= (:status (unauthenticated-request
+             
+             ;; test json requests
+             (:status (unauthenticated-request
                        :get
-                       "/json/document/blog/test"
+                       "/_api/json/en/blog/_list-documents"
                        main-routes))
-             302))
-      (is (= (:status (unauthenticated-request
+             (:status (unauthenticated-request
+                       :post
+                       "/_api/json/_document/blog/test"
+                       (json-str {:title "test-create"
+                                  :slug "/blog/test"
+                                  :content "hic sunt dracones"})
+                       main-routes))
+             (:status (unauthenticated-request
+                       :get
+                       "/_api/json/_document/blog/test"
+                       main-routes))
+             (:status (unauthenticated-request
                        :put
-                       "/json/document/blog/test"
+                       "/_api/json/_document/blog/test"
                        (json-str {:title "test-create"
                                   :slug "/blog/test"
                                   :content "hic sunt dracones"})
 
                        main-routes))
-             302))
-      (is (= (:status (unauthenticated-request
+             (:status (unauthenticated-request
                        :delete
-                       "/json/document/blog/test"
+                       "/_api/json/_document/blog/test"
+                       main-routes))
+
+             ;; test clojure requests
+             (:status (unauthenticated-request
+                       :get
+                       "/_api/clj/en/blog/_list-documents"
+                       main-routes))
+             (:status (unauthenticated-request
+                       :post
+                       "/_api/clj/_document/blog/test"
+                       (pr-str {:title "test-create"
+                                :slug "/blog/test"
+                                :content "hic sunt dracones"})
+                       main-routes))
+             (:status (unauthenticated-request
+                       :get
+                       "/_api/clj/_document/blog/test"
+                       main-routes))
+             (:status (unauthenticated-request
+                       :put
+                       "/_api/clj/_document/blog/test"
+                       (pr-str {:title "test-create"
+                                  :slug "/blog/test"
+                                  :content "hic sunt dracones"})
+
+                       main-routes))
+             (:status (unauthenticated-request
+                       :delete
+                       "/_api/clj/_document/blog/test"
                        main-routes))
              302)))))
 
@@ -1419,10 +1837,10 @@
                  :uri "/test"})
                {:server-name "localhost" :uri "/test"}))))))
 
-(deftest test-handle-authentication-errors
-  (is (= ((handle-authentication-errors identity) :works) :works))
+(deftest test-handle-exceptions
+  (is (= ((handle-exceptions identity) :works) :works))
 
-  (is (= ((handle-authentication-errors
+  (is (= ((handle-exceptions
            (fn [handler]
              (throw+ auth/insufficient-privileges-error)))
           :should-not-work)
@@ -1430,19 +1848,27 @@
           :headers {"Location" "/permission-denied"}
           :body ""}))
 
-  (is (= ((handle-authentication-errors
+  (is (= ((handle-exceptions
            (fn [handler]
              (throw+ auth/authentication-required-error)))
           :should-not-work)
          {:status 302
           :headers {"Location" "/login"}
-          :body ""})))
+          :body ""}))
+
+  (is (= ((handle-exceptions
+           (fn [handler]
+             (throw+ invalid-request-body-error)))
+          :should-not-work)
+         {:status 400
+          :headers {"Content-Type" "text/plain; charset=UTF-8"}
+          :body "The JSON or Clojure request body is invalid."})))
 
 (defn test-ns-hook []
   (database-fixture test-reset-search-allowed-feeds!)
   (database-fixture test-reset-available-languages!)
   (test-reset-index-reader!)
-  (test-json-response)
+  (test-data-response)
   (test-response)
   (test-page-not-found-response)
   (database-fixture test-image-response)
@@ -1455,6 +1881,7 @@
   (database-fixture test-feed-request)
   (database-fixture test-document-request)
   (database-fixture test-routes)
+  (test-read-body)
   (database-fixture test-routes-authorization)
   (database-fixture test-routes-authentication)
   (test-logout)
@@ -1462,4 +1889,4 @@
   (test-wrap-caching-headers)
   (test-redirect-301)
   (test-redirection-handler)
-  (test-handle-authentication-errors))
+  (test-handle-exceptions))
