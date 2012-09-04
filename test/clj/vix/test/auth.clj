@@ -14,8 +14,8 @@
 ;; limitations under the License.
 
 (ns vix.test.auth
-  (:use [vix.auth] :reload)
-  (:use [clojure.test]
+  (:use [vix.auth] :reload
+        [clojure.test]
         [slingshot.test]
         [vix.test.test]
         [vix.test.db :only [database-fixture +test-server+ +test-db+]]))
@@ -90,8 +90,7 @@
              ["en" "pages"] ["GET"]}}
            :GET
            "en"
-           "pages")
-          true))
+           "pages")))
 
     (is (thrown+? (partial check-exc :vix.auth/authentication-required)
           (authorize
@@ -101,8 +100,7 @@
              ["en" "pages"] ["GET"]}}
            :GET
            "en"
-           "pages")
-          true)))
+           "pages"))))
 
   (testing "Expect exception if unlisted method is requested for feed."
     (are [method]
