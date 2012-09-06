@@ -663,6 +663,6 @@
 
 (def app
   (-> (handler/site main-routes)
- ;;     (redirection-handler)
+      (redirection-handler)
       (wrap-caching-headers)
       (handle-exceptions)))
