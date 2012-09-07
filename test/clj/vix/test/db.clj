@@ -14,8 +14,10 @@
 ;; limitations under the License.
 
 (ns vix.test.db
-  (:use [vix.db] :reload)
-  (:use [clojure.test]
+  (:use [vix.db] :reload
+        [vix.test.test]
+        [slingshot.test]
+        [clojure.test]
         [clojure.data.json :only [read-json]])
   (:require [com.ashafa.clutch :as clutch]
             [clj-http.client :as http]
@@ -66,24 +68,33 @@
                                          +test-db+
                                          "/_design/views"))))]
 
-    (is (= (count (:views view-doc)) 8))
+    (is (= (count (:views view-doc)) 9))
     
     (is (= (:map (:feeds (:views view-doc)))
-           (str "function(doc) {\n"
-                "    if(doc.type === \"feed\") {\n"
-                "        emit([doc.language, doc.name], doc);\n"
-                "    }\n"
-                "}\n")))
+           (str "function(feed) {\n"
+                "    if(feed.type === \"feed\") {\n"
+                "        emit([feed.language, feed.name, feed.datestamp]"
+                ", feed);\n    }\n}\n")))
 
     (is (= (:map (:feeds_by_default_document_type (:views view-doc)))
-           (str "function(doc) {\n"
-                "    if(doc.type === \"feed\") {\n"
-                "        emit([doc[\"default-document-type\"],\n"
-                "              doc[\"language\"],\n"
-                "              doc[\"name\"]],\n"
-                "             doc);\n"
-                "    }\n"
-                "}\n")))
+           (str "function(feed) {\n"
+                "    if(feed.type === \"feed\" &&\n"
+                "       feed[\"current-state\"] === true &&\n"
+                "       feed.action !== \"delete\") {\n"
+                "        emit([feed[\"default-document-type\"],\n"
+                "              feed[\"language\"],\n"
+                "              feed[\"name\"]],\n"
+                "             feed);\n"
+                "    }\n}\n")))
+
+    (is (= (:map (:feeds_overview (:views view-doc)))
+           (str "function(feed) {\n"
+                "    if(feed.type === \"feed\" &&\n"
+                "       feed[\"current-state\"] === true &&\n"
+                "       feed.action !== \"delete\") {\n"
+                "        emit([feed.language, feed.name, feed.datestamp],"
+                              " feed);\n"
+                "    }\n}\n")))
     
     (is (= (:map (:by_slug (:views view-doc)))
            (str "function(doc) {\n"
@@ -121,9 +132,11 @@
                 "    }\n}\n")))
 
     (is (= (:map (:languages (:views view-doc)))
-           (str "function(doc) {\n"
-                "    if(doc.type === \"feed\") {\n"
-                "        emit(doc.language, null);\n"
+           (str "function(feed) {\n"
+                "    if(feed.type === \"feed\" &&\n"
+                "       feed[\"current-state\"] === true &&\n"
+                "       feed.action !== \"delete\") {\n"
+                "        emit(feed.language, null);\n"
                 "    }\n}\n")))
 
     (is (= (:reduce (:languages (:views view-doc)))
@@ -156,8 +169,8 @@
                       :content "bar"
                       :draft true}))
 
-                                        ; as we didn't create the view manually here, this test also implies
-                                        ; views are created automatically by get-document
+  ;; we didn't create the view manually here, this test also implies
+  ;; are created automatically by get-document
   (let [document (get-document +test-db+ "/blog/foo")]
     (is (couchdb-id? (:_id document)))
     (is (couchdb-rev? (:_rev document)))
@@ -201,37 +214,121 @@
                                            true)))))))
 
 (deftest test-get-feed
-  (do
-    (create-feed +test-db+
-                 {:title "Weblog"
-                  :subtitle "Vix Weblog!"
-                  :name "blog"
-                  :default-slug-format "/{document-title}"
-                  :default-document-type "with-description"
-                  :language "en"})
-    (create-feed +test-db+
-                 {:title "Weblog"
-                  :subtitle "Vix Weblog!"
-                  :name "blog"
-                  :default-slug-format "/{document-title}"
-                  :default-document-type "with-description"
-                  :language "nl"}))
+  (with-redefs [util/now-rfc3339 #(str "2012-09-04T03:46:52.096Z")]
+    (let [en-feed (append-to-feed
+                   +test-db+
+                   {:action :create
+                    :title "Weblog"
+                    :subtitle "Vix Weblog!"
+                    :name "blog"
+                    :default-slug-format "/{document-title}"
+                    :default-document-type "with-description"
+                    :language "en"})
+          nl-feed (append-to-feed
+                   +test-db+
+                   {:action :create
+                    :title "Weblog"
+                    :subtitle "Vix Weblog!"
+                    :name "blog"
+                    :default-slug-format "/{document-title}"
+                    :default-document-type "with-description"
+                    :language "nl"})
+          nl-feed-update-0 (with-redefs
+                             [util/now-rfc3339
+                              #(str "2012-09-04T03:50:52.096Z")]
+                             (append-to-feed
+                              +test-db+
+                              {:action :update
+                               :previous-id (:_id (first nl-feed))
+                               :title "B1"
+                               :subtitle "b1!"
+                               :name "blog"
+                               :default-slug-format "/{document-title}"
+                               :default-document-type "with-description"
+                               :language "nl"}))
+          nl-feed-update-1 (with-redefs
+                             [util/now-rfc3339
+                              #(str "2012-09-04T03:55:52.096Z")]
+                             (append-to-feed
+                              +test-db+
+                              {:action :update
+                               :previous-id (:_id (first nl-feed-update-0))
+                               :title "B2"
+                               :subtitle "b2!"
+                               :name "blog"
+                               :default-slug-format "/{document-title}"
+                               :default-document-type "with-description"
+                               :language "nl"}))]
 
-  (is (nil? (get-feed +test-db+ "de" "blog")))
+      (is (= (map #(dissoc % :_id :_rev) (get-feed +test-db+ "en" "blog"))
+             [{:subtitle "Vix Weblog!"
+               :action :create
+               :name "blog"
+               :language "en"
+               :title "Weblog"
+               :datestamp "2012-09-04T03:46:52.096Z"
+               :created "2012-09-04T03:46:52.096Z"
+               :type "feed"
+               :default-document-type "with-description"
+               :default-slug-format "/{document-title}"}]))
 
-  (is (= (:title (get-feed +test-db+ "en" "blog"))
-         (:title (get-feed +test-db+ "nl" "blog"))))
-  
-  (let [feed (get-feed +test-db+ "nl" "blog")]
-    (is (= (:type feed) "feed"))
-    (is (couchdb-id? (:_id feed)))
-    (is (couchdb-rev? (:_rev feed)))
-    (is (iso-date? (:created feed)))
-    (is (= (:title feed) "Weblog"))
-    (is (= (:subtitle feed) "Vix Weblog!"))
-    (is (= (:name feed) "blog"))
-    (is (= (:default-slug-format feed) "/{document-title}"))
-    (is (= (:default-document-type feed) "with-description"))))
+      (is (couchdb-id? (:_id (first (get-feed +test-db+ "en" "blog")))))
+      (is (couchdb-rev? (:_rev (first (get-feed +test-db+ "en" "blog")))))
+
+      (is (= (map #(dissoc % :_id :_rev :previous-id)
+                  (get-feed +test-db+ "nl" "blog"))
+             [{:subtitle "b2!"
+               :action :update
+               :name "blog"
+               :language "nl"
+               :title "B2"
+               :datestamp "2012-09-04T03:55:52.096Z"
+               :type "feed"
+               :default-document-type "with-description"
+               :default-slug-format "/{document-title}"}
+              {:subtitle "b1!"
+               :action :update
+               :name "blog"
+               :language "nl"
+               :title "B1"
+               :datestamp "2012-09-04T03:50:52.096Z"
+               :type "feed"
+               :default-document-type "with-description"
+               :default-slug-format "/{document-title}"}
+              {:subtitle "Vix Weblog!"
+               :action :create
+               :name "blog"
+               :language "nl"
+               :title "Weblog"
+               :datestamp "2012-09-04T03:46:52.096Z"
+               :created "2012-09-04T03:46:52.096Z"
+               :type "feed"
+               :default-document-type "with-description"
+               :default-slug-format "/{document-title}"}]))
+
+            (is (= (map #(dissoc % :_id :_rev :previous-id)
+                  (get-feed +test-db+ "nl" "blog" 1))
+             [{:subtitle "b2!"
+               :action :update
+               :name "blog"
+               :language "nl"
+               :title "B2"
+               :datestamp "2012-09-04T03:55:52.096Z"
+               :type "feed"
+               :default-document-type "with-description"
+               :default-slug-format "/{document-title}"}]))
+
+        
+      (let [blog-states (get-feed +test-db+ "nl" "blog")]
+        (are [n]
+             (couchdb-id? (:_id (nth blog-states n)))
+             0 1 2)
+
+        (are [rev-number n]
+             (couchdb-rev? rev-number (:_rev (nth blog-states n)))
+             1 0
+             2 1
+             2 2)))))
 
 (deftest test-get-unique-slug
   (is (= (get-unique-slug +test-db+ "/blog/foo") "/blog/foo"))
@@ -334,25 +431,186 @@
       (is (= (get-attachment-as-base64-string +test-db+ document :original)
              gif)))))
 
-(deftest test-create-feed
-  (let [feed (create-feed +test-db+
-                          {:title "Weblog"
-                           :subtitle "Vix Weblog!"
-                           :name "blog"
-                           :language "en"
-                           :default-slug-format "/{document-title}"
-                           :default-document-type "with-description"})]
+(deftest test-append-to-feed
+  (let [blog-feed (with-redefs [util/now-rfc3339
+                                #(str "2012-09-04T04:30:17.872Z")]
+                    (first
+                     (append-to-feed
+                      +test-db+
+                      {:action :create
+                       :title "Weblog"
+                       :subtitle "Vix Weblog!"
+                       :name "blog"
+                       :language "en"
+                       :default-slug-format "/{document-title}"
+                       :default-document-type "with-description"})))]
     
-    (is (= (:type feed) "feed"))
-    (is (couchdb-id? (:_id feed)))
-    (is (couchdb-rev? (:_rev feed)))
-    (is (iso-date? (:created feed)))
-    (is (= (:title feed) "Weblog"))
-    (is (= (:subtitle feed) "Vix Weblog!"))
-    (is (= (:name feed) "blog"))
-    (is (= (:language feed) "en"))
-    (is (= (:default-slug-format feed) "/{document-title}"))
-    (is (= (:default-document-type feed) "with-description"))))
+    (testing "test create action"
+      (is (= (:type blog-feed) "feed"))
+      (is (couchdb-id? (:_id blog-feed)))
+      (is (couchdb-rev? (:_rev blog-feed)))
+      (is (iso-date? (:created blog-feed)))
+      (is (= (:title blog-feed) "Weblog"))
+      (is (= (:subtitle blog-feed) "Vix Weblog!"))
+      (is (= (:name blog-feed) "blog"))
+      (is (= (:language blog-feed) "en"))
+      (is (= (:default-slug-format blog-feed) "/{document-title}"))
+      (is (= (:default-document-type blog-feed) "with-description")))
+
+    (let [blog-feed-updated (with-redefs [util/now-rfc3339
+                                          #(str "2012-09-04T04:30:17.930Z")]
+                              (first
+                               (append-to-feed
+                                +test-db+
+                                (assoc blog-feed
+                                  :action :update
+                                  :previous-id (:_id blog-feed)
+                                  :title "Updated Weblog Feed"
+                                  :default-document-type "standard"
+                                  :searchable true))))]
+      
+      (testing "test update action"
+        (is (= (first (get-feed +test-db+ "en" "blog")) blog-feed-updated))
+        (is (couchdb-rev? (:_rev blog-feed-updated)))
+        (is (iso-date? (:datestamp blog-feed-updated)))
+        (is (= (:created blog-feed) (:created blog-feed-updated)))
+        (is (= (:title blog-feed-updated) "Updated Weblog Feed"))
+        (is (= (:subtitle blog-feed-updated) "Vix Weblog!"))
+        (is (= (:language blog-feed-updated) "en"))
+        (is (= (:name blog-feed-updated) "blog")) ; NB: not updated!
+        (is (= (:default-slug-format blog-feed-updated) "/{document-title}"))
+        (is (= (:default-document-type blog-feed-updated) "standard"))
+        (is (= (:searchable blog-feed-updated) true))
+
+        (is (thrown+? (partial check-exc :vix.db/feed-update-conflict)
+                      (append-to-feed
+                       +test-db+
+                       (assoc blog-feed
+                         :action :update))))
+
+        (is (thrown+? (partial check-exc :vix.db/feed-update-conflict)
+                      (append-to-feed
+                       +test-db+
+                       (assoc blog-feed
+                         :action :update
+                         :previous-id (:previous-id blog-feed))))))
+
+      (testing "test delete action"
+        (is (not (nil? (get-feed +test-db+ "en" "blog")))
+            "Assure the feed exists before it is deleted.")
+
+        (is (thrown+? (partial check-exc :vix.db/feed-update-conflict)
+                      (append-to-feed
+                       +test-db+
+                       (assoc (dissoc blog-feed-updated :previous-id)
+                         :action :delete))))
+
+        (is (thrown+? (partial check-exc :vix.db/feed-update-conflict)
+                      (append-to-feed
+                       +test-db+
+                       (assoc blog-feed-updated
+                         :action :delete
+                         :previous-id (:previous-id blog-feed)))))
+
+        (let [deleted-feed (with-redefs [util/now-rfc3339
+                                         #(str "2012-09-04T04:30:18.010Z")]
+                             (append-to-feed
+                              +test-db+
+                              (assoc blog-feed-updated
+                                :action
+                                :delete
+                                :previous-id
+                                (:_id blog-feed-updated))))]
+
+          (is (= (map #(dissoc % :_id :_rev :previous-id) deleted-feed)
+                 [{:subtitle "Vix Weblog!"
+                   :action :delete
+                   :name "blog"
+                   :language "en"
+                   :title "Updated Weblog Feed"
+                   :datestamp "2012-09-04T04:30:18.010Z"
+                   :searchable true
+                   :created "2012-09-04T04:30:17.872Z"
+                   :type "feed"
+                   :default-document-type "standard"
+                   :default-slug-format "/{document-title}"}
+                  {:subtitle "Vix Weblog!"
+                   :action :update
+                   :name "blog"
+                   :language "en"
+                   :title "Updated Weblog Feed"
+                   :datestamp "2012-09-04T04:30:17.930Z"
+                   :searchable true
+                   :created "2012-09-04T04:30:17.872Z"
+                   :type "feed"
+                   :default-document-type "standard"
+                   :default-slug-format "/{document-title}"}
+                  {:subtitle "Vix Weblog!"
+                   :action :create
+                   :name "blog"
+                   :language "en"
+                   :title "Weblog"
+                   :datestamp "2012-09-04T04:30:17.872Z"
+                   :created "2012-09-04T04:30:17.872Z"
+                   :type "feed"
+                   :default-document-type "with-description"
+                   :default-slug-format "/{document-title}"}]))
+
+          (is (thrown+? (partial check-exc :vix.db/feed-already-deleted)
+                        (append-to-feed
+                         +test-db+
+                         (assoc (first deleted-feed)
+                           :action :delete
+                           :previous-id (:_id (first deleted-feed))))))))))
+
+  (testing "test feed-already-exists-conflict"
+    (do
+      (append-to-feed +test-db+
+                      {:subtitle "bar"
+                       :action :create
+                       :name "foobar"
+                       :language "en"
+                       :title "Foobar"
+                       :type "feed"
+                       :default-document-type "with-description"
+                       :default-slug-format "/{document-title}"}))
+    
+    (is (thrown+? (partial check-exc :vix.db/feed-already-exists-conflict)
+                  (append-to-feed
+                   +test-db+
+                   {:subtitle "bar"
+                    :action :create
+                    :name "foobar"
+                    :language "en"
+                    :title "Foobar"
+                    :type "feed"
+                    :default-document-type "with-description"
+                    :default-slug-format "/{document-title}"})))
+
+    (do
+      (append-to-feed +test-db+
+                      {:subtitle "bar"
+                       :action :delete
+                       :previous-id (:_id
+                                     (first
+                                      (get-feed +test-db+ "en" "foobar")))
+                       :name "foobar"
+                       :language "en"
+                       :title "Foobar"
+                       :type "feed"
+                       :default-document-type "with-description"
+                       :default-slug-format "/{document-title}"})
+
+      ;; once the feed is deleted, it should be possible to recreate
+      (append-to-feed +test-db+
+                      {:subtitle "bar"
+                       :action :create
+                       :name "foobar"
+                       :language "en"
+                       :title "Foobar"
+                       :type "feed"
+                       :default-document-type "with-description"
+                       :default-slug-format "/{document-title}"}))))
 
 (deftest test-get-documents-for-feed
   (let [doc-1 (create-document +test-db+
@@ -489,53 +747,99 @@
             (is (= (:title (nth (:documents last-doc) 0)) "doc 0"))))))))
 
 (deftest test-list-feeds-and-list-feeds-by-default-document-type
-  (let [blog-feed (create-feed +test-db+
-                               {:title "Weblog"
-                                :subtitle "Vix Weblog!"
-                                :language "en"
-                                :name "blog"
-                                :default-slug-format
-                                "/{feed-name}/{document-title}"
-                                :default-document-type "with-description"})
-        pages-feed (create-feed +test-db+
-                                {:title "Pages"
-                                 :subtitle "Web Pages"
-                                 :language "en"
-                                 :name "pages"
-                                 :default-slug-format "/{document-title}"
-                                 :default-document-type "standard"})
-        images-feed (create-feed +test-db+
-                                 {:title "Images"
+  (let [blog-feed (first
+                   (append-to-feed
+                    +test-db+
+                    {:action :create
+                     :title "Weblog"
+                     :subtitle "Vix Weblog!"
+                     :language "en"
+                     :name "blog"
+                     :default-slug-format
+                     "/{feed-name}/{document-title}"
+                     :default-document-type "with-description"}))
+        pages-feed (first
+                    (append-to-feed
+                     +test-db+
+                     {:action :create
+                      :title "Pages"
+                      :subtitle "Web Pages"
+                      :language "en"
+                      :name "pages"
+                      :default-slug-format "/{document-title}"
+                      :default-document-type "standard"}))
+        images-feed (first
+                     (append-to-feed
+                      +test-db+
+                      {:action :create
+                       :title "Images"
+                       :subtitle "Internal feed with images"
+                       :language "en"
+                       :name "images"
+                       :default-slug-format
+                       "/media/{document-title}"
+                       :default-document-type "image"}))
+        blog-feed-nl (first
+                      (append-to-feed
+                       +test-db+
+                       {:action :create
+                        :title "Weblog"
+                        :subtitle "Vix Weblog!"
+                        :language "nl"
+                        :name "blog"
+                        :default-slug-format
+                        "/{feed-name}/{document-title}"
+                        :default-document-type
+                        "with-description"}))
+        pages-feed-nl (first
+                       (append-to-feed
+                        +test-db+
+                        {:action :create
+                         :title "Pages"
+                         :subtitle "Web Pages"
+                         :language "nl"
+                         :name "pages"
+                         :default-slug-format "/{document-title}"
+                         :default-document-type "standard"}))
+        ;; do an update, to make sure only the most recent version is used
+        images-feed-nl (first
+                        (append-to-feed
+                         +test-db+
+                         (let [images-feed-nl-0
+                               (first
+                                (append-to-feed
+                                 +test-db+
+                                 {:action :create
+                                  :title "Images"
                                   :subtitle "Internal feed with images"
-                                  :language "en"
+                                  :language "nl"
                                   :name "images"
                                   :default-slug-format
                                   "/media/{document-title}"
-                                  :default-document-type "image"})
-        blog-feed-nl (create-feed +test-db+
-                                  {:title "Weblog"
-                                   :subtitle "Vix Weblog!"
-                                   :language "nl"
-                                   :name "blog"
-                                   :default-slug-format
-                                   "/{feed-name}/{document-title}"
-                                   :default-document-type
-                                   "with-description"})
-        pages-feed-nl (create-feed +test-db+
-                                   {:title "Pages"
-                                    :subtitle "Web Pages"
-                                    :language "nl"
-                                    :name "pages"
-                                    :default-slug-format "/{document-title}"
-                                    :default-document-type "standard"})
-        images-feed-nl (create-feed +test-db+
-                                    {:title "Images"
-                                     :subtitle "Internal feed with images"
-                                     :language "nl"
-                                     :name "images"
-                                     :default-slug-format
-                                     "/media/{document-title}"
-                                     :default-document-type "image"})]
+                                  :default-document-type "image"}))]
+                           (assoc images-feed-nl-0
+                             :action :update
+                             :previous-id (:_id images-feed-nl-0)))))]
+
+    (do
+      ;; create and remove a feed, to make sure it isn't included
+      (append-to-feed
+       +test-db+
+       (let [feed-0
+             (first
+              (append-to-feed
+               +test-db+
+               {:action :create
+                :title "Images (deleted)"
+                :subtitle "Internal feed with images"
+                :language "en"
+                :name "images-delete"
+                :default-slug-format
+                "/media/{document-title}"
+                :default-document-type "image"}))]
+         (assoc feed-0
+           :action :delete
+           :previous-id (:_id feed-0)))))
 
     (testing "test without providing a language"
       (is (= [pages-feed-nl
@@ -684,50 +988,6 @@
                                               :original)
              black-pixel)))))
 
-(deftest test-update-feed
-  (let [blog-feed (create-feed +test-db+
-                               {:title "Weblog"
-                                :subtitle "Vix Weblog!"
-                                :name "blog"
-                                :language "en"
-                                :default-slug-format
-                                "/{feed-name}/{document-title}"
-                                :default-document-type "with-description"
-                                :searchable false})
-        blog-feed-updated (update-feed +test-db+
-                                       "en"
-                                       "blog"
-                                       {:title "Weblog Feed"
-                                        :subtitle "Vix Weblog"
-                                        :name "weblog"
-                                        :language "nl"
-                                        :default-slug-format
-                                        "/{document-title}"
-                                        :default-document-type "standard"
-                                        :searchable true})]
-
-    (is (nil? (update-feed +test-db+
-                           "de"
-                           "blog"
-                           {:title "foo"
-                            :subtitle "bar"
-                            :name "weblog"
-                            :language "de"
-                            :default-slug-format "/foo"
-                            :default-document-type "none"})))
-
-    (is (= (get-feed +test-db+ "nl" "blog") blog-feed-updated))
-    (is (couchdb-rev? 2 (:_rev blog-feed-updated)))
-    (is (iso-date? (:feed-updated blog-feed-updated)))
-    (is (= (:created blog-feed) (:created blog-feed-updated)))
-    (is (= (:title blog-feed-updated) "Weblog Feed"))
-    (is (= (:subtitle blog-feed-updated) "Vix Weblog"))
-    (is (= (:language blog-feed-updated) "nl"))
-    (is (= (:name blog-feed-updated) "blog")) ; NB: not updated!
-    (is (= (:default-slug-format blog-feed-updated) "/{document-title}"))
-    (is (= (:default-document-type blog-feed-updated) "standard"))
-    (is (= (:searchable blog-feed-updated) true))))
-
 (deftest test-delete-document
   (do
     (create-document +test-db+
@@ -751,120 +1011,142 @@
   (is (nil? (get-document +test-db+ "/blog/bar"))
       "Assure the document is truly removed."))
 
-(deftest test-delete-feed
-  (do
-    (create-feed +test-db+
-                 {:title "Weblog"
-                  :subtitle "Vix Weblog!"
-                  :language "en"
-                  :name "blog"
-                  :default-slug-format "/{feed-name}/{document-title}"
-                  :default-document-type "with-description"}))
-  
-  (is (nil? (delete-feed +test-db+ "nl" "blog")))
-  
-  (is (not (nil? (get-feed +test-db+ "en" "blog")))
-      "Assure the feed exists before it is deleted.")
-
-  (do
-    (delete-feed +test-db+ "en" "blog"))
-  
-  (is (nil? (delete-feed +test-db+ "en" "blog"))
-      "Expect nil value if feed is deleted twice.")
-
-  (is (nil? (get-feed +test-db+ "en" "blog"))
-      "Assure the feed is truly removed."))
-
 (deftest test-get-available-languages
   (do
-    (create-feed +test-db+
-                 {:title "Weblog"
-                  :subtitle "Vix Weblog!"
-                  :name "blog"
-                  :language "en"
-                  :searchable true})
+    (append-to-feed +test-db+
+                    {:action :create
+                     :title "Weblog"
+                     :subtitle "Vix Weblog!"
+                     :name "blog"
+                     :language "en"
+                     :searchable true})
 
-    (create-feed +test-db+
-                 {:title "Images"
-                  :subtitle "Images"
-                  :name "images"
-                  :language "en"
-                  :searchable true})
+    (append-to-feed +test-db+
+                    {:action :create
+                     :title "Images"
+                     :subtitle "Images"
+                     :name "images"
+                     :language "en"
+                     :searchable true})
 
-    (create-feed +test-db+
-                 {:title "Menu"
-                  :subtitle "Menu"
-                  :name "menu"
-                  :language "en"
-                  :searchable false})
+    (append-to-feed +test-db+
+                    {:action :create
+                     :title "Menu"
+                     :subtitle "Menu"
+                     :name "menu"
+                     :language "en"
+                     :searchable false})
 
-    (create-feed +test-db+
-                 {:title "Weblog"
-                  :name "blog"
-                  :language "nl"
-                  :searchable true}))
+    (append-to-feed +test-db+
+                    {:action :create
+                     :title "Weblog"
+                     :name "blog"
+                     :language "nl"
+                     :searchable true})
+
+    (append-to-feed +test-db+
+                    {:action :create
+                     :title "Weblog"
+                     :name "blog"
+                     :language "de"
+                     :searchable true})
+
+    (append-to-feed +test-db+
+                    {:action :delete
+                     :previous-id (:_id
+                                   (first
+                                    (get-feed +test-db+ "de" "blog")))
+                     :title "Weblog"
+                     :name "blog"
+                     :language "de"
+                     :searchable true}))
 
   (is (= (get-available-languages +test-db+) ["en" "nl"])))
 
 (deftest test-get-languages
   (do
-    (create-feed +test-db+
-                 {:title "Weblog"
-                  :subtitle "Vix Weblog!"
-                  :name "blog"
-                  :language "en"
-                  :searchable true})
+    (append-to-feed +test-db+
+                    {:action :create
+                     :title "Weblog"
+                     :subtitle "Vix Weblog!"
+                     :name "blog"
+                     :language "en"
+                     :searchable true})
 
-    (create-feed +test-db+
-                 {:title "Images"
-                  :subtitle "Images"
-                  :name "images"
-                  :language "en"
-                  :searchable true})
+    (append-to-feed +test-db+
+                    {:action :create
+                     :title "Images"
+                     :subtitle "Images"
+                     :name "images"
+                     :language "en"
+                     :searchable true})
 
-    (create-feed +test-db+
-                 {:title "Menu"
-                  :subtitle "Menu"
-                  :name "menu"
-                  :language "en"
-                  :searchable false})
+    (append-to-feed +test-db+
+                    {:action :create
+                     :title "Menu"
+                     :subtitle "Menu"
+                     :name "menu"
+                     :language "en"
+                     :searchable false})
 
-    (create-feed +test-db+
-                 {:title "Weblog"
-                  :name "blog"
-                  :language "nl"
-                  :searchable true}))
+    (append-to-feed +test-db+
+                    {:action :create
+                     :title "Weblog"
+                     :name "blog"
+                     :language "nl"
+                     :searchable true})
+
+    (append-to-feed +test-db+
+                    {:action :create
+                     :title "Weblog"
+                     :name "blog"
+                     :language "de"
+                     :searchable true})
+
+    (append-to-feed +test-db+
+                    {:action :delete
+                     :previous-id (:_id
+                                   (first
+                                    (get-feed +test-db+ "de" "blog")))
+                     :title "Weblog"
+                     :name "blog"
+                     :language "de"
+                     :searchable true}))
 
   (is (= (get-languages (list-feeds +test-db+)) #{"en" "nl"})))
 
 (deftest test-get-searchable-feeds
   (do
-    (create-feed +test-db+
-                 {:title "Weblog"
-                  :subtitle "Vix Weblog!"
-                  :name "blog"
-                  :language "en"
-                  :searchable true})
+    (append-to-feed +test-db+
+                    {:action :create
+                     :title "Weblog"
+                     :subtitle "Vix Weblog!"
+                     :name "blog"
+                     :language "en"
+                     :searchable true})
 
-    (create-feed +test-db+
-                 {:title "Images"
-                  :subtitle "Images"
-                  :name "images"
-                  :language "en"
-                  :searchable true})
+    (append-to-feed +test-db+
+                    {:action :create
+                     :title "Images"
+                     :subtitle "Images"
+                     :name "images"
+                     :language "en"
+                     :searchable true})
 
-    (create-feed +test-db+ 
-                 {:title "Menu"
-                  :subtitle "Menu"
-                  :name "menu"
-                  :language "en"
-                  :searchable false})
+    (append-to-feed +test-db+ 
+                    {:action :create
+                     :title "Menu"
+                     :subtitle "Menu"
+                     :name "menu"
+                     :language "en"
+                     :searchable false})
 
-    (create-feed +test-db+
-                 {:title "Weblog"
-                  :name "blog"
-                  :language "nl"
-                  :searchable true}))
+    (append-to-feed +test-db+
+                    {:action :create
+                     :title "Weblog"
+                     :name "blog"
+                     :language "nl"
+                     :searchable true}))
 
   (is (= (get-searchable-feeds (list-feeds +test-db+))
          {"nl" ["blog"]

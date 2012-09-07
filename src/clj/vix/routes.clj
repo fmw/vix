@@ -107,6 +107,13 @@
                                type
                                "text/plain; charset=UTF-8")))
 
+(defn data-error-response
+  "Returns a plain text response with the provided message and status 400 "
+  [message]
+  {:status 400
+   :headers {"Content-Type" "text/plain; charset=UTF-8"}
+   :body message})
+
 ;; FIXME: add a nice 404 page
 (defn page-not-found-response
   "Calls the response function with a 404 :status and <h1>Page not
@@ -319,38 +326,33 @@
   (reset-search-allowed-feeds! database)
   (reset-available-languages! database))
 
-(defmulti feed-request
-  "Handles feed API request based on HTTP method.
-   Accepts method (HTTP method), response-type (response Content-Type
-   indicator, either :json or :clj), new-doc (the new feed document),
-   language (feed language) and feed-name."
-  (fn [method & _]
-    method))
-
-(defmethod feed-request :GET
-  [method response-type new-doc language feed-name]
-  (data-response (db/get-feed config/database language feed-name)
-                 :type response-type))
-
-(defmethod feed-request :POST
-  [method response-type new-doc language feed-name]
-  (let [feed (db/create-feed config/database new-doc)]
-    (reset-all! config/database language)
-    (data-response feed :status 201 :type response-type)))
-
-(defmethod feed-request :PUT
-  [method response-type new-doc language feed-name]
-  (let [feed (db/update-feed config/database language feed-name new-doc)]
-    (reset-all! config/database language)
-    (data-response feed :type response-type)))
-
-(defmethod feed-request :DELETE
-  [method response-type new-doc language feed-name]
-  (if-let [feed (db/delete-feed config/database language feed-name)]
-    (do
-      (reset-all! config/database language)
-      (data-response feed :type response-type))
-    (data-response nil :type response-type)))
+(defn feed-request
+  "Handles feed API request based. Accepts method (HTTP method),
+   response-type (response Content-Type indicator, i.e. :json
+   or :clj), new-state (the new state of the feed document),
+   language (feed language) and feed-name. Returns a 400 response if
+   the action value of the new-state map (e.g. :create) and HTTP
+   method (e.g. :POST) don't match. All calls (including action/method
+   mismatches) reset the cache, unless they're GET requests ."
+  [database method response-type new-state language feed-name]
+  (let [action (keyword (:action new-state)) ; need to convert for json
+        feed (if (= method :GET)
+               (db/get-feed config/database language feed-name)
+               (db/append-to-feed config/database
+                                  (assoc new-state :action action)))]
+    (when (not (= method :GET))
+      (reset-all! database language))
+    
+    (if (= action (method {:POST :create
+                           :PUT :update
+                           :DELETE :delete
+                           :GET nil}))
+      (data-response feed
+                     :status (if (= method :POST) 201 200)
+                     :type response-type)
+      (data-error-response (str "The HTTP method (e.g. :POST) "
+                                "doesn't match the :action (e.g. :create) "
+                                "value of the provided feed document.")))))
 
 (defmulti document-request
   "Handles document API request based on HTTP method.
@@ -549,7 +551,8 @@
          (when (if (= method :POST)
                  (authorize session :POST nil :*)
                  (authorize session method language feed-name))
-           (feed-request method
+           (feed-request config/database
+                         method
                          (keyword type)
                          new-doc
                          language
@@ -592,8 +595,11 @@
        []
        (page-not-found-response)))
 
-(defn handle-exceptions [handler]
-  "Middleware function that redirects on insufficient privileges."
+(defn handle-exceptions
+  "Middleware function that catches and handles exceptions. Performs
+   redirect to /login on authentication errors and returns a data
+   response on API errors."
+  [handler]
   (fn [request]
     (try+
      (handler request)
@@ -602,15 +608,20 @@
      (catch [:type :vix.auth/authentication-required] _
        (redirect "/login"))
      (catch [:type :vix.routes/invalid-request-body] e
-       {:status 400
-        :headers {"Content-Type" "text/plain; charset=UTF-8"}
-        :body (:message e)}))))
+       (data-error-response (:message e)))
+     (catch [:type :vix.db/feed-already-deleted] e
+       (data-error-response (:message e)))
+     (catch [:type :vix.db/feed-update-conflict] e
+       (data-error-response (:message e)))
+     (catch [:type :vix.db/feed-already-exists-conflict] e
+       (data-error-response (:message e))))))
 
-(defn wrap-caching-headers [handler]
+(defn wrap-caching-headers
   "Middleware function that adds Cache-Control: public and Expires
    headers to for image/png, image/jpeg, image/gif, text/css and
    text/javascript requests. Adds an Expires header with a date that
    is surely in the past for all other requests."
+  [handler]
   (fn [request]
     (let [now (time-core/now)
           response (handler request)]
@@ -632,18 +643,20 @@
                (assoc (:headers response)
                  "Expires" "Mon, 26 Mar 2012 09:00:00 GMT"))))))
 
-(defn redirect-301 [to]
+(defn redirect-301
   "Returns a 'Moved Permanently' redirect with HTTP status 301."
+  [to]
   {:status 301
    :body "Moved Permanently"
    :headers {"Location" to}})
 
-(defn redirection-handler [handler]
+(defn redirection-handler
   "Deals with the following redirects:
    - redirects all relevant requests to config/default-host
      (e.g. vixu.com -> www.vixu.com),
    - redirects all non-SSL requests to /admin to SSL,
    - any custom redirects specified in config/redirects."
+   [handler]
   (fn [request]
     (cond
      ;; redirect requests to default-host if necessary

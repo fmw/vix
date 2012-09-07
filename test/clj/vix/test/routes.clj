@@ -24,17 +24,13 @@
         [slingshot.slingshot :only [throw+]]
         [slingshot.test]
         [vix.routes] :reload
-        [vix.db :only [create-document
-                       get-feed
-                       create-feed
-                       get-document
-                       list-feeds]]
         [clojure.data.json :only [json-str read-json]]
         [vix.test.db :only [database-fixture +test-db+]]
         [vix.test.test])
   (:require [clj-time.format :as time-format]
             [clj-time.core :as time-core]
             [net.cgrand.enlive-html :as html]
+            [vix.db :as db]
             [vix.auth :as auth]
             [vix.config :as config]
             [vix.util :as util]
@@ -98,62 +94,67 @@
 
 (deftest test-reset-search-allowed-feeds!
   (do
-    (create-feed +test-db+
-                 {:title "Weblog"
-                  :subtitle "Vix Weblog!"
-                  :name "blog"
-                  :default-slug-format "/{document-title}"
-                  :default-document-type "with-description"
-                  :language "en"
-                  :searchable true})
-    (create-feed +test-db+
-                 {:title "Images"
-                  :subtitle "Vix Weblog!"
-                  :name "images"
-                  :default-slug-format "/{document-title}"
-                  :default-document-type "with-description"
-                  :language "en"
-                  :searchable false}))
+    (db/append-to-feed +test-db+
+                       {:action :create
+                        :title "Weblog"
+                        :subtitle "Vix Weblog!"
+                        :name "blog"
+                        :default-slug-format "/{document-title}"
+                        :default-document-type "with-description"
+                        :language "en"
+                        :searchable true})
+    (db/append-to-feed +test-db+
+                       {:action :create
+                        :title "Images"
+                        :subtitle "Vix Weblog!"
+                        :name "images"
+                        :default-slug-format "/{document-title}"
+                        :default-document-type "with-description"
+                        :language "en"
+                        :searchable false}))
 
   (reset! search-allowed-feeds {})
   (reset-search-allowed-feeds! +test-db+)
   (is (= @search-allowed-feeds {"en" ["blog"]}))
 
-  (create-feed +test-db+
-               {:title "News"
-                :subtitle "Vix News!"
-                :name "news"
-                :default-slug-format "/{document-title}"
-                :default-document-type "with-description"
-                :language "en"
-                :searchable true})
+  (db/append-to-feed +test-db+
+                     {:action :create
+                      :title "News"
+                      :subtitle "Vix News!"
+                      :name "news"
+                      :default-slug-format "/{document-title}"
+                      :default-document-type "with-description"
+                      :language "en"
+                      :searchable true})
 
   (reset-search-allowed-feeds! +test-db+)
   (is (= @search-allowed-feeds {"en" ["news" "blog"]})))
 
 (deftest test-reset-available-languages!
   (do
-    (create-feed +test-db+
-                 {:title "Weblog"
-                  :subtitle "Vix Weblog!"
-                  :name "blog"
-                  :default-slug-format "/{document-title}"
-                  :default-document-type "with-description"
-                  :language "en"
-                  :searchable true}))
+    (db/append-to-feed +test-db+
+                       {:action :create
+                        :title "Weblog"
+                        :subtitle "Vix Weblog!"
+                        :name "blog"
+                        :default-slug-format "/{document-title}"
+                        :default-document-type "with-description"
+                        :language "en"
+                        :searchable true}))
 
   (reset! available-languages {})
   (reset-available-languages! +test-db+)
   (is (= @available-languages ["en"]))
 
-  (create-feed +test-db+
-               {:title "News"
-                :subtitle "Vix News!"
-                :name "news"
-                :default-slug-format "/{document-title}"
-                :default-document-type "with-description"
-                :language "nl"
-                :searchable true})
+  (db/append-to-feed +test-db+
+                     {:action :create
+                      :title "News"
+                      :subtitle "Vix News!"
+                      :name "news"
+                      :default-slug-format "/{document-title}"
+                      :default-document-type "with-description"
+                      :language "nl"
+                      :searchable true})
 
   (reset-available-languages! +test-db+)
   (is (= @available-languages ["en" "nl"])))
@@ -216,24 +217,26 @@
 (deftest test-image-response
   (let [gif (str "R0lGODlhAQABA++/vQAAAAAAAAAA77+9AQIAAAAh77+9BAQUA++/"
                  "vQAsAAAAAAEAAQAAAgJEAQA7")
-        white-pixel-doc (create-document +test-db+
-                                         "en"
-                                         "images"
-                                         "Europe/Amsterdam"
-                                         {:attachment {:type "image/gif"
-                                                       :data gif}
-                                          :title "a single black pixel!"
-                                          :slug "/images/white-pixel.gif"
-                                          :content ""
-                                          :draft false})
-        no-image-doc (create-document +test-db+
-                                      "en"
-                                      "images"
-                                      "Europe/Amsterdam"
-                                      {:title "not a single black pixel!"
-                                       :slug "/images/not-a-white-pixel.gif"
-                                       :content ""
-                                       :draft false})
+        white-pixel-doc (db/create-document
+                         +test-db+
+                         "en"
+                         "images"
+                         "Europe/Amsterdam"
+                         {:attachment {:type "image/gif"
+                                       :data gif}
+                          :title "a single black pixel!"
+                          :slug "/images/white-pixel.gif"
+                          :content ""
+                          :draft false})
+        no-image-doc (db/create-document
+                      +test-db+
+                      "en"
+                      "images"
+                      "Europe/Amsterdam"
+                      {:title "not a single black pixel!"
+                       :slug "/images/not-a-white-pixel.gif"
+                       :content ""
+                       :draft false})
         wp-response (image-response +test-db+
                                     white-pixel-doc)]
     
@@ -266,119 +269,119 @@
         (fn [language]
           (str "/" language "/menu/menu"))
         menu-doc
-        (create-document +test-db+
-                         "en"
-                         "menu"
-                         "Europe/Amsterdam"
-                         {:title "menu"
-                          :slug "/en/menu/menu"
-                          :content (str "<ul><li><a href=\""
-                                        "/\">home</a></li></ul>")
-                          :draft false})
+        (db/create-document +test-db+
+                            "en"
+                            "menu"
+                            "Europe/Amsterdam"
+                            {:title "menu"
+                             :slug "/en/menu/menu"
+                             :content (str "<ul><li><a href=\""
+                                           "/\">home</a></li></ul>")
+                             :draft false})
         grote-zaal-doc
-        (create-document +test-db+
-                         "en"
-                         "grote-zaal"
-                         "Europe/Amsterdam"
-                         {:title
-                          "Tomasz Stańko Middelburg"
-                          :slug
-                          "/en/grote-zaal/stanko-middelburg"
-                          :content
-                          (str "The legendary Polish "
-                               "trumpet player Stańko "
-                               "will be playing in "
-                               "Middelburg.")
-                          :start-time
-                          "2012-04-25 20:30"
-                          :end-time
-                          "2012-04-25 23:59"
-                          :draft false})
+        (db/create-document +test-db+
+                            "en"
+                            "grote-zaal"
+                            "Europe/Amsterdam"
+                            {:title
+                             "Tomasz Stańko Middelburg"
+                             :slug
+                             "/en/grote-zaal/stanko-middelburg"
+                             :content
+                             (str "The legendary Polish "
+                                  "trumpet player Stańko "
+                                  "will be playing in "
+                                  "Middelburg.")
+                             :start-time
+                             "2012-04-25 20:30"
+                             :end-time
+                             "2012-04-25 23:59"
+                             :draft false})
 
         kleine-zaal-doc
-        (create-document +test-db+
-                         "en"
-                         "kleine-zaal"
-                         "Europe/Amsterdam"
-                         {:title
-                          "The Impossible Gentlemen"
-                          :slug
-                          (str "/en/kleine-zaal/"
-                               "impossible-gentlemen")
-                          :content
-                          (str "Gwilym Simcock, "
-                               "Mike Walker, "
-                               "Adam Nussbaum, "
-                               "Steve Swallow "
-                               "will be playing "
-                               "at the Bimhuis "
-                               "in Amsterdam.")
-                          :start-time
-                          "2012-07-06 20:30"
-                          :end-time
-                          "2012-07-06 23:59"
-                          :draft false})
+        (db/create-document +test-db+
+                            "en"
+                            "kleine-zaal"
+                            "Europe/Amsterdam"
+                            {:title
+                             "The Impossible Gentlemen"
+                             :slug
+                             (str "/en/kleine-zaal/"
+                                  "impossible-gentlemen")
+                             :content
+                             (str "Gwilym Simcock, "
+                                  "Mike Walker, "
+                                  "Adam Nussbaum, "
+                                  "Steve Swallow "
+                                  "will be playing "
+                                  "at the Bimhuis "
+                                  "in Amsterdam.")
+                             :start-time
+                             "2012-07-06 20:30"
+                             :end-time
+                             "2012-07-06 23:59"
+                             :draft false})
 
         kabinet-doc
-        (create-document +test-db+
-                         "en"
-                         "kabinet"
-                         "Europe/Amsterdam"
-                         {:title
-                          "Yuri Honing"
-                          :slug
-                          "/en/kabinet/yuri-honing-tilburg"
-                          :content
-                          (str "VPRO/Boy Edgar prize winner "
-                               "Yuri Honing will be playing at "
-                               "the Paradox venue in Tilburg.")
-                          :start-time
-                          "2013-02-01 20:30"
-                          :end-time
-                          "2013-02-01 23:59"
-                          :draft false})
+        (db/create-document +test-db+
+                            "en"
+                            "kabinet"
+                            "Europe/Amsterdam"
+                            {:title
+                             "Yuri Honing"
+                             :slug
+                             "/en/kabinet/yuri-honing-tilburg"
+                             :content
+                             (str "VPRO/Boy Edgar prize winner "
+                                  "Yuri Honing will be playing at "
+                                  "the Paradox venue in Tilburg.")
+                             :start-time
+                             "2013-02-01 20:30"
+                             :end-time
+                             "2013-02-01 23:59"
+                             :draft false})
         kabinet-doc-2 ;; dummy doc that should not be retrieved
-        (create-document +test-db+
-                         "en"
-                         "kabinet"
-                         "Europe/Amsterdam"
-                         {:title
-                          "Yuri Honing"
-                          :slug
-                          "/en/kabinet/yuri-honing-tilburg"
-                          :content
-                          (str "VPRO/Boy Edgar prize winner "
-                               "Yuri Honing at "
-                               "the Paradox venue in Tilburg.")
-                          :start-time
-                          "2012-02-01 20:30"
-                          :end-time
-                          "2012-02-01 23:59"
-                          :draft false})
+        (db/create-document +test-db+
+                            "en"
+                            "kabinet"
+                            "Europe/Amsterdam"
+                            {:title
+                             "Yuri Honing"
+                             :slug
+                             "/en/kabinet/yuri-honing-tilburg"
+                             :content
+                             (str "VPRO/Boy Edgar prize winner "
+                                  "Yuri Honing at "
+                                  "the Paradox venue in Tilburg.")
+                             :start-time
+                             "2012-02-01 20:30"
+                             :end-time
+                             "2012-02-01 23:59"
+                             :draft false})
         news-1
-        (create-document +test-db+
-                         "en"
-                         "news"
-                         "Europe/Amsterdam"
-                         {:title
-                          "hey!"
-                          :slug
-                          "/en/news/hey"
-                          :content
-                          ""
-                          :draft false})
+        (db/create-document +test-db+
+                            "en"
+                            "news"
+                            "Europe/Amsterdam"
+                            {:title
+                             "hey!"
+                             :slug
+                             "/en/news/hey"
+                             :content
+                             ""
+                             :draft false})
         news-2
-        (create-document +test-db+
-                         "en"
-                         "news"
-                         "Europe/Amsterdam"
-                         {:title
-                          "you!"
-                          :slug
-                          "/en/news/you"
-                          :content
-                          ""
-                          :draft false})
+        (db/create-document +test-db+
+                            "en"
+                            "news"
+                            "Europe/Amsterdam"
+                            {:title
+                             "you!"
+                             :slug
+                             "/en/news/you"
+                             :content
+                             ""
+                             :draft false})
         frontpage-segments
         {:menu
          {:type :document
@@ -550,16 +553,16 @@
     (let [gif (str "R0lGODlhAQABA++/vQAAAAAAAAAA77+9AQIAAAAh77+9BAQUA++/"
                    "vQAsAAAAAAEAAQAAAgJEAQA7")]
       (do
-        (create-document +test-db+
-                         "en"
-                         "images"
-                         "Europe/Amsterdam"
-                         {:attachment {:type "image/gif"
-                                       :data gif}
-                          :title "a single black pixel!"
-                          :slug "/images/white-pixel.gif"
-                          :content ""
-                          :draft false}))
+        (db/create-document +test-db+
+                            "en"
+                            "images"
+                            "Europe/Amsterdam"
+                            {:attachment {:type "image/gif"
+                                          :data gif}
+                             :title "a single black pixel!"
+                             :slug "/images/white-pixel.gif"
+                             :content ""
+                             :draft false}))
 
       (is (= (keys
               (get-cached-page! +test-db+
@@ -572,14 +575,14 @@
 
   (testing "test with a regular page"
     (do
-      (create-document +test-db+
-                       "en"
-                       "pages"
-                       "Europe/Amsterdam"
-                       {:title "hic sunt dracones!"
-                        :slug "/pages/hic-sunt-dracones.html"
-                        :content "<h3>Here be dragons!</h3>"
-                        :draft false}))
+      (db/create-document +test-db+
+                          "en"
+                          "pages"
+                          "Europe/Amsterdam"
+                          {:title "hic sunt dracones!"
+                           :slug "/pages/hic-sunt-dracones.html"
+                           :content "<h3>Here be dragons!</h3>"
+                           :draft false}))
     (is (= (keys
             (get-cached-page! +test-db+
                               "/pages/hic-sunt-dracones.html"
@@ -599,18 +602,18 @@
   ;; TODO: make this test actually meaningful
   (testing "test with event page"
     (do
-      (create-document +test-db+
-                       "en"
-                       "calendar"
-                       "Europe/Amsterdam"
-                       {:title "Clojure Meetup!"
-                        :slug "/events/clojure-meetup.html"
-                        :content "<h3>Here be dragons!</h3>"
-                        :start-time "2012-05-16 18:45"
-                        :start-time-rfc3339 "2012-05-16T18:45:00.000Z"
-                        :end-time "2012-05-16 23:00"
-                        :end-time-rfc3339 "2012-05-16T23:00:00.000Z"
-                        :draft false}))
+      (db/create-document +test-db+
+                          "en"
+                          "calendar"
+                          "Europe/Amsterdam"
+                          {:title "Clojure Meetup!"
+                           :slug "/events/clojure-meetup.html"
+                           :content "<h3>Here be dragons!</h3>"
+                           :start-time "2012-05-16 18:45"
+                           :start-time-rfc3339 "2012-05-16T18:45:00.000Z"
+                           :end-time "2012-05-16 23:00"
+                           :end-time-rfc3339 "2012-05-16T23:00:00.000Z"
+                           :draft false}))
     (is (= (keys
             (get-cached-page! +test-db+
                               "/events/clojure-meetup.html"
@@ -641,14 +644,14 @@
          "<h1>Page not found</h1>"))
   
   (do
-    (create-document +test-db+
-                     "en"
-                     "blog"
-                     "Europe/Amsterdam"
-                     {:title "foo"
-                      :slug "/blog/bar"
-                      :content "bar"
-                      :draft false}))
+    (db/create-document +test-db+
+                        "en"
+                        "blog"
+                        "Europe/Amsterdam"
+                        {:title "foo"
+                         :slug "/blog/bar"
+                         :content "bar"
+                         :draft false}))
 
   (is (= (:status (get-cached-page! +test-db+
                                     "/blog/bar"
@@ -658,7 +661,7 @@
   (testing "Test if attachments are handled correctly."
     (let [gif (str "R0lGODlhAQABA++/vQAAAAAAAAAA77+9AQIAAAAh77+9BAQUA++/"
                    "vQAsAAAAAAEAAQAAAgJEAQA7")
-          document (create-document
+          document (db/create-document
                     +test-db+
                     "en"
                     "images"
@@ -679,10 +682,37 @@
   ;; clean up
   (reset-page-cache!))
 
+(defn- remove-ids
+  "Removes internal database identifiers from the provided state map."
+  [{:keys [action] :as state}]
+  (assoc (dissoc state :_rev :_id :previous-id)
+    :action (keyword action)))
+
+(defn- clean-body
+  "Returns a new version of the response map, with database internals
+   (i.e. :_id, :_rev and :previous-id) removed from the state sequence
+   in the response body. The body is read through read-json if :json
+   is passed as the value of the type argument and otherwise through
+   read-string. If the response type is json, the :action value is
+   turned into a keyword. If the response status is 400, the original
+   response is returned."
+  [type response]
+  (if (= (:status response) 400)
+    response
+    (update-in response
+               [:body]
+               (fn [body]
+                 (map remove-ids
+                      (if (= type :json)
+                        (read-json body)
+                        (read-string body)))))))
+
 (deftest test-feed-request
   (with-redefs [util/now-rfc3339 #(str "2012-07-19T15:09:16.253Z")
                 config/database +test-db+]
-    (let [blog-feed {:created "2012-07-19T15:09:16.253Z"
+    (let [blog-feed {:action :create
+                     :created "2012-07-19T15:09:16.253Z"
+                     :datestamp "2012-07-19T15:09:16.253Z"
                      :default-document-type "standard"
                      :default-slug-format (str "/{language}/{feed-name}"
                                                "/{document-title}")
@@ -693,112 +723,158 @@
                      :subtitle ""
                      :title "Weblog"
                      :type "feed"}
-          image-feed {:created "2012-07-19T15:09:16.253Z"
-                       :default-document-type "image"
-                       :default-slug-format (str "/{language}/{feed-name}"
-                                                 "/{document-title}.{ext}")
-                       :language "en"
-                       :language-full "English"
-                       :name "images"
-                       :searchable false
-                       :subtitle ""
-                       :title "Images"
-                       :type "feed"}]
+          image-feed {:action :create
+                      :created "2012-07-19T15:09:16.253Z"
+                      :datestamp "2012-07-19T15:09:16.253Z"
+                      :default-document-type "image"
+                      :default-slug-format (str "/{language}/{feed-name}"
+                                                "/{document-title}.{ext}")
+                      :language "en"
+                      :language-full "English"
+                      :name "images"
+                      :searchable false
+                      :subtitle ""
+                      :title "Images"
+                      :type "feed"}]
       (testing "test if feeds are created correctly."
         ;; test json request
-        (is (= (update-in (feed-request :POST :json blog-feed "en" "blog")
-                          [:body]
-                          #(dissoc (read-json %) :_rev :_id))
+        (is (= (clean-body
+                :json
+                (feed-request +test-db+ :POST :json blog-feed "en" "blog"))
                {:status 201
                 :headers {"Content-Type" "application/json; charset=UTF-8"}
-                :body blog-feed}))
+                :body [blog-feed]}))
+
 
         ;; test clojure request
-        (is (= (update-in (feed-request :POST :clj image-feed "en" "blog")
-                          [:body]
-                          #(dissoc (read-string %) :_rev :_id))
+        (is (= (clean-body
+                :clj
+                (feed-request +test-db+ :POST :clj image-feed "en" "blog"))
                {:status 201
                 :headers {"Content-Type" "text/plain; charset=UTF-8"}
-                :body image-feed})))
+                :body [image-feed]})))
 
       (testing "test if feeds are updated correctly."
         ;; test json request
-        (is (= (update-in (feed-request :PUT
-                                        :json
-                                        (assoc blog-feed :title "foo")
-                                        "en"
-                                        "blog")
-                          [:body]
-                          #(dissoc (read-json %) :_rev :_id))
+        (is (= (clean-body
+                :json
+                (feed-request +test-db+
+                              :PUT
+                              :json
+                              (assoc blog-feed
+                                :action :update
+                                :previous-id (:_id
+                                              (first
+                                               (db/get-feed +test-db+
+                                                            "en"
+                                                            "blog")))
+                                :title "foo")
+                              "en"
+                              "blog"))
                {:status 200
                 :headers {"Content-Type" "application/json; charset=UTF-8"}
-                :body (assoc blog-feed
-                        :title "foo"
-                        :feed-updated "2012-07-19T15:09:16.253Z")}))
+                :body [(assoc blog-feed
+                         :action :update
+                         :title "foo"
+                         :datestamp "2012-07-19T15:09:16.253Z")
+                       blog-feed]}))
 
         ;; test clojure request
-        (is (= (update-in (feed-request :PUT
-                                        :clj
-                                        (assoc image-feed :title "foo")
-                                        "en"
-                                        "images")
-                          [:body]
-                          #(dissoc (read-string %) :_rev :_id))
+        (is (= (clean-body
+                :clj
+                (feed-request +test-db+
+                              :PUT
+                              :clj
+                              (assoc image-feed
+                                :action :update
+                                :previous-id (:_id
+                                              (first
+                                               (db/get-feed +test-db+
+                                                            "en"
+                                                            "images")))
+                                :title "foo")
+                              "en"
+                              "images"))
                {:status 200
                 :headers {"Content-Type" "text/plain; charset=UTF-8"}
-                :body (assoc image-feed
-                        :title "foo"
-                        :feed-updated "2012-07-19T15:09:16.253Z")})))
+                :body [(assoc image-feed
+                         :action :update
+                         :title "foo"
+                         :datestamp "2012-07-19T15:09:16.253Z")
+                       image-feed]})))
 
       (testing "test if feeds are loaded correctly."
         ;; test json request
-        (is (= (update-in (feed-request :GET :json nil "en" "blog")
-                          [:body]
-                          #(dissoc (read-json %) :_rev :_id))
+        (is (= (clean-body
+                :json
+                (feed-request +test-db+ :GET :json nil "en" "blog"))
                {:status 200
                 :headers {"Content-Type" "application/json; charset=UTF-8"}
-                :body (assoc blog-feed
-                        :title "foo"
-                        :feed-updated "2012-07-19T15:09:16.253Z")}))
+                :body [(assoc blog-feed
+                         :action :update
+                         :title "foo"
+                         :datestamp "2012-07-19T15:09:16.253Z")
+                       blog-feed]}))
 
         ;; test clojure request
-        (is (= (update-in (feed-request :GET :clj nil "en" "images")
-                          [:body]
-                          #(dissoc (read-string %) :_rev :_id))
+        (is (= (clean-body
+                :clj
+                (feed-request +test-db+ :GET :clj nil "en" "images"))
                {:status 200
                 :headers {"Content-Type" "text/plain; charset=UTF-8"}
-                :body (assoc image-feed
-                        :title "foo"
-                        :feed-updated "2012-07-19T15:09:16.253Z")})))
+                :body [(assoc image-feed
+                         :action :update
+                         :title "foo"
+                         :datestamp "2012-07-19T15:09:16.253Z")
+                       image-feed]})))
 
       (testing "test if feeds are deleted correctly."
         ;; test json request
-        (let [feed (get-feed +test-db+ "en" "blog")]
-          (is (= (update-in (feed-request :DELETE
-                                          :json
-                                          feed
-                                          "en"
-                                          "blog")
-                            [:body]
-                            #(dissoc (read-json %) :rev))
+        (let [current-blog-feed (db/get-feed +test-db+ "en" "blog")]
+          (is (= (clean-body
+                  :json
+                  (feed-request +test-db+
+                                :DELETE
+                                :json
+                                (assoc (first current-blog-feed)
+                                  :action :delete
+                                  :previous-id (:_id
+                                                (first current-blog-feed)))
+                                "en"
+                                "blog"))
                  {:status 200
                   :headers {"Content-Type" "application/json; charset=UTF-8"}
-                  :body {:ok true
-                         :id (:_id feed)}})))
+                  :body (map remove-ids
+                             (cons (assoc (first current-blog-feed)
+                                     :action :delete
+                                     :previous-id (:_id
+                                                   (first
+                                                    current-blog-feed)))
+                                   current-blog-feed))})))
 
         ;; test clojure request
-        (let [feed (get-feed +test-db+ "en" "images")]
-          (is (= (update-in (feed-request :DELETE
-                                          :clj
-                                          feed
-                                          "en"
-                                          "images")
-                            [:body]
-                            #(dissoc (read-string %) :rev))
+        (let [current-images-feed (db/get-feed +test-db+ "en" "images")]
+          (is (= (clean-body
+                  :clj
+                  (feed-request +test-db+
+                                :DELETE
+                                :clj
+                                (assoc (first current-images-feed)
+                                  :action :delete
+                                  :previous-id (:_id
+                                                (first
+                                                 current-images-feed)))
+                                "en"
+                                "images"))
                  {:status 200
                   :headers {"Content-Type" "text/plain; charset=UTF-8"}
-                  :body {:ok true
-                         :id (:_id feed)}})))))))
+                  :body (map remove-ids
+                             (cons (assoc (first current-images-feed)
+                                     :action :delete
+                                     :previous-id (:_id
+                                                   (first
+                                                    current-images-feed)))
+                                   current-images-feed))})))))))
 
 (deftest test-document-request
   (with-redefs [util/now-rfc3339 #(str "2012-07-19T15:09:16.253Z")
@@ -866,7 +942,7 @@
 
       (testing "test if documents are updated correctly."
         ;; test json request
-        (let [json-doc-fresh (get-document +test-db+ "/en/blog/hsd")]
+        (let [json-doc-fresh (db/get-document +test-db+ "/en/blog/hsd")]
           (is (= (update-in (document-request :PUT
                                               :json
                                               (assoc json-doc-fresh
@@ -883,7 +959,7 @@
                           :updated "2012-07-19T15:09:16.253Z")})))
         
         ;; test clojure request
-        (let [clj-doc-fresh (get-document +test-db+ "/en/blog/hsd-clj")]
+        (let [clj-doc-fresh (db/get-document +test-db+ "/en/blog/hsd-clj")]
           (is (= (update-in (document-request :PUT
                                               :clj
                                               (assoc clj-doc-fresh
@@ -902,14 +978,14 @@
 
       (testing "test if feeds are loaded correctly."
         ;; test json request
-        (let [existing-doc (get-document +test-db+ "/en/blog/hsd")]
+        (let [existing-doc (db/get-document +test-db+ "/en/blog/hsd")]
           (is (= (document-request :GET :json nil existing-doc "en" "blog")
                  {:status 200
                   :headers {"Content-Type" "application/json; charset=UTF-8"}
                   :body (json-str existing-doc)})))
 
         ;; test clojure request
-        (let [existing-doc (get-document +test-db+ "/en/blog/hsd-clj")]
+        (let [existing-doc (db/get-document +test-db+ "/en/blog/hsd-clj")]
           (is (= (document-request :GET :clj nil existing-doc "en" "blog")
                  {:status 200
                   :headers {"Content-Type" "text/plain; charset=UTF-8"}
@@ -917,7 +993,7 @@
 
       (testing "test if feeds are deleted correctly."
         ;; test json request
-        (let [existing-doc (get-document +test-db+ "/en/blog/hsd")]
+        (let [existing-doc (db/get-document +test-db+ "/en/blog/hsd")]
           (is (= (update-in (document-request :DELETE
                                               :json
                                               existing-doc
@@ -932,7 +1008,7 @@
                          :id (:_id existing-doc)}})))
 
         ;; test clojure request
-        (let [existing-doc (get-document +test-db+ "/en/blog/hsd-clj")]
+        (let [existing-doc (db/get-document +test-db+ "/en/blog/hsd-clj")]
           (is (= (update-in (document-request :DELETE
                                               :clj
                                               existing-doc
@@ -948,24 +1024,25 @@
 
 (deftest ^{:integration true} test-routes
   (do
-    (create-feed +test-db+
-                 {:title "Pages"
-                  :subtitle "Test Pages"
-                  :name "pages"
-                  :default-slug-format "/{feed-name}/{document-title}"
-                  :default-document-type "standard"
-                  :language "en"
-                  :searchable true})
+    (db/append-to-feed +test-db+
+                       {:action :create
+                        :title "Pages"
+                        :subtitle "Test Pages"
+                        :name "pages"
+                        :default-slug-format "/{feed-name}/{document-title}"
+                        :default-document-type "standard"
+                        :language "en"
+                        :searchable true})
     
-    (create-document +test-db+
-                     "en"
-                     "blog"
-                     "Europe/Amsterdam"
-                     {:title "foo"
-                      :slug "/blog/bar"
-                      :language "en"
-                      :content "bar"
-                      :draft false}))
+    (db/create-document +test-db+
+                        "en"
+                        "blog"
+                        "Europe/Amsterdam"
+                        {:title "foo"
+                         :slug "/blog/bar"
+                         :language "en"
+                         :content "bar"
+                         :draft false}))
 
   (let [directory (lucene/create-directory :RAM)]
     (with-redefs [search-allowed-feeds (atom {"en" ["pages"]})
@@ -975,15 +1052,15 @@
       (dotimes [n 21]
         (lucene/add-documents-to-index!
          lucene/directory
-         [(create-document +test-db+
-                           "en"
-                           "pages"
-                           "Europe/Amsterdam"
-                           {:title (str "doc " n)
-                            :slug (str "/pages/doc-" n)
-                            :language "en"
-                            :content "bar"
-                            :draft false})]))
+         [(db/create-document +test-db+
+                              "en"
+                              "pages"
+                              "Europe/Amsterdam"
+                              {:title (str "doc " n)
+                               :slug (str "/pages/doc-" n)
+                               :language "en"
+                               :content "bar"
+                               :draft false})]))
       
       (with-redefs [index-reader (atom
                                   (lucene/create-index-reader directory))]
@@ -1214,11 +1291,11 @@
 
         (testing "test if the document is added to the database"
           ;; test for json request
-          (let [document (get-document +test-db+ "/blog/test")]
+          (let [document (db/get-document +test-db+ "/blog/test")]
             (is (= (:title document)) "test-create"))
 
           ;; test for clojure request
-          (let [document (get-document +test-db+ "/blog/test-clj")]
+          (let [document (db/get-document +test-db+ "/blog/test-clj")]
             (is (= (:title document)) "test-create")))
 
         (testing "test if the document is added to the lucene index"
@@ -1246,7 +1323,7 @@
         ;; FIXME: should add a test-case for a 409 conflict
         (testing "test if documents are updated correctly"
           ;; test json request
-          (let [document (get-document +test-db+ "/blog/bar")]
+          (let [document (db/get-document +test-db+ "/blog/bar")]
             (is (= (:status (request
                              :put
                              "/_api/json/_document/blog/bar"
@@ -1254,7 +1331,7 @@
                              main-routes))
                    200))
 
-            (is (= (:title (get-document +test-db+ "/blog/bar"))
+            (is (= (:title (db/get-document +test-db+ "/blog/bar"))
                    "hi!"))
 
             (is (= (:status (request
@@ -1265,7 +1342,7 @@
                    404)))
 
           ;; test clojure request
-          (let [document (get-document +test-db+ "/blog/test-clj")]
+          (let [document (db/get-document +test-db+ "/blog/test-clj")]
             (is (= (:status (request
                              :put
                              "/_api/clj/_document/blog/test-clj"
@@ -1273,7 +1350,7 @@
                              main-routes))
                    200))
 
-            (is (= (:title (get-document +test-db+ "/blog/test-clj"))
+            (is (= (:title (db/get-document +test-db+ "/blog/test-clj"))
                    "hi!"))
 
             (is (= (:status (request
@@ -1294,7 +1371,7 @@
                            "/_api/json/_document/blog/bar"
                            main-routes))
                  200))
-          (is (= (get-document +test-db+ "/blog/bar") nil))
+          (is (= (db/get-document +test-db+ "/blog/bar") nil))
 
           ;; test clojure request
           (is (= (:status
@@ -1302,7 +1379,7 @@
                            "/_api/clj/_document/blog/test-clj"
                            main-routes))
                  200))
-          (is (= (get-document +test-db+ "/blog/test-clj") nil)))
+          (is (= (db/get-document +test-db+ "/blog/test-clj") nil)))
 
         (testing "test if document is also deleted from the lucene index."
           (let [reader (lucene/create-index-reader directory)
@@ -1325,7 +1402,8 @@
       (let [post-feed-request (request
                                :post
                                "/_api/json/_feed/en/blog"
-                               (json-str {:name "blog"
+                               (json-str {:action :create
+                                          :name "blog"
                                           :title "Vix Weblog"
                                           :language "en"
                                           :subtitle "Vix Weblog..."
@@ -1336,33 +1414,39 @@
                                main-routes)]
         (is (= (:status post-feed-request) 201))
 
-        (is (= @search-allowed-feeds {"en" ["pages" "blog"]})
+        (is (= @search-allowed-feeds
+               (db/get-searchable-feeds (db/list-feeds +test-db+))
+               {"en" ["pages" "blog"]})
             "Test if search-allowed-feeds is updated when feed is added")
         
-        (let [image-feed (read-json
-                          (:body
-                           (request
-                            :post
-                            "/_api/json/_feed/en/image"
-                            (json-str {:name "image"
-                                       :title "Images"
-                                       :language "en"
-                                       :subtitle "Pictures."
-                                       :default-slug-format
-                                       "/static/{document-title}.{ext}"
-                                       :default-document-type "image"})
-                            main-routes)))
-              all-feeds (read-json
-                         (:body
-                          (request :get
-                                   "/_api/json/_list-feeds"
-                                   main-routes)))
+        (let [image-feed (map #(update-in % [:action] keyword)
+                              (read-json
+                               (:body
+                                (request
+                                 :post
+                                 "/_api/json/_feed/en/image"
+                                 (json-str {:action :create
+                                            :name "image"
+                                            :title "Images"
+                                            :language "en"
+                                            :subtitle "Pictures."
+                                            :default-slug-format
+                                            "/static/{document-title}.{ext}"
+                                            :default-document-type "image"})
+                                 main-routes))))
+              all-feeds (map #(update-in % [:action] keyword)
+                             (read-json
+                              (:body
+                               (request :get
+                                        "/_api/json/_list-feeds"
+                                        main-routes))))
               image-feed-nl (read-string
                              (:body
                               (request
                                :post
                                "/_api/clj/_feed/nl/image"
-                               (pr-str {:name "image"
+                               (pr-str {:action :create
+                                        :name "image"
                                         :title "Images"
                                         :language "nl"
                                         :subtitle "Pictures."
@@ -1373,16 +1457,46 @@
 
           (is (= (count all-feeds) 3))
 
+          ;; make sure it isn't possible to recreate existing feeds
+          (is (= (request
+                  :post
+                  "/_api/json/_feed/en/image"
+                  (json-str {:action :create
+                             :name "image"
+                             :title "Images"
+                             :language "en"
+                             :subtitle "Pictures."
+                             :default-slug-format
+                             "/static/{document-title}.{ext}"
+                             :default-document-type "image"})
+                  main-routes)
+                 (request
+                  :post
+                  "/_api/clj/_feed/nl/image"
+                  (pr-str {:action :create
+                           :name "image"
+                           :title "Images"
+                           :language "nl"
+                           :subtitle "Pictures."
+                           :default-slug-format
+                           "/static/{document-title}.{ext}"
+                           :default-document-type "image"})
+                  main-routes)
+                 {:status 400
+                  :headers {"Content-Type" "text/plain; charset=UTF-8"}
+                  :body "The provided feed already exists."}))
+
           (testing "test language argument for /_api/x/_list-feeds"
             (is (= (sort-by :name all-feeds)
                    (sort-by :name
-                            (read-json
-                             (:body
-                              (request :get
-                                       "/_api/json/_list-feeds"
-                                       nil
-                                       main-routes
-                                       {:language "en"}))))
+                            (map #(update-in % [:action] keyword)
+                                 (read-json
+                                  (:body
+                                   (request :get
+                                            "/_api/json/_list-feeds"
+                                            nil
+                                            main-routes
+                                            {:language "en"})))))
                    (sort-by :name
                             (read-string
                              (:body
@@ -1392,7 +1506,7 @@
                                        main-routes
                                        {:language "en"}))))))
 
-            (is (= [image-feed-nl]
+            (is (= image-feed-nl
                    (read-string
                     (:body
                      (request
@@ -1409,24 +1523,26 @@
                                          main-routes))))
                  4))
 
-          (is (= (read-json
-                  (:body (request :get
-                                  "/_api/json/_list-feeds"
-                                  main-routes)))
+          (is (= (map #(update-in % [:action] keyword)
+                      (read-json
+                       (:body (request :get
+                                       "/_api/json/_list-feeds"
+                                       main-routes))))
                  (read-string
                   (:body (request :get
                                   "/_api/clj/_list-feeds"
                                   main-routes)))))
           
-          (is (= [image-feed-nl image-feed]
-                 (read-json
-                  (:body (request
-                          :get
-                          "/_api/json/_list-feeds"
-                          nil
-                          main-routes
-                          {:default-document-type
-                           "image"})))
+          (is (= (flatten [image-feed-nl image-feed])
+                 (map #(update-in % [:action] keyword)
+                      (read-json
+                       (:body (request
+                               :get
+                               "/_api/json/_list-feeds"
+                               nil
+                               main-routes
+                               {:default-document-type
+                                "image"}))))
                  (read-string
                   (:body (request
                           :get
@@ -1448,60 +1564,227 @@
                                 main-routes)
                        [:body]
                        read-string)]
-        (is (= (dissoc get-feed-json :headers)
+        (is (= (update-in (dissoc get-feed-json :headers)
+                          [:body]
+                          (fn [states]
+                            (map #(update-in % [:action] keyword) states)))
                (dissoc get-feed-clj :headers)))
         (is (= status 200))
-        (is (= (:name body) "blog"))
-        (is (= (:title body) "Vix Weblog"))
+        (is (= (:name (first body)) "blog"))
+        (is (= (:title (first body)) "Vix Weblog"))
 
+        ;; make sure that update requests aren't allowed without :previous-id
+        (let [prev-body (first
+                         (read-json
+                          (:body
+                           (request :get
+                                    "/_api/json/_feed/en/blog"
+                                    main-routes))))]
+          (is (= (request :put
+                          "/_api/json/_feed/en/blog"
+                          (json-str
+                           (assoc prev-body
+                             :action :update
+                             :previous-id :foo
+                             :title "Vix!"
+                             :searchable false))
+                          main-routes)
+                 (request :put
+                          "/_api/json/_feed/en/blog"
+                          (json-str
+                           (assoc prev-body
+                             :action :update
+                             :title "Vix!"
+                             :searchable false))
+                          main-routes)
+                 (request :put
+                          "/_api/clj/_feed/en/blog"
+                          (pr-str
+                           (assoc prev-body
+                             :action :update
+                             :previous-id :foo
+                             :title "Vix!"
+                             :searchable false))
+                          main-routes)
+                 (request :put
+                          "/_api/clj/_feed/en/blog"
+                          (pr-str
+                           (assoc prev-body
+                             :action :update
+                             :title "Vix!"
+                             :searchable false))
+                          main-routes)
+                 {:status 400
+                  :headers {"Content-Type" "text/plain; charset=UTF-8"}
+                  :body (str "This feed map doesn't contain the most recent "
+                             ":previous-id.")})))
+        
         ;; test json put request
-        (let [{:keys [body status] :as put-request-json}
+        (let [prev-body (first
+                         (read-json
+                          (:body
+                           (request :get
+                                    "/_api/json/_feed/en/blog"
+                                    main-routes))))
+              {:keys [body status] :as put-request-json}
               (update-in (request :put
                                   "/_api/json/_feed/en/blog"
-                                  (json-str (assoc body
-                                              :title "Vix!"
-                                              :searchable false))
+                                  (json-str
+                                   (assoc prev-body
+                                     :action :update
+                                     :previous-id (:_id prev-body)
+                                     :title "Vix!"
+                                     :searchable false))
                                   main-routes)
                          [:body]
                          read-json)]
           (is (= status 200))
-          (is (= (:name body) "blog"))
-          (is (= (:title body) "Vix!"))
+
+          (is (= (:name (first body)) "blog"))
+          (is (= (:title (first body)) "Vix!"))
           
           (is (= @search-allowed-feeds {"nl" [] "en" ["pages"]})
               "Make sure search-allowed-feeds is updated when feeds are")))
 
       ;; test clojure put request
-      (let [{:keys [body status] :as put-request-clj}
+      (let [prev-body (first
+                       (read-string
+                        (:body
+                         (request :get
+                                  "/_api/clj/_feed/en/blog"
+                                  main-routes))))
+            {:keys [body status] :as put-request-clj}
             (update-in (request :put
                                 "/_api/clj/_feed/en/blog"
                                 (pr-str
-                                 (assoc (read-string
-                                         (:body
-                                          (request :get
-                                                   "/_api/clj/_feed/en/blog"
-                                                   main-routes)))
+                                 (assoc prev-body
+                                   :action :update
+                                   :previous-id (:_id prev-body)
                                    :title "Fix!"
                                    :searchable false))
                                 main-routes)
                        [:body]
                        read-string)]
-        (is (= status 200))
-        (is (= (:name body) "blog"))
-        (is (= (:title body) "Fix!")))
 
-      (is (= (:status (request :get "/_api/json/_feed/en/blog" main-routes))
-             (:status (request :delete
-                               "/_api/json/_feed/en/blog"
-                               main-routes))
-             (:status (request :get "/_api/clj/_feed/en/image" main-routes))
-             (:status (request :delete
-                               "/_api/clj/_feed/en/image"
-                               main-routes))
-             200))
-      
-      (is (= (:status (request :get "/_api/clj/_feed/en/blog" main-routes))
-             404))))
+        (is (= status 200))
+        (is (= (:name (first body)) "blog"))
+        (is (= (:title (first body)) "Fix!")))
+
+      (testing "test delete requests"
+        ;; make sure delete requests aren't allowed without :previous-id
+        (is (= (request :delete
+                        "/_api/json/_feed/en/blog"
+                        (json-str
+                         {:action :delete
+                          :previous-id :foo
+                          :name "blog"
+                          :language "en"})
+                        main-routes)
+               (request :delete
+                        "/_api/json/_feed/en/blog"
+                        (json-str
+                         {:action :delete
+                          :name "blog"
+                          :language "en"})
+                        main-routes)
+               (request :delete
+                        "/_api/clj/_feed/en/blog"
+                        (pr-str
+                         {:action :delete
+                          :previous-id :foo
+                          :name "blog"
+                          :language "en"})
+                        main-routes)
+               (request :delete
+                        "/_api/clj/_feed/en/blog"
+                        (pr-str
+                         {:action :delete
+                          :name "blog"
+                          :language "en"})
+                        main-routes)
+               {:status 400
+                :headers {"Content-Type" "text/plain; charset=UTF-8"}
+                :body (str "This feed map doesn't contain the most recent "
+                           ":previous-id.")}))
+        
+        ;; test json delete request
+        (let [prev-body (first
+                         (read-json
+                          (:body
+                           (request :get
+                                    "/_api/json/_feed/en/blog"
+                                    main-routes))))
+              {:keys [body status] :as delete-request-json}
+              (update-in (request :delete
+                                  "/_api/json/_feed/en/blog"
+                                  (json-str
+                                   (assoc prev-body
+                                     :action :delete
+                                     :previous-id (:_id prev-body)))
+                                  main-routes)
+                         [:body]
+                         read-json)]
+          (is (= status 200))
+          (is (= (keyword (:action (first body)))
+                 (:action (first (db/get-feed +test-db+ "en" "blog")))
+                 :delete)))
+
+        ;; make sure the right error is returned when feed is already gone
+        (let [prev-body (first
+                         (read-json
+                          (:body
+                           (request :get
+                                    "/_api/json/_feed/en/blog"
+                                    main-routes))))]
+          (is (= (request :delete
+                          "/_api/json/_feed/en/blog"
+                          (json-str
+                           (assoc prev-body
+                             :action :delete
+                             :previous-id (:_id prev-body)))
+                          main-routes)
+                 (request :delete
+                          "/_api/clj/_feed/en/blog"
+                          (pr-str
+                           (assoc prev-body
+                             :action :delete
+                             :previous-id (:_id prev-body)))
+                          main-routes)
+                 {:status 400
+                  :headers {"Content-Type" "text/plain; charset=UTF-8"}
+                  :body "This feed has already been deleted."})))
+
+        
+        ;; test clojure delete request
+        (let [prev-body (first
+                         (read-json
+                          (:body
+                           (request
+                            :post
+                            "/_api/json/_feed/en/blog"
+                            (json-str {:action :create
+                                       :name "blog"
+                                       :title "Weblog"
+                                       :language "en"
+                                       :subtitle "Weblog..."
+                                       :default-slug-format
+                                       "/static/{document-title}.{ext}"
+                                       :default-document-type "standard"})
+                            main-routes))))
+              {:keys [body status] :as delete-request-clj}
+              (update-in (request :delete
+                                  "/_api/clj/_feed/en/blog"
+                                  (pr-str
+                                   (assoc prev-body
+                                     :action :delete
+                                     :previous-id (:_id prev-body)))
+                                  main-routes)
+                         [:body]
+                         read-string)]
+          (is (= status 200))
+          (is (= (:action (first body))
+                 (:action (first (db/get-feed +test-db+ "en" "blog")))
+                 :delete))))))
 
   (testing "test invalid api requests"
     (are [uri]
@@ -1536,22 +1819,23 @@
 
 (deftest ^{:integration true} test-routes-authorization
   (do
-    (create-document +test-db+
-                     "en"
-                     "blog"
-                     "Europe/Amsterdam"
-                     {:title "foo"
-                      :slug "/blog/test"
-                      :content "bar"
-                      :draft false})
+    (db/create-document +test-db+
+                        "en"
+                        "blog"
+                        "Europe/Amsterdam"
+                        {:title "foo"
+                         :slug "/blog/test"
+                         :content "bar"
+                         :draft false})
     
-    (create-feed +test-db+
-                 {:title "Weblog"
-                  :subtitle "Vix Weblog!"
-                  :name "blog"
-                  :default-slug-format "/{feed-name}/{document-title}"
-                  :default-document-type "with-description"
-                  :language "en"}))
+    (db/append-to-feed +test-db+
+                       {:action :create
+                        :title "Weblog"
+                        :subtitle "Vix Weblog!"
+                        :name "blog"
+                        :default-slug-format "/{feed-name}/{document-title}"
+                        :default-document-type "with-description"
+                        :language "en"}))
 
   (with-redefs [config/database +test-db+
                 lucene/directory (lucene/create-directory :RAM)]
@@ -1610,8 +1894,8 @@
                        :post
                        "/_api/clj/_document/blog/test"
                        (pr-str {:title "test-create"
-                                  :slug "/blog/test"
-                                  :content "hic sunt dracones"})
+                                :slug "/blog/test"
+                                :content "hic sunt dracones"})
                        main-routes))
              (:status (unauthorized-request
                        :get
@@ -1621,8 +1905,8 @@
                        :put
                        "/_api/clj/_document/blog/test"
                        (pr-str {:title "test-create"
-                                  :slug "/blog/test"
-                                  :content "hic sunt dracones"})
+                                :slug "/blog/test"
+                                :content "hic sunt dracones"})
                        main-routes))
              (:status (unauthorized-request
                        :delete
@@ -1648,14 +1932,14 @@
 
 (deftest ^{:integration true} test-routes-authentication
   (do
-    (create-document +test-db+
-                     "en"
-                     "blog"
-                     "Europe/Amsterdam"
-                     {:title "foo"
-                      :slug "/blog/test"
-                      :content "bar"
-                      :draft false}))
+    (db/create-document +test-db+
+                        "en"
+                        "blog"
+                        "Europe/Amsterdam"
+                        {:title "foo"
+                         :slug "/blog/test"
+                         :content "bar"
+                         :draft false}))
 
   (testing "Test if authentication is enforced correctly."
     (with-redefs [config/database +test-db+
@@ -1711,8 +1995,8 @@
                        :put
                        "/_api/clj/_document/blog/test"
                        (pr-str {:title "test-create"
-                                  :slug "/blog/test"
-                                  :content "hic sunt dracones"})
+                                :slug "/blog/test"
+                                :content "hic sunt dracones"})
 
                        main-routes))
              (:status (unauthenticated-request

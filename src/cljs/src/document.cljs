@@ -87,14 +87,12 @@
 (defn get-feed [language feed-name callback]
   (request-feed language feed-name callback "GET" nil))
 
-(defn create-feed [{:keys [language name] :as feed-doc} callback]
-  (request-feed language name callback "POST" feed-doc))
-
-(defn update-feed [{:keys [language name] :as feed-doc} callback]
-  (request-feed language name callback "PUT" feed-doc))
-
-(defn delete-feed [{:keys [language name] :as feed-doc} callback]
-  (request-feed language name callback "DELETE" feed-doc))
+(defn append-to-feed [{:keys [action language name] :as feed-doc} callback]
+  (request-feed language
+                name
+                callback
+                (action {:create "POST" :update "PUT" :delete "DELETE"})
+                feed-doc))
 
 (defn delete-feed-shortcut [language feed-name callback]
   (get-feed language
@@ -103,6 +101,10 @@
               (let [xhr (.-target e)
                     status (. xhr (getStatus))]
                 (if (= status 200)
-                  (let [feed (reader/read-string
-                              (. xhr (getResponseText)))]
-                    (delete-feed feed callback)))))))
+                  (let [feed (first
+                              (reader/read-string
+                               (. xhr (getResponseText))))]
+                    (append-to-feed (assoc feed
+                                      :previous-id (:_id feed)
+                                      :action :delete)
+                                    callback)))))))

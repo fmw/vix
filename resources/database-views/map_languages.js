@@ -1,5 +1,7 @@
-function(doc) {
-    if(doc.type === "feed") {
-        emit(doc.language, null);
+function(feed) {
+    if(feed.type === "feed" &&
+       feed["current-state"] === true &&
+       feed.action !== "delete") {
+        emit(feed.language, null);
     }
 }

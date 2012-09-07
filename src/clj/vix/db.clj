@@ -14,7 +14,7 @@
 ;; limitations under the License.
 
 (ns vix.db
-  (:use [slingshot.slingshot :only [try+]])
+  (:use [slingshot.slingshot :only [try+ throw+]])
   (:require [clojure.java.io :as io]
             [com.ashafa.clutch :as clutch]
             [vix.util :as util])
@@ -31,6 +31,8 @@
             {:map (load-view "database-views/map_user_by_username.js")}
             :feeds
             {:map (load-view "database-views/map_feeds.js")}
+            :feeds_overview
+            {:map (load-view "database-views/map_feeds_overview.js")}
             :feeds_by_default_document_type
             {:map (load-view
                    "database-views/map_feeds_by_default_document_type.js")}
@@ -66,14 +68,23 @@
                query-params-map
                post-data-map))))
 
+(defn- clean-feed
+  "Internal fn to extract value from a CouchDB result and
+   remove the internal :current-state value."
+  [clutch-result]
+  (update-in (dissoc (:value clutch-result) :current-state)
+             [:action]
+             keyword))
+
 (defn list-feeds
-  "Returns a sequence of feeds in given database, optionally
-   restricting them to the provided language."
+  "Returns a sequence of the most recent states of the feeds in the
+   given database, optionally restricting them to the provided
+   language. Omits deleted feeds."
   [database & [language]]
-  (map :value
+  (map clean-feed
        (get-view database
                  "views"
-                 :feeds
+                 :feeds_overview
                  (if language
                    {:descending true
                     :startkey [language {}]
@@ -81,10 +92,12 @@
                    {:descending true}))))
 
 (defn list-feeds-by-default-document-type
-  "Returns the feeds in database for the provided
-   default-document-type and optionally restricts them by language."
+  "Returns a sequence of the most recent states of the feeds in the
+   given database, optionally restricting them to the provided
+   language, limited to the provided default-document-type.
+   Omits deleted feeds."
   [database default-document-type & [language]]
-  (map :value
+  (map clean-feed
        (get-view database
                  "views"
                  :feeds_by_default_document_type
@@ -97,45 +110,96 @@
                            nil]})))
 
 (defn get-feed
-  "Returns a single feed from database with given language and name."
-  [database language name]
-  (:value (first (get-view database
-                           "views"
-                           :feeds
-                           {:include_docs true
-                            :key [language name]}))))
+  "Returns a sequence of states for the feed with the given language
+   and name from the provided database. Returns all available states
+   by default, but accepts an optional numeric limit argument. Omits
+   the :current-state key (which makes the output immutable from the
+   viewpoint of this API)."
+  [database language name & [limit]]
+  (map clean-feed
+       (get-view database
+                 "views"
+                 :feeds
+                 (if (number? limit)
+                   {:limit limit
+                    :include_docs true
+                    :startkey [language name {}]
+                    :endkey [language name nil]
+                    :descending true}
+                   {:include_docs true
+                    :startkey [language name {}]
+                    :endkey [language name nil]
+                    :descending true}))))
 
-(defn create-feed [database feed-map]
-  "Creates a new document in database for feed-map, with
-   :type associated to \"feed\" and :created to the current RFC3339
-   timestamp."
-  (clutch/put-document database
-                       (assoc feed-map
-                         :type "feed"
-                         :created (util/now-rfc3339))))
+(def feed-update-conflict
+  {:type ::feed-update-conflict
+   :message "This feed map doesn't contain the most recent :previous-id."})
 
-(defn update-feed [database language name feed-map]
-  "Updates the feed identified by language and name in given database
-   using the values from feed-map. Adds a :feed-updated key with the
-   current RFC3339 timestamp and updates the existing feed by
-   associating the values for :title, :subtitle, :language,
-   :default-slug-format, :default-document-type and :searchable."
-  (when-let [feed-doc (get-feed database language name)]
-    (clutch/put-document
-     database
-     (assoc feed-doc
-       :feed-updated (util/now-rfc3339)
-       :title (:title feed-map)
-       :subtitle (:subtitle feed-map)
-       :language (:language feed-map)
-       :default-slug-format (:default-slug-format feed-map)
-       :default-document-type (:default-document-type feed-map)
-       :searchable (:searchable feed-map)))))
+(def feed-already-exists-conflict
+  {:type ::feed-already-exists-conflict
+   :message "The provided feed already exists."})
 
-(defn delete-feed [database language name]
-  "Deletes the feed identified by language and name from database."
-  (when-let [feed-doc (get-feed database language name)]
-    (clutch/delete-document database feed-doc)))
+(def feed-already-deleted-error
+  {:type ::feed-already-deleted
+   :message "This feed has already been deleted."})
+
+(defn append-to-feed
+  "Accepts a map describing a feed state to be stored in the given
+   database. The feed map must contain the following
+   keys: :action (i.e. :create, :update, :delete),
+   :previous-id. The :previous-id value is the CouchDB document ID for
+   the document describing the previous state and is only required
+   only for :update and :delete actions. If the :previous-id doesn't
+   refer to the last state of the feed, a :vix.db/feed-update-conflict
+   exception is thrown.
+
+   Alternatively, it would be possibly to implement this function
+   without the :previous-id value by passing the whole state history
+   as a sequence. This is arguably cleaner, but requires more data to
+   be passed between the server and client through XMLHttpRequest.
+   This isn't too problematic for feeds, but document state histories
+   can get quite large. So the current implementation uses of this fn
+   :previous-id to make it consistent with the append-to-document
+   implemention.
+
+   Internally, the :current-state key is set to false on the previous
+   state if a new one is added. This is hidden from view and the key
+   is stripped from the output of append-to-feed and get-feed. The
+   reason for this :current-state hack is that it makes it a lot
+   easier to retrieve e.g. a list of the most current feeds from
+   CouchDB. From the viewpoint of this API the output is totally
+   immutable."
+  
+  [database {:keys [action language name previous-id] :as feed}]
+  (let [previous-state (first (get-feed database language name 1))
+        datestamp (util/now-rfc3339)]
+    (cond
+     (and (= action :create)
+          (some #{(:action previous-state)} [:create :update]))
+     (throw+ feed-already-exists-conflict)
+     (and (not (= action :create))
+          (not (= (:_id previous-state) previous-id)))
+     (throw+ feed-update-conflict)
+     (and (= action :delete) (= (:action previous-state) :delete))
+     (throw+ feed-already-deleted-error)
+     :default
+     (do
+       (clutch/bulk-update database
+                           (filter
+                            #(not (nil? %))
+                            ;; new state
+                            [(assoc (if (= action :create)
+                                      (assoc feed
+                                        :created datestamp)
+                                      (dissoc feed :_rev :_id))
+                               :type "feed"
+                               :current-state true
+                               :datestamp datestamp)
+                             ;; update for previous state
+                             (when previous-state
+                               (assoc previous-state
+                                 :current-state false))]))
+       (get-feed database language name)))))
 
 (defn get-most-recent-event-documents
   "Retrieves the most recent events for an event feed identified by

@@ -64,6 +64,13 @@
 (def could-not-save-feed-err
   "Something went wrong while trying to save this feed.")
 
+(def feed-update-conflict-err
+  (str "This feed has been updated after this page was opened. "
+       "Please refresh the page to edit the most recent version."))
+
+(def feed-already-exists-err
+  "The provided feed already exists. Please use a different name.")
+
 (defn display-document-list [main-el xhr]
   (ui/render-template main-el
                       tpl/list-documents
@@ -259,7 +266,7 @@
 (defn save-new-feed-xhr-callback [e]
   (let [xhr (.-target e)]
     (if (= (. xhr (getStatus)) 201)
-      (let [feed (reader/read-string (. xhr (getResponseText)))]
+      (let [feed (first (reader/read-string (. xhr (getResponseText))))]
         (util/navigate-replace-state (str "edit-feed/"
                                           (:language feed)
                                           "/"
@@ -268,13 +275,16 @@
                                           (:name feed)
                                           "\"")))
       (ui/display-error (dom/getElement "status-message")
-                        could-not-save-feed-err))))
+                        (if (= (. xhr (getResponseText))
+                               "The provided feed already exists.")
+                          feed-already-exists-err
+                          could-not-save-feed-err)))))
 
 ; FIXME: avoid duplication between this and the other 3 xhr callback fns
 (defn save-existing-feed-xhr-callback [e]
   (let [xhr (.-target e)]
     (if (= (. xhr (getStatus)) 200)
-      (let [feed (reader/read-string (. xhr (getResponseText)))]
+      (let [feed (first (reader/read-string (. xhr (getResponseText))))]
         (util/navigate-replace-state (str "edit-feed/"
                                           (:language feed)
                                           "/"
@@ -283,9 +293,14 @@
                                           (:name feed)
                                           "\"")))
       (ui/display-error (dom/getElement "status-message")
-                        could-not-save-feed-err))))
+                        (if (= (. xhr (getResponseText))
+                               (str "This feed map doesn't contain the most "
+                                    "recent :previous-id."))
+                          feed-update-conflict-err
+                          could-not-save-feed-err)))))
 
-(defn create-feed-form-events [status language feed-name]  
+(defn create-feed-form-events
+  [status language feed-name & [current-feed-id]]  
   (let [dsf-el (dom/getElement "default-slug-format")
         title-el (dom/getElement "title")
         name-el (dom/getElement "name")]
@@ -321,11 +336,13 @@
                      (when (validate-feed!)
                        (let [feed-doc (get-feed-value-map!)]
                          (if (= status :new)
-                           (document/create-feed
-                            feed-doc
+                           (document/append-to-feed
+                            (assoc feed-doc :action :create)
                             save-new-feed-xhr-callback)
-                           (document/update-feed
-                            feed-doc
+                           (document/append-to-feed
+                            (assoc feed-doc
+                              :action :update
+                              :previous-id current-feed-id)
                             save-existing-feed-xhr-callback))))))))
 
 (defn render-feed-form [feed]
@@ -355,7 +372,7 @@
   (let [xhr (.-target e)
         status (. xhr (getStatus))]
     (if (= status 200)
-      (let [feed (reader/read-string (. xhr (getResponseText)))]
+      (let [feed (first (reader/read-string (. xhr (getResponseText))))]
         (util/set-page-title!
          (str "Edit feed \"" (:title feed) "\""))
         (render-feed-form (assoc feed :status "new"))
@@ -382,7 +399,10 @@
           
         (ui/disable-element "name")
         (ui/disable-element "language")
-        (create-feed-form-events :edit language feed-name))
+        (create-feed-form-events :edit
+                                 language
+                                 feed-name
+                                 (:_id feed)))
       ; else clause
       (ui/render-template (dom/getElement "main-page") tpl/feed-not-found))))
 
