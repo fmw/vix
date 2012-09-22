@@ -287,13 +287,18 @@
     (str slug "-2")))
 
 (defn handle-duplicate-slug-callback [e]
-  (let [status (. (.-target e) (getStatus))
+  (let [xhr (.-target e)
         slug-el (dom/getElement "slug")]
-    (when (= status 200) 
-      (ui/set-form-value slug-el
-                         (increment-slug
-                          (document/add-initial-slash (.-value slug-el))))
-      (document/get-doc (.-value slug-el) handle-duplicate-slug-callback))))
+    (when (= (. xhr (getStatus)) 200) 
+      (let [last-state (first
+                        (reader/read-string (. xhr (getResponseText))))]
+        (when-not (= (:action last-state) :delete)
+          (ui/set-form-value slug-el
+                             (increment-slug
+                              (document/add-initial-slash
+                               (.-value slug-el))))
+          (document/get-doc (.-value slug-el)
+                            handle-duplicate-slug-callback))))))
 
 (defn handle-duplicate-custom-slug-callback [e]
   (let [status (. (.-target e) (getStatus))
@@ -439,28 +444,25 @@
                         (dom/getElement "related-images-container")))}))
 
 
-(defn handle-successful-save []
-  (enable-save-button!))
+(defn handle-successful-save [new-uri new-title]
+  (enable-save-button!)
+  (util/navigate-replace-state new-uri new-title))
 
 (defn save-new-document-xhr-callback [e]
   (let [xhr (.-target e)]
     (if (= (.getStatus xhr e) 201)
-      (let [doc (reader/read-string (. xhr (getResponseText)))]
-        (util/navigate-replace-state (str (:language doc)
-                                          "/"
-                                          (:feed doc)
-                                          "/edit"
-                                          (:slug doc))
-                                     (str "Edit \"" (:title doc) "\""))
-        (handle-successful-save))
+      (let [{:keys [language feed slug title]}
+            (first (reader/read-string (. xhr (getResponseText))))]
+        (handle-successful-save (str language "/" feed "/edit" slug)
+                                (str "Edit \"" title "\"")))
       (ui/display-error (dom/getElement "status-message")
                         could-not-create-document-err))))
 
 (defn save-new-document-click-callback [language feed-name & _]
-  (let [doc (get-document-value-map! language feed-name)]
-    (document/create-doc (:slug doc)
-                         save-new-document-xhr-callback
-                         doc)))
+  (document/append-to-document (assoc (get-document-value-map! language
+                                                               feed-name)
+                                 :action :create)
+                               save-new-document-xhr-callback))
 
 (defn get-link-data-from-li [el]
   (when-not (classes/has el "add-item-node") ; ignore "Add Item" li
@@ -487,32 +489,40 @@
       menu-string)))
 
 (defn save-new-menu-document-click-callback [language feed-name & _]
-  (let [doc (get-document-value-map! language
-                                     feed-name
-                                     (render-menu-content-string!))]
-    (document/create-doc (:slug doc)
-                         save-new-document-xhr-callback
-                         doc)))
+  (document/append-to-document (assoc (get-document-value-map!
+                                       language
+                                       feed-name
+                                       (render-menu-content-string!))
+                                 :action :create)
+                               save-new-document-xhr-callback))
 
 (defn save-existing-document-xhr-callback [e]
   (let [xhr (.-target e)]
     (if (= (. xhr (getStatus)) 200)
-      (handle-successful-save)
+      (let [{:keys [language feed slug title]}
+            (first (reader/read-string (. xhr (getResponseText))))]
+        (handle-successful-save (str language "/" feed "/edit" slug)
+                                (str "Edit \"" title "\"")))
       (ui/display-error (dom/getElement "status-message")
                         could-not-save-document-err))))
 
-(defn save-existing-document-click-callback [language feed-name & _]
-  (document/update-doc (.-value (dom/getElement "slug"))
-                       save-existing-document-xhr-callback
-                       (get-document-value-map! language feed-name)))
+(defn save-existing-document-click-callback
+  [language feed-name previous-id & _]
+  (document/append-to-document (assoc (get-document-value-map! language
+                                                               feed-name)
+                                 :action :update
+                                 :previous-id previous-id)
+                               save-existing-document-xhr-callback))
 
-(defn save-existing-menu-document-click-callback [language feed-name & _]
-  (document/update-doc (.-value (dom/getElement "slug"))
-                       save-existing-document-xhr-callback
-                       (get-document-value-map!
-                        language
-                        feed-name
-                        (render-menu-content-string!))))
+(defn save-existing-menu-document-click-callback
+  [language feed-name previous-id & _]
+  (document/append-to-document (assoc (get-document-value-map!
+                                       language
+                                       feed-name
+                                       (render-menu-content-string!))
+                                 :action :update
+                                 :previous-id previous-id)
+                               save-existing-document-xhr-callback))
 
 (defn strip-filename-extension [filename]
   (let [pieces (re-find #"^(.*?)\.[a-zA-Z0-9]{1,10}$" filename)]
@@ -530,7 +540,8 @@
                                  :src (.-result (.-target e))})))
     (. reader (readAsDataURL file))))
 
-(defn save-image-document-click-callback [create? language feed-name]
+(defn save-image-document-click-callback
+  [create? language feed-name previous-id current-attachments]
   (let [file (:obj @*file*)]
     (if file
       (let [reader (new js/FileReader)]
@@ -539,21 +550,28 @@
                 (let [image-data {:type (.-type file)
                                   :data (base64/encodeString
                                          (.-result (.-target e)))}
-                      doc (assoc (get-document-value-map! language feed-name)
-                            :attachment image-data)]
-                  (if create?
-                    (document/create-doc (:slug doc)
-                                         save-new-document-xhr-callback
-                                         doc)
-                    (document/update-doc (:slug doc)
-                                         save-existing-document-xhr-callback
-                                         doc)))))
+                      doc (merge (get-document-value-map! language feed-name)
+                                 {:action (if create?
+                                            :create
+                                            :update)
+                                  :attachment image-data}
+                                 (when (not create?)
+                                   {:previous-id previous-id}))]
+                  (document/append-to-document
+                   doc
+                   (if create?
+                     save-new-document-xhr-callback
+                     save-existing-document-xhr-callback)))))
         (. reader (readAsBinaryString file)))
       (if-not create?
         ;; update without changing image
-        (document/update-doc (.-value (dom/getElement "slug"))
-                             save-existing-document-xhr-callback
-                             (get-document-value-map! language feed-name))
+        (document/append-to-document (assoc
+                                         (get-document-value-map! language
+                                                                  feed-name)
+                                       :action :update
+                                       :previous-id previous-id
+                                       :attachments current-attachments)
+                                     save-existing-document-xhr-callback)
         (ui/display-error (dom/getElement "status-message")
                           file-required-err)))))
 
@@ -562,37 +580,37 @@
     (. e (preventDefault))
     (. e (stopPropagation)))
   
-  (let [status-el (dom/getElement "status-message")
-        image-information-el (dom/getElement "image-information")
-        file (aget (.-files (.-dataTransfer e)) 0)
-        title (string/join " "
-                           (filter #(not (string/blank? %))
-                                   (.split (strip-filename-extension
-                                            (.-name file))
-                                           #"[^a-zA-Z0-9]")))
-        extension (cond
-                   (= (.-type file) "image/png") "png"
-                   (= (.-type file) "image/gif") "gif"
-                   (= (.-type file) "image/jpeg") "jpg")]
-    (if extension
-      (do
-        (swap! *file* assoc :obj file :data {:extension extension})
-        (ui/remove-error status-el)
-        (ui/set-form-value (dom/getElement "title") title)
-        (display-image-preview file title)
-        (classes/remove image-information-el "hide")
-        (ui/render-template image-information-el
-                            tpl/image-information
-                            {:filename (.-name file)
-                             :filetype (.-type file)
-                             :size (/ (.-size file) 1024)})
+  (if-let [file (aget (.-files (.-dataTransfer e)) 0)]
+    (let [status-el (dom/getElement "status-message")
+          image-information-el (dom/getElement "image-information")
+          title (string/join " "
+                              (filter #(not (string/blank? %))
+                                     (.split (strip-filename-extension
+                                              (.-name file))
+                                             #"[^a-zA-Z0-9]")))
+          extension (cond
+                     (= (.-type file) "image/png") "png"
+                     (= (.-type file) "image/gif") "gif"
+                     (= (.-type file) "image/jpeg") "jpg")]
+      (if extension
+        (do
+          (swap! *file* assoc :obj file :data {:extension extension})
+          (ui/remove-error status-el)
+          (ui/set-form-value (dom/getElement "title") title)
+          (display-image-preview file title)
+          (classes/remove image-information-el "hide")
+          (ui/render-template image-information-el
+                              tpl/image-information
+                              {:filename (.-name file)
+                               :filetype (.-type file)
+                               :size (/ (.-size file) 1024)})
         
-        (when (= status "new")
-          (sync-slug-with-title feed)))
-      (do
-        (swap! *file* dissoc :obj :data)
-        (classes/add image-information-el "hide")
-        (ui/display-error status-el invalid-filetype-err)))))
+          (when (= status "new")
+            (sync-slug-with-title feed)))
+        (do
+          (swap! *file* dissoc :obj :data)
+          (classes/add image-information-el "hide")
+          (ui/display-error status-el invalid-filetype-err))))))
 
 (defn render-editor-template [mode data]
   (ui/render-template (dom/getElement "main-page")
@@ -1113,10 +1131,15 @@
                  :default :default)
            tpl-map (if (and (= mode :image) (not new?))
                      (assoc tpl-map :image (str "data:"
-                                                (:type (:attachment tpl-map))
+                                                (get-in tpl-map
+                                                        [:attachments
+                                                         :original
+                                                         :type])
                                                 ";base64,"
-                                                (:data
-                                                 (:attachment tpl-map))))
+                                                (get-in tpl-map
+                                                        [:attachments
+                                                         :original
+                                                         :data])))
                      tpl-map)]
        (if new?
          (do
@@ -1147,7 +1170,9 @@
                       (save-image-document-click-callback
                        true
                        (:language feed)
-                       (:name feed)))
+                       (:name feed)
+                       (:_id tpl-map)
+                       (:attachments tpl-map)))
                     (= mode :menu)
                     (do
                       (save-new-menu-document-click-callback
@@ -1164,17 +1189,21 @@
                       (save-image-document-click-callback
                        false
                        (:language feed)
-                       (:name feed)))
+                       (:name feed)
+                       (:_id tpl-map)
+                       (:attachments tpl-map)))
                     (= mode :menu)
                     (do
                       (save-existing-menu-document-click-callback
                        (:language feed)
-                       (:name feed)))
+                       (:name feed)
+                       (:_id tpl-map)))
                     :default
                     (do
                       (save-existing-document-click-callback
                        (:language feed)
-                       (:name feed)))))))]
+                       (:name feed)
+                       (:_id tpl-map)))))))]
 
          (events/listen (dom/getElement "save-document")
                         "click"
@@ -1372,9 +1401,10 @@
                       (fn [e]
                         (let [xhr (.-target e)]
                           (if (= (. xhr (getStatus)) 200)
-                            (let [doc (reader/read-string
-                                       (. xhr
-                                          (getResponseText)))]
+                            (let [doc (first
+                                       (reader/read-string
+                                        (. xhr
+                                           (getResponseText))))]
                               (util/set-page-title!
                                (str "Edit \"" (:title doc) "\""))
                               (render-editor feed
@@ -1402,8 +1432,9 @@
                       (fn [e]
                         (let [xhr (.-target e)]
                           (if (= (. xhr (getStatus)) 200)
-                            (let [doc (reader/read-string
-                                       (. xhr (getResponseText)))]
+                            (let [doc (first
+                                       (reader/read-string
+                                        (. xhr (getResponseText))))]
                               (util/set-page-title!
                                (str "Edit \"" (:title doc) "\""))
                               (render-editor feed
@@ -1416,7 +1447,7 @@
 (defn start-mode-callback! [slug status event]
   (let [xhr (.-target event)]
     (when (= (. xhr (getStatus)) 200)
-      (let [feed (reader/read-string (. xhr (getResponseText)))]
+      (let [feed (first (reader/read-string (. xhr (getResponseText))))]
         (call-with-feeds-and-documents
           (:language feed)
           (fn [feeds documents]

@@ -34,6 +34,12 @@
   {:type ::invalid-request-body
    :message "The JSON or Clojure request body is invalid."})
 
+(def method-action-mismatch-error
+  {:type ::method-action-mismatch
+   :message (str "The :action value in the provided map must correspond "
+                 "to the right HTTP method (i.e. POST & :create, "
+                 "PUT & :update and DELETE and :delete).")})
+
 (def available-languages
   "Atom; Sequence of available languages used for language selection."
   (atom (db/get-available-languages config/database)))
@@ -122,31 +128,28 @@
   (response "<h1>Page not found</h1>" :status 404))
 
 (defn image-response
-  "Returns the attachment for the :original key for the given document
-   in database, or a page-not-found-response if the attachment wasn't
-   found. Uses the CouchDB revision identifier as the value for the HTTP
-   ETag header and uses the most recent date from the document (either
+  "Returns the attachment for the :original key of the most recent
+   state in the given document-state sequence in database, or a
+   page-not-found-response if the attachment wasn't found. Uses the
+   CouchDB revision identifier as the value for the HTTP ETag header
+   and uses the most recent date from the document (either
    :updated or published) as the value of the Last-Modified header."
-  [database document]
-  (if-let [attachment (clutch/get-attachment database
-                                             document
-                                             :original)]
-    (let [resp (response attachment
-                         :content-type (:content_type
-                                        (:original
-                                         (:_attachments
-                                          document))))]
-      (assoc resp :headers
-             (assoc (:headers resp)
-               "ETag"
-               (:_rev document))
-             "Last-Modified"
-             (time-format/unparse (time-format/formatters :rfc822)
-                                  (util/rfc3339-to-jodatime
-                                   (or (:updated document)
-                                       (:published document))
-                                   "UTC"))))
-    (page-not-found-response)))
+  [database document-states]
+  (let [{:keys [_id attachments datestamp] :as document}
+        (first document-states)]
+    (if-let [attachment (clutch/get-attachment database _id :original)]
+      (let [resp (response attachment
+                           :content-type
+                           (:type (:original attachments)))]
+        (assoc resp :headers
+               (assoc (:headers resp)
+                 "ETag"
+                 (:_rev document)
+                 "Last-Modified"
+                 (time-format/unparse (time-format/formatters :rfc822)
+                                      (util/rfc3339-to-jodatime datestamp
+                                                                "UTC")))))
+      (page-not-found-response))))
 
 (defmulti get-segment
   "Multimethod that retrieves the data associated with a page segment
@@ -164,7 +167,9 @@
   [segment-details database language timezone]
   (assoc segment-details
     :data
-    (db/get-document database ((:slug segment-details) language))))
+    (first (db/get-document database
+                            ((:slug segment-details) language)
+                            {:limit 1}))))
 
 (defmethod get-segment :most-recent-events
   [segment-details database language timezone]
@@ -258,30 +263,32 @@
   [database slug timezone]
   (if-let [p (get @page-cache slug)]
     p
-    (if-let [document (db/get-document database slug)]
-      (cond
-       ;; files always skip the cache
-       (:original (:_attachments document))
-       (image-response database document)
-       ;; for event-like documents
-       ;;(not (nil? (:end-time-rfc3339 document)))
-       ;; for all other documents
-       :default
-       (do
-         (swap! page-cache
-                assoc
-                slug
-                (response
-                 (views/page-view (:language document)
-                                  timezone
-                                  document
-                                  (get-segments (:default-page
-                                                 config/page-segments)
-                                                database
-                                                (:language document)
-                                                timezone))))
-         (get-cached-page! database slug timezone)))   
-      (page-not-found-response))))
+    (let [{:keys [attachments language] :as document}
+          (first (db/get-document database slug {:limit 1}))]
+      (if (and document (not (= (keyword (:action document)) :delete)))
+        (cond
+         ;; files always skip the cache
+         (:original attachments)
+         (image-response database [document])
+         ;; for event-like documents
+         ;;(not (nil? (:end-time-rfc3339 document)))
+         ;; for all other documents
+         :default
+         (do
+           (swap! page-cache
+                  assoc
+                  slug
+                  (response
+                   (views/page-view language
+                                    timezone
+                                    document
+                                    (get-segments (:default-page
+                                                   config/page-segments)
+                                                  database
+                                                  language
+                                                  timezone))))
+           (get-cached-page! database slug timezone)))   
+        (page-not-found-response)))))
 
 (defn reset-page-cache!
   "Resets the page-cache atom to an empty map."
@@ -363,60 +370,46 @@
     method))
 
 (defmethod document-request :GET
-  [method response-type new-doc existing-doc language feed-name]
-  (data-response existing-doc :type response-type))
+  [method response-type doc]
+  (data-response doc :type response-type))
 
 (defmethod document-request :POST
-  [method response-type new-doc existing-doc language feed-name]
-  (let [document (db/create-document config/database
-                                     language
-                                     feed-name
-                                     config/default-timezone
-                                     new-doc)]
+  [method response-type {:keys [language] :as doc}]
+  (let [document (db/append-to-document config/database
+                                        config/default-timezone
+                                        doc)]
     (reset-index-reader!)
-    (lucene/add-documents-to-index! lucene/directory [new-doc])
+    (lucene/add-documents-to-index! lucene/directory [(first document)])
     (reset-all! config/database language)
     (data-response document :status 201 :type response-type)))
 
 (defmethod document-request :PUT
-  [method
-   response-type
-   new-doc
-   {:keys [slug feed] :as existing-doc}
-   language
-   feed-name]
-  (if (and existing-doc
-           (= slug (:slug new-doc))
-           (= feed (:feed new-doc))
-           (= language (:language existing-doc) (:language new-doc)))
-    (let [document (db/update-document config/database
-                                       config/default-timezone
-                                       slug
-                                       new-doc)]
-      (reset-index-reader!)
-      (lucene/update-document-in-index! lucene/directory slug document)
-      (reset-all! config/database language)
-      (data-response document :type response-type))
-    (data-response nil :type response-type)))
+  [method response-type {:keys [language slug] :as doc}]
+  (let [document (db/append-to-document config/database
+                                        config/default-timezone
+                                        doc)]
+    (reset-index-reader!)
+    (lucene/update-document-in-index! lucene/directory slug (first document))
+    (reset-all! config/database language)
+    (data-response document :type response-type)))
 
 (defmethod document-request :DELETE
-  [method
-   response-type
-   new-doc
-   {:keys [slug] :as existing-doc}
-   language ; FIXME: take language from doc, not uri
-   feed-name]
-  (if existing-doc
-    (let [document (db/delete-document config/database slug)]
-      (reset-index-reader!)
-      (lucene/delete-document-from-index! lucene/directory slug)
-      (reset-all! config/database language)
-      (data-response document :type response-type))
-    (data-response nil :type response-type)))
+  [method response-type {:keys [language slug] :as doc}]
+  (let [document (db/append-to-document config/database
+                                        config/default-timezone
+                                        doc)]
+    (reset-index-reader!)
+    (lucene/delete-document-from-index! lucene/directory slug)
+    (reset-all! config/database language)
+    (data-response document :type response-type)))
 
 (def http-methods
   "HTTP method as keywords, with lowercase keys and uppercase values."
   {:get :GET :post :POST :put :PUT :delete :DELETE})
+
+(def method-action-matches
+  "Mapping of HTTP methods to feed/document map :action values."
+  {:POST :create :PUT :update :DELETE :delete})
 
 (defn read-body
   "Returns a string representation of body, treated like the provided
@@ -545,46 +538,37 @@
         body :body
         session :session}
        (let [method (http-methods lowercase-method)
-             new-doc (read-body type body)]
-         ;; FIXME: add authenticate for both old and new feed
-         ;; if not :POST/GET
+             {:keys [action] :as new-doc} (read-body type body)]
          (when (if (= method :POST)
                  (authorize session :POST nil :*)
                  (authorize session method language feed-name))
-           (feed-request config/database
-                         method
-                         (keyword type)
-                         new-doc
-                         language
-                         feed-name))))
+           (if (or (= method :GET)
+                   (= (keyword action) (method-action-matches method)))
+             (feed-request config/database
+                           method
+                           (keyword type)
+                           new-doc
+                           language
+                           feed-name)
+             (throw+ method-action-mismatch-error)))))
   (ANY "/_api/:type/_document/*"
        {lowercase-method :request-method
         {type :type raw-slug :*} :params
         body :body
         session :session}
-       (let [method (http-methods lowercase-method)
-             existing-doc (db/get-document
-                           config/database
-                           (util/force-initial-slash raw-slug)
-                           true)
-             new-doc (read-body type body)
-             feed (or (:feed new-doc)
-                      (:feed existing-doc))
-             language (or (:language new-doc)
-                          (:language existing-doc))]
-         ;; FIXME: authenticate both new & old if not GET/POST/HEAD
-         (when (if (= method :GET)
-                 (authorize session
-                            method
-                            (:language existing-doc)
-                            (:feed existing-doc))
-                 (authorize session method language feed))
-           (document-request method
-                             (keyword type)
-                             new-doc
-                             existing-doc
-                             language
-                             feed))))
+       (let [method
+             (http-methods lowercase-method)
+             {:keys [action language feed] :as doc}
+             (if (= method :GET)
+               (db/get-document
+                config/database
+                (util/force-initial-slash raw-slug))
+               (read-body type body))]
+         (when (authorize session method language feed)
+           (if (or (= method :GET)
+                   (= (keyword action) (method-action-matches method)))
+             (document-request method (keyword type) doc)
+             (throw+ method-action-mismatch-error)))))
   (route/resources "/static/")
   (GET "/*"
        {{slug :*} :params}
@@ -609,11 +593,21 @@
        (redirect "/login"))
      (catch [:type :vix.routes/invalid-request-body] e
        (data-error-response (:message e)))
+     (catch [:type :vix.routes/method-action-mismatch] e
+       (data-error-response (:message e)))
      (catch [:type :vix.db/feed-already-deleted] e
        (data-error-response (:message e)))
      (catch [:type :vix.db/feed-update-conflict] e
        (data-error-response (:message e)))
      (catch [:type :vix.db/feed-already-exists-conflict] e
+       (data-error-response (:message e)))
+     (catch [:type :vix.db/document-already-exists-conflict] e
+       (data-error-response (:message e)))
+     (catch [:type :vix.db/document-update-conflict] e
+       (data-error-response (:message e)))
+     (catch [:type :vix.db/document-already-deleted] e
+       (data-error-response (:message e)))
+     (catch [:type :vix.db/document-missing-required-keys] e
        (data-error-response (:message e))))))
 
 (defn wrap-caching-headers

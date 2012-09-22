@@ -47,14 +47,26 @@
 (defn get-doc [slug callback]
   (request-doc slug callback "GET" nil))
 
-(defn delete-doc [slug callback]
-  (request-doc slug callback "DELETE" nil))
+(defn append-to-document
+  [{:keys [action slug] :as doc} callback]
+  (request-doc slug
+               callback
+               ({:create "POST" :update "PUT" :delete "DELETE"} action)
+               doc))
 
-(defn create-doc [slug callback doc]
-  (request-doc slug callback "POST" doc))
-
-(defn update-doc [slug callback doc]
-  (request-doc slug callback "PUT" doc))
+(defn delete-document-shortcut [slug callback]
+  (get-doc slug
+           (fn [e]
+             (let [xhr (.-target e)
+                   status (. xhr (getStatus))]
+               (if (= status 200)
+                 (let [document (first
+                                 (reader/read-string
+                                  (. xhr (getResponseText))))]
+                   (append-to-document (assoc document
+                                         :previous-id (:_id document)
+                                         :action :delete)
+                                       callback)))))))
 
 (defn get-documents-for-feed
   [language feed-name callback & [limit startkey-published startkey_docid]]

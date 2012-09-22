@@ -99,17 +99,17 @@
     (is (= (:map (:by_slug (:views view-doc)))
            (str "function(doc) {\n"
                 "    if(doc.type === \"document\") {\n"
-                "        emit(doc.slug, doc);\n"
-                "    }\n"
-                "}\n")))
+                "        emit([doc.slug, doc.datestamp], doc);\n"
+                "    }\n}\n")))
     
     (is (= (:map (:by_feed (:views view-doc)))
            (str "function(doc) {\n"
-                "    if(doc.type === \"document\") {\n"
-                "        emit([[doc.language, doc.feed], doc.published]"
-                ", doc);\n"
-                "    }\n"
-                "}\n")))
+                "    if(doc.type === \"document\" &&\n"
+                "       doc[\"current-state\"] === true &&\n"
+                "       doc.action !== \"delete\") {\n"
+                "        emit([[doc.language, doc.feed], doc.published], "
+                               "doc);\n"
+                "    }\n}\n")))
 
     (is (= (:map (:by_username (:views view-doc)))
            (str "function(doc) {\n"
@@ -120,8 +120,9 @@
 
     (is (= (:map (:events_by_feed (:views view-doc)))
            (str "function(doc) {\n"
-                "    if(doc.type === \"document\" "
-                "&& doc[\"end-time-rfc3339\"]) {\n"
+                "    if(doc.type === \"document\" &&\n"
+                "       doc[\"end-time-rfc3339\"] &&\n"
+                "       doc[\"current-state\"] === true) {\n"
                 "        emit([[doc.language, doc.feed], "
                 "doc[\"end-time-rfc3339\"]], doc);\n    }\n}\n")))
 
@@ -145,73 +146,140 @@
 (deftest test-get-attachment-as-base64-string
   (let [gif (str "R0lGODlhAQABA++/vQAAAAAAAAAA77+9AQIAAAAh77+9BAQUA++/"
                  "vQAsAAAAAAEAAQAAAgJEAQA7")
-        document (create-document +test-db+
-                                  "en"
-                                  "images"
-                                  "Europe/Amsterdam"
-                                  {:attachment {:type "image/gif"
-                                                :data gif}
-                                   :title "a single black pixel!"
-                                   :slug "pixel.gif"
-                                   :content ""
-                                   :draft false})]
-    (is (= (get-attachment-as-base64-string +test-db+ document :original)
+        document (append-to-document +test-db+
+                                     "Europe/Amsterdam"
+                                     {:action :create
+                                      :attachment {:type "image/gif"
+                                                   :data gif}
+                                      :feed "images"
+                                      :language "en"
+                                      :title "a single black pixel!"
+                                      :slug "pixel.gif"
+                                      :content ""
+                                      :draft false})]
+    (is (= (get-attachment-as-base64-string +test-db+
+                                            (:_id (first document))
+                                            :original)
            gif))))
 
 (deftest test-get-document
-  (do
-    (create-document +test-db+
-                     "en"
-                     "blog"
-                     "Europe/Amsterdam"
-                     {:title "foo"
-                      :slug "/blog/foo"
-                      :content "bar"
-                      :draft true}))
+  (is (nil? (get-document +test-db+ "/blog/foo")))
+  (is (nil? (get-document +test-db+ "/blog/foo" {:limit 100000})))
+  
+  (with-redefs [util/now-rfc3339 #(str "2012-09-15T23:48:58.050Z")]
+    (append-to-document +test-db+
+                        "Europe/Amsterdam"
+                        {:action :create
+                         :title "foo"
+                         :slug "/blog/foo"
+                         :language "en"
+                         :feed "blog"
+                         :content "bar"
+                         :draft true})
+    (append-to-document +test-db+
+                        "Europe/Amsterdam"
+                        {:action :update
+                         :previous-id (:_id
+                                       (first
+                                        (get-document
+                                         +test-db+
+                                         "/blog/foo")))
+                         :title "foo"
+                         :slug "/blog/foo"
+                         :language "en"
+                         :feed "blog"
+                         :content "bar"
+                         :draft false}))
 
-  ;; we didn't create the view manually here, this test also implies
-  ;; are created automatically by get-document
-  (let [document (get-document +test-db+ "/blog/foo")]
-    (is (couchdb-id? (:_id document)))
-    (is (couchdb-rev? (:_rev document)))
-    (is (iso-date? (:published document)))
-    (is (= (:language document) "en"))
-    (is (= (:feed document) "blog"))
-    (is (= (:title document) "foo"))
-    (is (= (:slug document) (str "/blog/foo")))
-    (is (= (:content document) "bar"))
-    (is (true? (:draft document))))
+  ;; The view isn't created manually; successful execution of
+  ;; this test also implies that it is created automatically.
+
+  (is (couchdb-id? (:_id (first (get-document +test-db+ "/blog/foo")))))
+  (is (couchdb-rev? (:_rev (first (get-document +test-db+ "/blog/foo")))))
+  
+  (is (= (vec (map #(dissoc % :_id :_rev :previous-id)
+                   (get-document +test-db+ "/blog/foo")))
+         [{:slug "/blog/foo"
+           :content "bar"
+           :action :update
+           :language "en"
+           :title "foo"
+           :published "2012-09-15T23:48:58.050Z"
+           :datestamp "2012-09-15T23:48:58.050Z"
+           :created "2012-09-15T23:48:58.050Z"
+           :type "document"
+           :feed "blog"
+           :draft false}
+          {:slug "/blog/foo"
+           :content "bar"
+           :action :create
+           :language "en"
+           :title "foo"
+           :published "2012-09-15T23:48:58.050Z"
+           :datestamp "2012-09-15T23:48:58.050Z"
+           :created "2012-09-15T23:48:58.050Z"
+           :type "document"
+           :feed "blog"
+           :draft true}]))
+
+  (is (= (vec (map #(dissoc % :_id :_rev :previous-id)
+                   (get-document +test-db+ "/blog/foo" {:limit 1})))
+         [{:slug "/blog/foo"
+           :content "bar"
+           :action :update
+           :language "en"
+           :title "foo"
+           :published "2012-09-15T23:48:58.050Z"
+           :datestamp "2012-09-15T23:48:58.050Z"
+           :created "2012-09-15T23:48:58.050Z"
+           :type "document"
+           :feed "blog"
+           :draft false}]))
 
   (testing "Test if attachments are handled correctly."
     (let [gif (str "R0lGODlhAQABA++/vQAAAAAAAAAA77+9AQIAAAAh77+9BAQUA++/"
                    "vQAsAAAAAAEAAQAAAgJEAQA7")]
       (do
-       (create-document +test-db+
-                        "en"
-                        "images"
-                        "Europe/Amsterdam"
-                        {:attachment {:type "image/gif" :data gif}
-                         :title "a single black pixel!"
-                         :slug "/images/white-pixel.gif"
-                         :content ""
-                         :draft false})
-       (create-document +test-db+
-                        "en"
-                        "images"
-                        "Europe/Amsterdam"
-                        {:title "not a single black pixel!"
-                         :slug "/images/not-a-white-pixel.gif"
-                         :content ""
-                         :draft false}))
+        (append-to-document +test-db+
+                            "Europe/Amsterdam"
+                            {:action :create
+                             :attachment {:type "image/gif" :data gif}
+                             :title "a single black pixel!"
+                             :slug "/images/white-pixel.gif"
+                             :language "en"
+                             :feed "images"
+                             :content ""
+                             :draft false})
+        (append-to-document +test-db+
+                            "Europe/Amsterdam"
+                            {:action :update
+                             :previous-id (:_id
+                                           (first
+                                            (get-document
+                                             +test-db+
+                                             "/images/white-pixel.gif")))
+                             :attachment {:type "image/gif" :data gif}
+                             :title "a single black pixel!"
+                             :slug "/images/white-pixel.gif"
+                             :language "en"
+                             :feed "images"
+                             :content ""
+                             :draft false})
+        (append-to-document +test-db+
+                            "Europe/Amsterdam"
+                            {:action :create
+                             :title "not a single black pixel!"
+                             :slug "/images/not-a-white-pixel.gif"
+                             :language "en"
+                             :feed "images"
+                             :content ""
+                             :draft false}))
 
-      (is (= (:attachment (get-document +test-db+
-                                        "/images/white-pixel.gif"
-                                        true))
-             {:type "image/gif" :data gif}))
-
-      (is (nil? (:attachment (get-document +test-db+
-                                           "/images/not-a-white-pixel.gif"
-                                           true)))))))
+      (is (= (get-in (get-document +test-db+ "/images/white-pixel.gif")
+                     [0 :attachments :original])
+             (get-in (get-document +test-db+ "/images/white-pixel.gif")
+                     [1 :attachments :original])
+             {:type "image/gif" :data gif :length 57})))))
 
 (deftest test-get-feed
   (with-redefs [util/now-rfc3339 #(str "2012-09-04T03:46:52.096Z")]
@@ -283,6 +351,7 @@
                :language "nl"
                :title "B2"
                :datestamp "2012-09-04T03:55:52.096Z"
+               :created "2012-09-04T03:46:52.096Z"
                :type "feed"
                :default-document-type "with-description"
                :default-slug-format "/{document-title}"}
@@ -292,6 +361,7 @@
                :language "nl"
                :title "B1"
                :datestamp "2012-09-04T03:50:52.096Z"
+               :created "2012-09-04T03:46:52.096Z"
                :type "feed"
                :default-document-type "with-description"
                :default-slug-format "/{document-title}"}
@@ -314,6 +384,7 @@
                :language "nl"
                :title "B2"
                :datestamp "2012-09-04T03:55:52.096Z"
+               :created "2012-09-04T03:46:52.096Z"
                :type "feed"
                :default-document-type "with-description"
                :default-slug-format "/{document-title}"}]))
@@ -329,107 +400,6 @@
              1 0
              2 1
              2 2)))))
-
-(deftest test-get-unique-slug
-  (is (= (get-unique-slug +test-db+ "/blog/foo") "/blog/foo"))
-
-  (do
-    (create-document +test-db+
-                     "en"
-                     "blog"
-                     "Europe/Amsterdam"
-                     {:title "foo"
-                      :slug "/blog/foo-1234567890"
-                      :content "bar"
-                      :draft true})
-
-    (create-document +test-db+
-                     "en"
-                     "blog"
-                     "Europe/Amsterdam"
-                     {:title "foo"
-                      :slug "/blog/foo-1234567891"
-                      :content "bar"
-                      :draft true}))
-
-  ; this should retrieve the next available slug:
-  (is (= (get-unique-slug +test-db+ "/blog/foo-1234567890")
-         "/blog/foo-1234567892")))
-
-(deftest test-create-document
-  (testing "Test document creation"
-    (let [document (create-document +test-db+
-                                    "en"
-                                    "blog"
-                                    "Europe/Amsterdam"
-                                    {:title "foo"
-                                     :slug "/blog/foo"
-                                     :content "bar"
-                                     :start-time "2012-02-21 01:19"
-                                     :end-time "2012-02-21 10:00"
-                                     :draft false})]
-
-      (is (couchdb-id? (:_id document)))
-      (is (couchdb-rev? (:_rev document)))
-      (is (iso-date? (:published document)))
-      (is (= (:type document) "document"))
-      (is (= (:language document) "en"))
-      (is (= (:feed document) "blog"))
-      (is (= (:title document) "foo"))
-      (is (= (:slug document) "/blog/foo"))
-      (is (= (:content document) "bar"))
-      (is (= (:start-time document) "2012-02-21 01:19"))
-      (is (= (:end-time document) "2012-02-21 10:00"))
-      (is (= (:start-time-rfc3339 document) "2012-02-21T00:19:00.000Z"))
-      (is (= (:end-time-rfc3339 document) "2012-02-21T09:00:00.000Z"))
-      (is (false? (:draft document)))))
-
-  (testing "Test if slugs are correctly autoincremented"
-    (dotimes [n 10]
-      (let [document (create-document +test-db+
-                                      "en"
-                                      "blog"
-                                      "Europe/Amsterdam"
-                                      {:title "foo"
-                                       :slug "/blog/foo"
-                                       :content "bar"
-                                       :draft true})]
-        (is (couchdb-id? (:_id document)))
-        (is (couchdb-rev? (:_rev document)))
-        (is (iso-date? (:published document)))
-        (is (= (:language document) "en"))
-        (is (= (:feed document) "blog"))
-        (is (= (:title document) "foo"))
-        (is (= (:slug document) (str "/blog/foo-" (+ n 2))))
-        (is (= (:content document) "bar"))
-        (is (true? (:draft document))))))
-
-
-  (testing "Test if attachments are handled correctly."
-    (let [gif (str "R0lGODlhAQABA++/vQAAAAAAAAAA77+9AQIAAAAh77+9BAQUA++/"
-                   "vQAsAAAAAAEAAQAAAgJEAQA7")
-          document (create-document +test-db+
-                                    "en"
-                                    "images"
-                                    "Europe/Amsterdam"
-                                    {:attachment {:type "image/gif"
-                                                  :data gif}
-                                     :title "a single black pixel!"
-                                     :slug "pixel.gif"
-                                     :content ""
-                                     :draft false})]
-      (is (= (:attachment document)
-             {:type "image/gif"
-              :data (str "R0lGODlhAQABA++/vQAAAAAAAAAA77+9AQIAAAAh77+"
-                         "9BAQUA++/vQAsAAAAAAEAAQAAAgJEAQA7")}))
-      (is (= (:_attachments document)
-             {:original {:content_type "image/gif"
-                         :revpos 2
-                         :length 57
-                         :stub true}}))
-
-      (is (= (get-attachment-as-base64-string +test-db+ document :original)
-             gif)))))
 
 (deftest test-append-to-feed
   (let [blog-feed (with-redefs [util/now-rfc3339
@@ -456,6 +426,39 @@
       (is (= (:language blog-feed) "en"))
       (is (= (:default-slug-format blog-feed) "/{document-title}"))
       (is (= (:default-document-type blog-feed) "with-description")))
+
+    ;; make sure that invalid actions aren't allowed
+    (is (thrown+? (partial check-exc :vix.db/invalid-action)
+                  (append-to-feed
+                   +test-db+
+                   (assoc blog-feed
+                     :action :invalid
+                     :previous-id (:_id blog-feed)
+                     :title "Updated Weblog Feed"
+                     :default-document-type "standard"
+                     :searchable true))))
+
+    (is (thrown+? (partial check-exc :vix.db/invalid-action)
+                  (append-to-feed
+                   +test-db+
+                   (dissoc (assoc blog-feed
+                             :previous-id (:_id blog-feed)
+                             :title "Updated Weblog Feed"
+                             :default-document-type "standard"
+                             :searchable true)
+                           :action))))
+
+
+    ;; a non-keyword action should work:
+    (append-to-feed
+     +test-db+
+     {:action :create
+      :title "Weblog"
+      :subtitle "Another Weblog!"
+      :name "another-blog"
+      :language "en"
+      :default-slug-format "/{document-title}"
+      :default-document-type "with-description"})
 
     (let [blog-feed-updated (with-redefs [util/now-rfc3339
                                           #(str "2012-09-04T04:30:17.930Z")]
@@ -613,32 +616,35 @@
                        :default-slug-format "/{document-title}"}))))
 
 (deftest test-get-documents-for-feed
-  (let [doc-1 (create-document +test-db+
-                               "en"
-                               "blog"
-                               "Europe/Amsterdam"
-                               {:title "foo"
-                                :slug "/blog/foo"
-                                :content "bar"
-                                :draft true})
+  (let [doc-1 (append-to-document +test-db+
+                                  "Europe/Amsterdam"
+                                  {:action :create
+                                   :language "en"
+                                   :feed "blog"
+                                   :title "foo"
+                                   :slug "/blog/foo-0"
+                                   :content "bar"
+                                   :draft true})
 
-        doc-2 (create-document +test-db+
-                               "en"
-                               "blog"
-                               "Europe/Amsterdam"
-                               {:title "foo"
-                                :slug "/blog/foo"
-                                :content "bar"
-                                :draft true})
+        doc-2 (append-to-document +test-db+
+                                  "Europe/Amsterdam"
+                                  {:action :create
+                                   :language "en"
+                                   :feed "blog"
+                                   :title "foo"
+                                   :slug "/blog/foo-1"
+                                   :content "bar"
+                                   :draft true})
 
-        doc-3 (create-document +test-db+
-                               "nl"
-                               "blog"
-                               "Europe/Amsterdam"
-                               {:title "foo"
-                                :slug "/blog/foo"
-                                :content "bar"
-                                :draft true})
+        doc-3 (append-to-document +test-db+
+                                  "Europe/Amsterdam"
+                                  {:action :create
+                                   :language "nl"
+                                   :feed "blog"
+                                   :title "foo"
+                                   :slug "/blog/foo-nl"
+                                   :content "bar"
+                                   :draft true})
         
         feed (get-documents-for-feed +test-db+ "en" "blog")]
 
@@ -646,24 +652,28 @@
     (is (= (count (:documents feed)) 2))
 
     (is (= (:next feed) nil))
-    (is (some #{doc-1} (:documents feed)))
-    (is (some #{doc-2} (:documents feed))))
+    (is (some #{(first doc-1)} (:documents feed)))
+    (is (some #{(first doc-2)} (:documents feed))))
 
   (testing "test pagination"
     (let [now "2011-09-06T12:56:16.322Z"]
       (dotimes [n 21]
-        (clutch/put-document +test-db+
-                             {:type "document"
-                              :title (str "doc " n)
-                              :slug (str "/pages/doc-" n)
-                              :content ""
-                              :draft false
-                              :language "en"
-                              :feed "pages"
-                                        ; mix identical and unique dates
-                              :published (if (< n 7)
-                                           now
-                                           (util/now-rfc3339))})))
+        (let [my-now (if (< n 7) ;; mix identical and unique datestamps
+                       now
+                       (util/now-rfc3339))]
+          (clutch/put-document +test-db+
+                               {:action :create
+                                :current-state true
+                                :type "document"
+                                :title (str "doc " n)
+                                :slug (str "/pages/doc-" n)
+                                :content ""
+                                :draft false
+                                :language "en"
+                                :feed "pages"
+                                :published my-now
+                                :created my-now
+                                :datestamp my-now}))))
     
     (is (= (count (:documents (get-documents-for-feed +test-db+
                                                       "en"
@@ -878,26 +888,201 @@
                                                   "nl")
              [images-feed-nl])))))
 
-(deftest test-update-document
-  (let [new-doc (create-document
-                  +test-db+
-                  "en"
-                  "blog"
-                  "Europe/Amsterdam"
-                  {:title "foo"
-                   :subtitle ""
-                   :slug "/blog/bar"
-                   :content "bar"
-                   :description ""
-                   :draft false
-                   :icon nil
-                   :related-pages []
-                   :related-images []})
-        updated-doc (update-document
-                      +test-db+
+(deftest test-append-to-document-create
+  (with-redefs [util/now-rfc3339 #(str "2012-09-16T00:17:30.722Z")]
+    (let [document (append-to-document +test-db+
+                                       "Europe/Amsterdam"
+                                       {:action :create
+                                        :language "en"
+                                        :feed "blog"
+                                        :title "foo"
+                                        :slug "/blog/foo"
+                                        :content "bar"
+                                        :start-time "2012-02-21 01:19"
+                                        :end-time "2012-02-21 10:00"
+                                        :draft false})]
+
+      (is (couchdb-id? (:_id (first document))))
+      (is (couchdb-rev? (:_rev (first document))))
+
+      (is (= (vec (map #(dissoc % :_id :_rev) document))
+             [{:slug "/blog/foo"
+               :content "bar"
+               :action :create
+               :language "en"
+               :title "foo"
+               :start-time-rfc3339 "2012-02-21T00:19:00.000Z"
+               :published "2012-09-16T00:17:30.722Z"
+               :datestamp "2012-09-16T00:17:30.722Z"
+               :created "2012-09-16T00:17:30.722Z"
+               :type "document"
+               :feed "blog"
+               :draft false
+               :end-time-rfc3339 "2012-02-21T09:00:00.000Z"}]))))
+
+  ;; make sure valid actions are enforced
+  (is (thrown+? (partial check-exc :vix.db/invalid-action)
+                (append-to-document
+                 +test-db+
+                 "Europe/Amsterdam"
+                 {:action :invalid
+                  :language "en"
+                  :feed "blog"
+                  :title "foo"
+                  :slug "/blog/foo-action"
+                  :content "bar"
+                  :start-time "2012-02-21 01:19"
+                  :end-time "2012-02-21 10:00"
+                  :draft false})))
+
+  (is (thrown+? (partial check-exc :vix.db/invalid-action)
+                (append-to-document
+                 +test-db+
+                 "Europe/Amsterdam"
+                 {:language "en"
+                  :feed "blog"
+                  :title "foo"
+                  :slug "/blog/foo-action"
+                  :content "bar"
+                  :start-time "2012-02-21 01:19"
+                  :end-time "2012-02-21 10:00"
+                  :draft false})))
+
+  ;; non-keyword actions should work:
+  (append-to-document +test-db+
                       "Europe/Amsterdam"
-                      "/blog/bar"
-                      (assoc new-doc
+                      {:action "create"
+                       :language "en"
+                       :feed "blog"
+                       :title "foo"
+                       :slug "/blog/foo-action"
+                       :content "bar"
+                       :start-time "2012-02-21 01:19"
+                       :end-time "2012-02-21 10:00"
+                       :draft false})
+  
+  ;; make sure existing documents don't get overwritten
+  (is (thrown+? (partial check-exc :vix.db/document-already-exists-conflict)
+                (append-to-document
+                 +test-db+
+                 "Europe/Amsterdam"
+                 {:action :create
+                  :language "en"
+                  :feed "blog"
+                  :title "foo"
+                  :slug "/blog/foo"
+                  :content "bar"
+                  :start-time "2012-02-21 01:19"
+                  :end-time "2012-02-21 10:00"
+                  :draft false})))
+
+  ;; test without a :language key
+  (is (thrown+? (partial check-exc :vix.db/document-missing-required-keys)
+                (append-to-document
+                 +test-db+
+                 "Europe/Amsterdam"
+                 {:action :create
+                  :feed "blog"
+                  :title "foo"
+                  :slug "/blog/foobar"
+                  :content "bar"
+                  :start-time "2012-02-21 01:19"
+                  :end-time "2012-02-21 10:00"
+                  :draft false})))
+
+  ;; test without a :feed key
+  (is (thrown+? (partial check-exc :vix.db/document-missing-required-keys)
+                (append-to-document
+                 +test-db+
+                 "Europe/Amsterdam"
+                 {:action :create
+                  :language "en"
+                  :title "foo"
+                  :slug "/blog/foobar"
+                  :content "bar"
+                  :start-time "2012-02-21 01:19"
+                  :end-time "2012-02-21 10:00"
+                  :draft false})))
+
+  ;; test without a :slug key
+  (is (thrown+? (partial check-exc :vix.db/document-missing-required-keys)
+                (append-to-document
+                 +test-db+
+                 "Europe/Amsterdam"
+                 {:action :create
+                  :language "en"
+                  :feed "blog"
+                  :title "foo"
+                  :content "bar"
+                  :start-time "2012-02-21 01:19"
+                  :end-time "2012-02-21 10:00"
+                  :draft false})))
+
+  ;; test without a :title key
+  (is (thrown+? (partial check-exc :vix.db/document-missing-required-keys)
+                (append-to-document
+                 +test-db+
+                 "Europe/Amsterdam"
+                 {:action :create
+                  :language "en"
+                  :feed "blog"
+                  :slug "/blog/foobar"
+                  :content "bar"
+                  :start-time "2012-02-21 01:19"
+                  :end-time "2012-02-21 10:00"
+                  :draft false})))
+
+  (testing "Test if attachments are handled correctly."
+    (let [gif (str "R0lGODlhAQABA++/vQAAAAAAAAAA77+9AQIAAAAh77+9BAQUA++/"
+                   "vQAsAAAAAAEAAQAAAgJEAQA7")
+          document (first
+                    (append-to-document +test-db+
+                                        "Europe/Amsterdam"
+                                        {:action :create
+                                         :attachment {:type "image/gif"
+                                                      :data gif}
+                                         :title "a single black pixel!"
+                                         :language "en"
+                                         :feed "images"
+                                         :slug "pixel.gif"
+                                         :content ""
+                                         :draft false}))]
+      (is (= (:original (:attachments document))
+             {:type "image/gif"
+              :length 57
+              :data (str "R0lGODlhAQABA++/vQAAAAAAAAAA77+9AQIAAAAh77+"
+                         "9BAQUA++/vQAsAAAAAAEAAQAAAgJEAQA7")}))
+
+      (is (= (get-attachment-as-base64-string +test-db+
+                                              (:_id document)
+                                              :original)
+             gif)))))
+
+(deftest test-append-to-document-update
+  (with-redefs [util/now-rfc3339 #(str "2012-09-16T02:51:47.588Z")]
+    (let [new-doc (append-to-document
+                   +test-db+
+                   "Europe/Amsterdam"
+                   {:action :create
+                    :language "en"
+                    :feed "blog"
+                    :title "foo"
+                    :subtitle ""
+                    :slug "/blog/bar"
+                    :content "bar"
+                    :description ""
+                    :draft false
+                    :icon nil
+                    :related-pages []
+                    :related-images []})
+          updated-doc (append-to-document
+                       +test-db+
+                       "Europe/Amsterdam"
+                       {:action :update
+                        :previous-id (:_id (first new-doc))
+                        :language "en"
+                        :feed "blog"
+                        :slug "/blog/bar"
                         :title "hic sunt dracones"
                         :subtitle "old maps are cool!"
                         :description "hey!"
@@ -906,110 +1091,276 @@
                         :end-time "2012-02-21 10:00"
                         :icon {:title "cat" :slug "/cat.png"}
                         :related-pages [{:title "foo" :slug "bar"}]
-                        :related-images [{:title "cat" :slug "cat.png"}]))]
-    (is (= (get-document +test-db+ "/blog/bar") updated-doc))
-    (is (couchdb-rev? 2 (:_rev updated-doc)))
-    (is (iso-date? (:updated updated-doc)))
+                        :related-images [{:title "cat" :slug "cat.png"}]})]
+      (is (= (get-document +test-db+ "/blog/bar") updated-doc))
+      (is (couchdb-rev? 1 (:_rev (first updated-doc))))
+      (is (couchdb-id? (:previous-id (first updated-doc))))
+      
+      (is (= (map #(dissoc % :_id :_rev :previous-id) updated-doc)
+             [{:subtitle "old maps are cool!"
+               :slug "/blog/bar"
+               :icon {:slug "/cat.png"
+                      :title "cat"}
+               :action :update
+               :related-images [{:slug "cat.png"
+                                 :title "cat"}]
+               :language "en"
+               :title "hic sunt dracones"
+               :start-time-rfc3339 "2012-02-21T00:19:00.000Z"
+               :published "2012-09-16T02:51:47.588Z"
+               :datestamp "2012-09-16T02:51:47.588Z"
+               :created "2012-09-16T02:51:47.588Z"
+               :type "document"
+               :feed "blog"
+               :draft true
+               :related-pages [{:slug "bar"
+                                :title "foo"}]
+               :description "hey!"
+               :end-time-rfc3339 "2012-02-21T09:00:00.000Z"}
+              {:subtitle ""
+               :slug "/blog/bar"
+               :icon nil
+               :content "bar"
+               :action :create
+               :related-images []
+               :language "en"
+               :title "foo"
+               :published "2012-09-16T02:51:47.588Z"
+               :datestamp "2012-09-16T02:51:47.588Z"
+               :created "2012-09-16T02:51:47.588Z"
+               :type "document"
+               :feed "blog"
+               :draft false
+               :related-pages []
+               :description ""}]))
 
-    (is (= (:published new-doc) (:published updated-doc)))
+      ;; make sure that the internal current-state flag is removed
+      ;; from non-current document states (this non-public flag is
+      ;; used for overview views that show e.g. the most recent states
+      ;; for documents in a specific feed).
+      (is (= (:current-state
+              (clutch/get-document +test-db+ (get-in updated-doc [0 :_id])))
+             true))
 
-    (is (= (:subtitle new-doc) ""))
-    (is (= (:description new-doc) ""))
-    (is (= (:start-time new-doc) nil))
-    (is (= (:end-time new-doc) nil))
-    (is (= (:start-time-rfc3339 new-doc) nil))
-    (is (= (:end-time-rfc3339 new-doc) nil))
-    (is (not (:draft new-doc)))
-    (is (nil? (:icon new-doc)))
-    (is (= (:related-pages new-doc) []))
-    (is (= (:related-images new-doc) []))
-    
-    (is (= (:title updated-doc) "hic sunt dracones"))
-    (is (= (:subtitle updated-doc) "old maps are cool!"))
-    (is (= (:description updated-doc) "hey!"))
-    (is (= (:start-time updated-doc) "2012-02-21 01:19"))
-    (is (= (:end-time updated-doc) "2012-02-21 10:00"))
-    (is (= (:start-time-rfc3339 updated-doc) "2012-02-21T00:19:00.000Z"))
-    (is (= (:end-time-rfc3339 updated-doc) "2012-02-21T09:00:00.000Z"))
-    (is (true? (:draft updated-doc)))
-    (is (= (:icon updated-doc) {:title "cat" :slug "/cat.png"}))
-    (is (= (:related-pages updated-doc) [{:title "foo" :slug "bar"}]))
-    (is (= (:related-images updated-doc) [{:title "cat" :slug "cat.png"}])))
-  
-  (testing "Test if attachments are handled correctly."
-    (let [black-pixel (str "R0lGODlhAQABA++/vQAAAAAAAAAA77+9AQIAAAAh77+9BAQU"
-                           "A++/vQAsAAAAAAEAAQAAAgJEAQA7")
-          white-pixel (str "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJ"
-                           "CQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcp"
-                           "LDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwh"
-                           "MjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIy"
-                           "MjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QA"
-                           "HwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAA"
-                           "AgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKB"
-                           "kaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6"
-                           "Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWG"
-                           "h4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXG"
-                           "x8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QA"
-                           "HwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREA"
-                           "AgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEI"
-                           "FEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5"
-                           "OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOE"
-                           "hYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPE"
-                           "xcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oA"
-                           "DAMBAAIRAxEAPwD3+iiigD//2Q==")
-          new-doc (create-document
+      (is (= (:current-state
+              (clutch/get-document +test-db+ (get-in updated-doc [1 :_id])))
+             false))
+
+      ;; test with expired :previous-id
+      (is (thrown+? (partial check-exc :vix.db/document-update-conflict)
+                    (append-to-document
+                     +test-db+
+                     "Europe/Amsterdam"
+                     {:action :update
+                      :previous-id (:_id (first new-doc))
+                      :language "en"
+                      :feed "blog"
+                      :slug "/blog/bar"
+                      :title "hic sunt dracones"
+                      :subtitle "old maps are cool!"
+                      :description "hey!"
+                      :draft true
+                      :start-time "2012-02-21 01:19"
+                      :end-time "2012-02-21 10:00"
+                      :icon {:title "cat" :slug "/cat.png"}
+                      :related-pages [{:title "foo" :slug "bar"}]
+                      :related-images [{:title "cat" :slug "cat.png"}]})))
+
+      ;; test without :previous-id
+      (is (thrown+? (partial check-exc :vix.db/document-update-conflict)
+                    (append-to-document
+                     +test-db+
+                     "Europe/Amsterdam"
+                     {:action :update
+                      :language "en"
+                      :feed "blog"
+                      :slug "/blog/bar"
+                      :title "hic sunt dracones"
+                      :subtitle "old maps are cool!"
+                      :description "hey!"
+                      :draft true
+                      :start-time "2012-02-21 01:19"
+                      :end-time "2012-02-21 10:00"
+                      :icon {:title "cat" :slug "/cat.png"}
+                      :related-pages [{:title "foo" :slug "bar"}]
+                      :related-images [{:title "cat" :slug "cat.png"}]})))
+
+      ;; make sure that passing couchdb-options works (useful for
+      ;; limiting returned states on frequently updated image
+      ;; documents).
+      (is (= (map #(dissoc % :_rev :_id :previous-id)
+                  (append-to-document
                    +test-db+
-                   "en"
-                   "images"
                    "Europe/Amsterdam"
-                   {:attachment {:type "image/jpeg" :data white-pixel}
-                    :title "a single black pixel!"
-                    :slug "/pixel.jpeg"
-                    :content ""
-                    :draft false})
-          updated-doc (update-document
-                       +test-db+
-                       "Europe/Amsterdam"
-                       "/pixel.jpeg"
-                       {:attachment {:type "image/gif" :data black-pixel}
-                        :title "a single black pixel!"
-                        :content ""
-                        :draft false})
-          attachment (clutch/get-attachment +test-db+ updated-doc :original)]
+                   {:action :update
+                    :previous-id (:_id (first (get-document +test-db+
+                                                            "/blog/bar")))
+                    :language "en"
+                    :feed "blog"
+                    :slug "/blog/bar"
+                    :title "here be dragons"
+                    :subtitle "old maps are cool!"
+                    :description "hey!"
+                    :draft true
+                    :start-time "2012-02-21 01:19"
+                    :end-time "2012-02-21 10:00"
+                    :icon {:title "cat" :slug "/cat.png"}
+                    :related-pages [{:title "foo" :slug "bar"}]
+                    :related-images [{:title "cat" :slug "cat.png"}]}
+                   {:limit 1}))
+             [{:subtitle "old maps are cool!"
+               :slug "/blog/bar"
+               :icon {:slug "/cat.png"
+                      :title "cat"}
+               :action :update
+               :related-images [{:slug "cat.png"
+                                 :title "cat"}]
+               :language "en"
+               :title "here be dragons"
+               :start-time-rfc3339 "2012-02-21T00:19:00.000Z"
+               :datestamp "2012-09-16T02:51:47.588Z"
+               :created "2012-09-16T02:51:47.588Z"
+               :published "2012-09-16T02:51:47.588Z"
+               :type "document"
+               :feed "blog"
+               :draft true
+               :related-pages [{:slug "bar"
+                                :title "foo"}]
+               :description "hey!"
+               :end-time-rfc3339 "2012-02-21T09:00:00.000Z"}]))))
 
-      (is (= (:_attachments updated-doc)
-             {:original {:content_type "image/gif"
-                         :revpos 4
+  (testing "Test if attachments are handled correctly."
+    (let [black-pixel
+          (str "R0lGODlhAQABA++/vQAAAAAAAAAA77+9AQIAAAAh77+9BAQU"
+               "A++/vQAsAAAAAAEAAQAAAgJEAQA7")
+          white-pixel
+          (str "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJ"
+               "CQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcp"
+               "LDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwh"
+               "MjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIy"
+               "MjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QA"
+               "HwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAA"
+               "AgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKB"
+               "kaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6"
+               "Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWG"
+               "h4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXG"
+               "x8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QA"
+               "HwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREA"
+               "AgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEI"
+               "FEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5"
+               "OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOE"
+               "hYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPE"
+               "xcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oA"
+               "DAMBAAIRAxEAPwD3+iiigD//2Q==")
+          new-doc
+          (append-to-document
+           +test-db+
+           "Europe/Amsterdam"
+           {:action :create
+            :attachment {:type "image/jpeg" :data white-pixel}
+            :language "en"
+            :feed "images"
+            :slug "/pixel.jpeg"
+            :title "a single white pixel!"
+            :content ""
+            :draft false})
+          updated-doc
+          (append-to-document
+           +test-db+
+           "Europe/Amsterdam"
+           {:action :update
+            :attachment {:type "image/gif" :data black-pixel}
+            :previous-id (:_id (first new-doc))
+            :language "en"
+            :feed "images"
+            :slug "/pixel.jpeg"
+            :title "a single black pixel!"
+            :content ""
+            :draft false})]
+
+      ;; check if the image has actually been updated:
+      (is (= (get-in updated-doc [0 :attachments])
+             {:original {:type "image/gif"
                          :length 57
-                         :stub true}}))
+                         :data black-pixel}}))
+
+      ;; The attachment for the previous state should also be included
+      ;; in the result of the update action.
+      (is (= (get-in updated-doc [1 :attachments])
+             {:original {:type "image/jpeg"
+                         :length 631
+                         :data white-pixel}}))
 
       (is (= (get-attachment-as-base64-string +test-db+
-                                              updated-doc
+                                              (:_id (first updated-doc))
                                               :original)
              black-pixel)))))
 
-(deftest test-delete-document
-  (do
-    (create-document +test-db+
-                     "en"
-                     "blog"
+(deftest test-append-to-document-delete
+  (with-redefs [util/now-rfc3339 #(str "2012-09-16T03:43:20.953Z")]
+    (let [doc (append-to-document +test-db+
+                                  "Europe/Amsterdam"
+                                  {:action :create
+                                   :language "en"
+                                   :feed "blog"
+                                   :slug "/blog/bar"
+                                   :title "foo"
+                                   :content "bar"
+                                   :draft false})]
+
+      (is (not (nil? (first (get-document +test-db+ "/blog/bar"))))
+          "Assure the document exists before it is deleted.")
+
+      (is (= (map #(dissoc % :_id :_rev :previous-id)
+                  (append-to-document +test-db+
+                                      "Europe/Amsterdam"
+                                      {:action :delete
+                                       :previous-id (:_id (first doc))
+                                       :language "en"
+                                       :feed "blog"
+                                       :slug "/blog/bar"
+                                       :title "foo"
+                                       :content "bar"
+                                       :draft false}))
+             [{:slug "/blog/bar"
+               :content "bar"
+               :action :delete
+               :language "en"
+               :title "foo"
+               :published "2012-09-16T03:43:20.953Z"
+               :datestamp "2012-09-16T03:43:20.953Z"
+               :created "2012-09-16T03:43:20.953Z"
+               :type "document"
+               :feed "blog"
+               :draft false}
+              {:slug "/blog/bar"
+               :content "bar"
+               :action :create
+               :language "en"
+               :title "foo"
+               :published "2012-09-16T03:43:20.953Z"
+               :datestamp "2012-09-16T03:43:20.953Z"
+               :created "2012-09-16T03:43:20.953Z"
+               :type "document"
+               :feed "blog"
+               :draft false}]))
+
+      ;; make sure documents can't be deleted twice
+      (is (thrown+? (partial check-exc :vix.db/document-already-deleted)
+                    (append-to-document
+                     +test-db+
                      "Europe/Amsterdam"
-                     {:title "foo"
+                     {:action :delete
+                      :previous-id (:_id
+                                    (first
+                                     (get-document +test-db+
+                                                   "/blog/bar")))
+                      :language "en"
+                      :feed "blog"
                       :slug "/blog/bar"
+                      :title "foo"
                       :content "bar"
-                      :draft false}))
-
-  (is (not (nil? (get-document +test-db+ "/blog/bar")))
-      "Assure the document exists before it is deleted.")
-
-  (do
-    (delete-document +test-db+ "/blog/bar"))
-  
-  (is (nil? (delete-document +test-db+ "/blog/bar"))
-      "Expect nil value if document is deleted twice.")
-
-  (is (nil? (get-document +test-db+ "/blog/bar"))
-      "Assure the document is truly removed."))
+                      :draft false}))))))
 
 (deftest test-get-available-languages
   (do
@@ -1153,59 +1504,73 @@
           "en" ["images" "blog"]})))
 
 (deftest test-get-most-recent-event-documents
-  (let [doc-1 (create-document +test-db+
-                               "en"
-                               "events"
-                               "Europe/Amsterdam"
-                               {:title
-                                "Tomasz Stańko Middelburg"
-                                :slug
-                                "/en/events/stanko-middelburg"
-                                :content
-                                (str "The legendary Polish trumpet player "
-                                     "Stańko will be playing in Middelburg.")
-                                :start-time
-                                "2012-04-25 20:30"
-                                :end-time
-                                "2012-04-25 23:59"
-                                :draft false})
+  (let [doc-1 (append-to-document +test-db+
+                                  "Europe/Amsterdam"
+                                  {:action
+                                   :create
+                                   :language
+                                   "en"
+                                   :feed
+                                   "events"
+                                   :title
+                                   "Tomasz Stańko Middelburg"
+                                   :slug
+                                   "/en/events/stanko-middelburg"
+                                   :content
+                                   (str "The legendary Polish trumpet "
+                                        "player Stańko will be playing "
+                                        "in Middelburg.")
+                                   :start-time
+                                   "2012-04-25 20:30"
+                                   :end-time
+                                   "2012-04-25 23:59"
+                                   :draft false})
 
-        doc-2 (create-document +test-db+
-                               "en"
-                               "events"
-                               "Europe/Amsterdam"
-                               {:title
-                                "The Impossible Gentlemen"
-                                :slug
-                                "/en/events/impossible-gentlemen-amsterdam"
-                                :content
-                                (str "Gwilym Simcock, Mike Walker, "
-                                     "Adam Nussbaum, Steve Swallow "
-                                     "will be playing at the Bimhuis "
-                                     "in Amsterdam.")
-                                :start-time
-                                "2012-07-06 20:30"
-                                :end-time
-                                "2012-07-06 23:59"
-                                :draft false})
+        doc-2 (append-to-document +test-db+
+                                  "Europe/Amsterdam"
+                                  {:action
+                                   :create
+                                   :language
+                                   "en"
+                                   :feed
+                                   "events"
+                                   :title
+                                   "The Impossible Gentlemen"
+                                   :slug
+                                   (str "/en/events/impossible-gentlemen"
+                                        "-amsterdam")
+                                   :content
+                                   (str "Gwilym Simcock, Mike Walker, "
+                                        "Adam Nussbaum, Steve Swallow "
+                                        "will be playing at the Bimhuis "
+                                        "in Amsterdam.")
+                                   :start-time
+                                   "2012-07-06 20:30"
+                                   :end-time
+                                   "2012-07-06 23:59"
+                                   :draft false})
 
-        doc-3 (create-document +test-db+
-                               "en"
-                               "events"
-                               "Europe/Amsterdam"
-                               {:title
-                                "Yuri Honing"
-                                :slug
-                                "/en/events/yuri-honing-tilburg"
-                                :content
-                                (str "VPRO/Boy Edgar prize winner "
-                                     "Yuri Honing will be playing at "
-                                     "the Paradox venue in Tilburg.")
-                                :start-time
-                                "2013-02-01 20:30"
-                                :end-time
-                                "2013-02-01 23:59"
-                                :draft false})]
+        doc-3 (append-to-document +test-db+
+                                  "Europe/Amsterdam"
+                                  {:action
+                                   :create
+                                   :language
+                                   "en"
+                                   :feed
+                                   "events"
+                                   :title
+                                   "Yuri Honing"
+                                   :slug
+                                   "/en/events/yuri-honing-tilburg"
+                                   :content
+                                   (str "VPRO/Boy Edgar prize winner "
+                                        "Yuri Honing will be playing at "
+                                        "the Paradox venue in Tilburg.")
+                                   :start-time
+                                   "2013-02-01 20:30"
+                                   :end-time
+                                   "2013-02-01 23:59"
+                                   :draft false})]
 
     (is (= (get-most-recent-event-documents +test-db+
                                             "en"
@@ -1214,11 +1579,11 @@
                                             "en"
                                             "events"
                                             nil)
-           [doc-3 doc-2 doc-1]))
+           (map first [doc-3 doc-2 doc-1])))
 
     ;; when limited, the fn retrieves (inc limit)
     (is (= (get-most-recent-event-documents +test-db+
                                             "en"
                                             "events"
                                             1)
-           [doc-3]))))
+           [(first doc-3)]))))

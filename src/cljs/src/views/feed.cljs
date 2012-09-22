@@ -131,10 +131,11 @@
                          (let [slug (nth
                                      (string/split (.-id (.-target e)) "_")
                                      2)]
-                           (document/delete-doc slug
-                                                (partial delete-doc-callback
-                                                         language
-                                                         feed-name))))))
+                           (document/delete-document-shortcut
+                            slug
+                            (partial delete-doc-callback
+                                     language
+                                     feed-name))))))
 (defn create-feed-list-events []
   (util/xhrify-internal-links! (util/get-internal-links!))
   (events/listen (dom/getElement "add-feed")
