@@ -15,6 +15,7 @@
 
 (ns vix.document
   (:require [cljs.reader :as reader]
+            [clojure.string :as string]
             [vix.util :as util]
             [goog.net.XhrIo :as xhrio]
             [goog.net.EventType :as event-type]
@@ -31,7 +32,10 @@
     (events/listen req goog.net.EventType/COMPLETE callback)
     (. req (send uri
                  method
-                 (pr-str data)
+                 ;; replacing unicode characters until read-string
+                 ;; can deal with \x (which is equivalent to \u00).
+                 ;; See: http://dev.clojure.org/jira/browse/CLJ-1025
+                 (string/replace (pr-str data) #"\\x" "\\u00")
                  (new goog.structs.Map
                       "Content-Type" "text/plain; charset=utf-8")))))
 
