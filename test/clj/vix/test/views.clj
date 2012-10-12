@@ -24,11 +24,13 @@
   [msg]
   [:#msg] (html/content msg))
 
-(deftest test-deftemplates
+(deftest test-deftemplates 
   (is (= (apply str (dummy-tpl :en "Hello, world!"))
          "<html><body><p id=\"msg\">Hello, world!</p></body></html>"))
   (is (= (apply str (dummy-tpl :nl "Hello, world!"))
-         "<html><body><div id=\"msg\">Hello, world!</div></body></html>")))
+         "<html><body><div id=\"msg\">Hello, world!</div></body></html>"))
+  (is (= (dummy-tpl :qq "Hello, world!")
+         nil)))
 
 (deftest test-make-pagination-uri
   (testing "test :next links"

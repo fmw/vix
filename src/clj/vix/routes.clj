@@ -213,13 +213,12 @@
    the :frontpage key in the config/page-segments map to populate the
    segments."
   [database language timezone]
-  (views/frontpage-view
-   language
-   timezone
-   (get-segments (:frontpage config/page-segments)
-                 database
-                 language
-                 timezone)))
+  (views/frontpage-view language
+                        timezone
+                        (get-segments (:frontpage config/page-segments)
+                                      database
+                                      language
+                                      timezone)))
 
 (def frontpage-cache
   "Atom pointing to a map that stores frontpages for each language

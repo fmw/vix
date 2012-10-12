@@ -14,6 +14,7 @@
 ;; limitations under the License.
 
 (ns vix.views
+  (:use [slingshot.slingshot :only [try+]])
   (:require [net.cgrand.enlive-html :as html]
             [clj-time.core :as time-core]
             [clj-time.format :as time-format]
@@ -30,7 +31,9 @@
                               (map (fn [source#]
                                      (html/template source# ~args ~@forms))
                                    (vals ~sources)))]
-       (apply (get templates# key#) fn-args#))))
+       (try+
+        (apply (get templates# key#) fn-args#)
+        (catch java.lang.NullPointerException e# nil)))))
 
 (defmacro defsnippets
   "Defines multiple Enlive templates. The same as Enlive's deftemplate,
@@ -45,7 +48,9 @@
                                                    ~args
                                                    ~@forms))
                                    (vals ~sources)))]
-       (apply (get templates# key#) fn-args#))))
+       (try+
+        (apply (get templates# key#) fn-args#)
+       (catch java.lang.NullPointerException e# nil)))))
 
 (html/deftemplate login-page-template "templates/en/login.html"
   [message]
