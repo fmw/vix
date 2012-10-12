@@ -301,17 +301,22 @@
                             handle-duplicate-slug-callback))))))
 
 (defn handle-duplicate-custom-slug-callback [e]
-  (let [status (. (.-target e) (getStatus))
-        slug-el (dom/getElement "slug")
+  (let [slug-el (dom/getElement "slug")
         slug-label-el (dom/getElement "slug-label")
-        status-el (dom/getElement "status-message")]
+        status-el (dom/getElement "status-message")
+        xhr (.-target e)
+        status (. xhr (getStatus))
+        last-state (first
+                    (reader/read-string (. xhr (getResponseText))))]
     (cond
-     (= status 200) (ui/display-error status-el
-                                      slug-not-unique-err
-                                      slug-el
-                                      slug-label-el)
-     :else (when (= (. status-el -textContent) slug-not-unique-err)
-             (ui/remove-error status-el slug-el slug-label-el)))))
+     (and (= status 200) (not (= (:action last-state) :delete)))
+     (ui/display-error status-el
+                       slug-not-unique-err
+                       slug-el
+                       slug-label-el)
+     :else
+     (when (= (. status-el -textContent) slug-not-unique-err)
+       (ui/remove-error status-el slug-el slug-label-el)))))
 
 (def *file* (atom {}))
 
