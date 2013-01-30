@@ -93,7 +93,7 @@
                 "       feed[\"current-state\"] === true &&\n"
                 "       feed.action !== \"delete\") {\n"
                 "        emit([feed.language, feed.name, feed.datestamp],"
-                              " feed);\n"
+                " feed);\n"
                 "    }\n}\n")))
     
     (is (= (:map (:by_slug (:views view-doc)))
@@ -108,7 +108,7 @@
                 "       doc[\"current-state\"] === true &&\n"
                 "       doc.action !== \"delete\") {\n"
                 "        emit([[doc.language, doc.feed], doc.published], "
-                               "doc);\n"
+                "doc);\n"
                 "    }\n}\n")))
 
     (is (= (:map (:by_username (:views view-doc)))
@@ -141,7 +141,10 @@
                 "    }\n}\n")))
 
     (is (= (:reduce (:languages (:views view-doc)))
-           "function(k,v) {\n    return null;\n}\n"))))
+           "function(k,v) {\n    return null;\n}\n")))
+
+  (is (thrown+? (partial check-exc :vix.db/database-socket-error)
+                (create-views "http://localhost:9999/foo" "bar" views))))
 
 (deftest test-get-attachment-as-base64-string
   (let [gif (str "R0lGODlhAQABA++/vQAAAAAAAAAA77+9AQIAAAAh77+9BAQUA++/"

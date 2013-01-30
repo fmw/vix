@@ -21,6 +21,12 @@
             [vix.util :as util])
   (:import [org.apache.commons.codec.binary Base64]))
 
+(def database-connection-error
+  {:type ::database-socket-error
+   :message (str "Can't connect to the database. Check "
+                 "config.clj, if the server is running and "
+                 "if the database exists.")})
+
 (defn load-view [path]
   (slurp (io/resource path)))
 
@@ -49,7 +55,10 @@
 (defn create-views [database design-doc views]
   "Creates the provided views in given database and saves them in
    design-doc."
-  (clutch/save-view database design-doc [:javascript views]))
+  (try+
+   (clutch/save-view database design-doc [:javascript views])
+   (catch java.net.SocketException _
+     (throw+ database-connection-error))))
 
 (defn get-view
   "Wraps around clutch/get-view in order to automatically create views
@@ -61,6 +70,8 @@
                     view-key
                     query-params-map
                     post-data-map)
+   (catch java.net.SocketException _
+     (throw+ database-connection-error))
    (catch java.io.IOException _
      (create-views database design-doc views)
      (get-view database
