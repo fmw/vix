@@ -33,11 +33,6 @@
   {:builds
    [{:source-paths ["src/cljs"],
      :id "dev",
-     :notify-command
-     ["notify-send"
-      "-i"
-      "~/Pictures/clojure-glyph.svg"
-      "lein-cljsbuild"],
      :compiler
      {:pretty-print true,
       :output-to "resources/public/js/main-debug.js"},
