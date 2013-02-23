@@ -34,12 +34,11 @@ pre-compiled package as well. If you are a non-technical user
 for your feedback (use the contact information below to get in touch).
 
 Vix requires a working Java environment with `Leiningen`_ and
-`CouchDB`_ installed. The compiler for the Soy templates is a separate
-download that you can find here: `download Soy`_. The other
-dependencies are installed through Leiningen. For production use you
-also need an application server like `Apache Tomcat`_, but for testing
-and development you can launch a simple server using the Ring plugin
-for Leiningen.
+`CouchDB`_ installed. The other dependencies are installed through
+Leiningen. The installation instructions below will also install
+`Git`_ and `curl`_. For production use you also need an application
+server like `Apache Tomcat`_, but for testing and development you can
+launch a simple server using the Ring plugin for Leiningen.
 
 This is the sequence of commands used to install Vix on a clean Ubuntu
 12.04 LTS installation (if you already installed some of the
@@ -54,8 +53,8 @@ Install Java::
 
     sudo apt-get install openjdk-6-jdk
 
-OpenJDK is the default Java version on Ubuntu, but it is also possible
-to install the Oracle Java distribution.
+OpenJDK is the default Java version for Ubuntu, but it is also
+possible to install the Oracle Java distribution.
 
 Install Curl::
 
@@ -67,15 +66,17 @@ Install CouchDB and create the database::
     sudo /etc/init.d/couchdb start
     curl -X PUT http://127.0.0.1:5984/vix
 
-Install Leiningen::
+Install Leiningen (you can also use another directory instead of
+/usr/local/bin, like ~/bin in your home directory, as long as it is
+added to the executable path)::
 
-    wget https://raw.github.com/technomancy/leiningen/preview/bin/lein
+    wget https://raw.github.com/technomancy/leiningen/stable/bin/lein
     sudo mv lein /usr/local/bin/
     sudo chmod +x /usr/local/bin/lein 
 
-Install Git and Subversion::
+Install Git::
 
-    sudo apt-get install git subversion
+    sudo apt-get install git
 
 Install Vix::
 
@@ -112,22 +113,8 @@ Only the lines starting with "user=>" and "vix.auth=>" need to be
 entered (omitting those prefixes), because the other lines are REPL
 output.
 
-Download the Soy compiler::
-
-    wget http://closure-templates.googlecode.com/files/closure-templates-for-javascript-latest.zip
-    unzip closure-templates-for-javascript-latest.zip
-
-Install rlwrap::
-
-    sudo apt-get install rlwrap
-
-Compile the templates::
-
-    cd ~/clj/vix
-    java -jar SoyToJsSrcCompiler.jar --shouldProvideRequireSoyNamespaces --shouldGenerateJsdoc --outputPathFormat resources/public/js/soy/{INPUT_FILE_NAME_NO_EXT}.soy.js soy/editor.soy soy/feed.soy
-
 Create a directory to store Apache Lucene indexes (you can change the
-path in src/vix/lucene.clj)::
+path by editing the lucene-index-path value in src/clj/vix/config.clj)::
 
     sudo mkdir /var/lucene
     sudo mkdir /var/lucene/vix
@@ -174,7 +161,8 @@ touch!
 .. _`ClojureScript`: https://github.com/clojure/clojurescript
 .. _`Google Closure`: http://code.google.com/closure/
 .. _`Leiningen`: https://github.com/technomancy/leiningen
-.. _`download Soy`: http://closure-templates.googlecode.com/files/closure-templates-for-javascript-latest.zip
+.. _`Git`: http://git-scm.com/
+.. _`curl`: http://curl.haxx.se/
 .. _`ClojureScript quickstart instructions`: https://github.com/clojure/clojurescript/wiki/Quick-Start
 .. _`Apache Tomcat`: http://tomcat.apache.org/
 .. _`CouchDB`: http://couchdb.apache.org/
