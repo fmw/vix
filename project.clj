@@ -22,7 +22,7 @@
                  [commons-codec/commons-codec "1.5"]
                  [org.apache.lucene/lucene-core "3.5.0"]
                  [org.apache.lucene/lucene-queries "3.5.0"]]
-  :plugins [[lein-ring "0.7.5"]
+  :plugins [[lein-ring "0.8.3"]
             [lein-cljsbuild "0.3.0"]]
   :ring {:handler vix.routes/app}
   :min-lein-version "2.0.0"
