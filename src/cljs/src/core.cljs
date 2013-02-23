@@ -1,5 +1,5 @@
 ;; cljs/src/core.cljs: core application and routing for client-side code.
-;; Copyright 2011, Vixu.com, F.M. (Filip) de Waard <fmw@vixu.com>.
+;; Copyright 2011-2013, Vixu.com, F.M. (Filip) de Waard <fmw@vixu.com>.
 ;;
 ;; Licensed under the Apache License, Version 2.0 (the "License");
 ;; you may not use this file except in compliance with the License.
@@ -16,10 +16,12 @@
 (ns vix.core
   (:use-macros [vix.crossover.macros :only [routes]])
   (:require [vix.util :as util]
+            [vix.ui :as ui]
             [vix.views.editor :as editor]
             [vix.views.feed :as feed]
             [clojure.browser.repl :as repl]
-            [clojure.string :as string]))
+            [clojure.string :as string]
+            [goog.userAgent :as useragent]))
 
 (defn chop-path [path]
   (rest (string/split path #"/")))
@@ -67,35 +69,36 @@
         false))
     true))
 
-(defn execute-routes! [uri-path]
+(defn execute-routes!
+  [uri-path]
   (routes uri-path
           ["admin" ""]
-          (feed/list-feeds)
+          (feed/list-feeds!)
           ["admin" "new-feed"]
-          (feed/display-new-feed-form)
+          (feed/display-feed-form!)
           ["admin" "edit-feed" :language :feed-name]
-          (feed/display-edit-feed-form (:language params)
-                                       (:feed-name params))
+          (feed/display-edit-feed-form! (:language params)
+                                        (:feed-name params))
           ["admin" :language :feed-name "new"]
-          (editor/start (:language params)
-                        (:feed-name params)
-                        nil
-                        :new)
+          (editor/display-editor! (:language params)
+                                  (:feed-name params))
           ["admin" :language :feed-name "edit" :*]
-          (editor/start (:language params)
-                        (:feed-name params)
-                        (str "/" (:* params))
-                        :edit)
+          (editor/display-editor! (:language params)
+                                  (:feed-name params)
+                                  (str "/" (:* params)))
           ["admin" :language :feed-name "overview"]
-          (feed/list-documents (:language params) (:feed-name params))
+          (feed/list-documents! (:language params) (:feed-name params))
           :fallback
           (util/navigate-replace-state "" "Vix overview")))
 
-(defn ^:export start-app [uri-path]
+(defn ^:export start-app
+  [uri-path]
   ;; in Chrome this triggers an event, leading to a (routes) call
   (util/start-history! (fn [e]
                          (execute-routes! js/document.location.pathname)))
-  (execute-routes! uri-path))
+  ;; trigger routes manually for non-webkit browsers
+  (when-not useragent/WEBKIT
+    (execute-routes! uri-path)))
 
 (defn ^:export repl-connect []
   (repl/connect "http://localhost:9000/repl"))

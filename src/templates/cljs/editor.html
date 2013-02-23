@@ -1,0 +1,265 @@
+<p id="back-to-overview-link">
+   <a href="/admin/qq/my-feed/overview">Back to overview</a>
+</p>
+
+<div id="image-drop-target">
+  Drag the image and drop it here.
+  <div id="image-preview-container">
+    <img src="" title="" alt="" id="image-preview"/>
+  </div>
+</div>
+
+<div id="image-information-container" class="hide">
+  <em id="image-filename"></em>
+  (<span id="image-filetype"></span>;
+  <span id="image-size"></span> kB)
+</div>
+
+<div class="document-fields-row" id="title-row">
+  <label for="title" id="title-label">Title:</label>
+  <input type="text"
+         id="title"
+         name="title"
+         class="input-field"
+         value="" />
+  <input type="checkbox"
+         id="draft"
+         name="draft"
+         class="checkbox-field" />
+  <label for="draft">Draft</label>
+</div>
+
+<div class="document-fields-row" id="subtitle-row">
+  <label for="subtitle" id="subtitle-label">Subtitle:</label>
+  <input type="text"
+         id="subtitle"
+         name="subtitle"
+         class="input-field"
+         value="" />
+</div>
+
+<div class="document-fields-row" id="slug-row">
+  <label for="slug" id="slug-label" class="disabled">Slug:</label>
+  <input type="text"
+         id="slug"
+         name="slug"
+         class="input-field disabled"
+         disabled="disabled"
+         value="" />
+  <input type="checkbox"
+         id="custom-slug"
+         name="custom-slug"
+         disabled="disabled"
+         class="checkbox-field" />
+  <label for="custom-slug"
+         id="custom-slug-label"
+         class="disabled">
+    Custom
+  </label>
+</div>
+
+<div class="document-fields-row" id="start-time-row">
+  <label for="start-time" id="start-time-label">Start:</label>
+  <input type="text"
+         id="start-time"
+         name="start-time"
+         class="input-field"
+         value="" />
+</div>
+
+<div class="document-fields-row" id="end-time-row">
+  <label for="end-time" id="end-time-label">End:</label>
+  <input type="text"
+         id="end-time"
+         name="end-time"
+         class="input-field"
+         value="" />
+</div>
+
+<div id="icon-container">
+  <p><a href="#" id="add-icon-image-link">Add icon image</a></p>
+</div>
+
+<div id="document-relations">
+  <p><a href="#" id="add-related-page-link">Add related page</a></p>
+  <ul id="related-pages-container"></ul>
+</div>
+
+<div id="image-relations">
+  <p><a href="#" id="add-related-image-link">Add related image</a></p>
+  <ul id="related-images-container"></ul>
+</div>
+
+<div id="editor-images"></div>
+
+<div id="description-container">
+  <h4 class="editor-caption">Description:</h4>
+  <div id="description-toolbar"></div>
+  <div id="description-content"></div>
+</div>
+
+<div id="content-container">
+  <h4 class="editor-caption">Content:</h4>
+  <div id="toolbar"></div>
+  <div id="content"></div>
+</div>
+
+<p id="save-button-container">
+  <button id="save-document">Save</button>
+</p>
+
+<option class="feed-select-option"
+        value="['{$feed.language}','{$feed.name}']"></option>
+
+<option class="document-select-option"
+        value="{$document.slug}"></option>
+
+<li class="related-page">
+  <span class="related-page-title"></span>
+  <a href="#" class="related-page-delete-link">(delete)</a>
+</li>
+
+<li class="related-image">
+  <span class="related-image-title"></span>
+  <a href="#" class="related-image-preview-link">(preview)</a>
+  <a href="#" class="related-image-delete-link">(delete)</a>
+</li>
+
+<div class="image-icon-container">
+  <span id="icon-image-title"></span>
+  <a href="#" id="icon-image-preview-link">(preview)</a>
+  <a href="#" id="icon-image-delete-link">(delete)</a>
+</div>
+
+<form name="add-related-page-dialog-form" id="add-related-page-dialog-form">
+  <p id="add-link-status" class="hide"></p>
+  <table id="add-related-page-dialog">
+    <tr>
+      <td>
+        <label for="internal-link-feed">Feed:</label>      
+      </td>
+      <td>
+        <select name="internal-link-feed" id="internal-link-feed"></select>
+      </td>
+    </tr>
+    <tr id="internal-link-row">
+      <td>
+        <label for="internal-link">Link:</label>
+      </td>
+      <td>
+        <select name="internal-link" id="internal-link"></select>
+      </td>
+    </tr>
+  </table>
+</form>
+
+<form name="add-image-dialog-form" id="add-image-dialog-form">
+  <p id="add-link-status" class="hide"></p>
+  <table id="add-related-image-dialog">
+    <tr>
+      <td>
+        <label for="internal-link-feed">Feed:</label>      
+      </td>
+      <td>
+        <select name="internal-link-feed" id="internal-link-feed"></select>
+      </td>
+    </tr>
+    <tr id="internal-link-row">
+      <td>
+        <label for="internal-link">Image:</label>
+      </td>
+      <td>
+        <select name="internal-link" id="internal-link"></select>
+      </td>
+    </tr>
+  </table>
+  <h5 id="drag-to-editor-instruction"
+      class="hide">Drag and drop the image on the editor field to add it.</h5>
+  <div id="image-preview-in-dialog-container">
+    <img id="image-dialog-preview" alt="" title="" src="" />
+  </div>
+</form>
+
+<div id="menu-builder">
+  <div id="menu-top-level-drop-zone" class="invisible">
+    Drag here to move to top level.
+  </div>
+
+  <ul id="menu-container"></ul>
+</div>
+
+<li class="top-level-menu-item draggable" draggable="true"></li>
+
+<li class="nested-menu-item draggable" draggable="true"></li>
+
+<ul class="nested-menu-category" draggable="false"></ul>
+
+<span class="item-details">
+  <span class="link-label"></span>:<span class="link-uri"></span>
+  <a href="#" class="menu-item-delete-link">(delete)</a>
+</span>
+
+<a href="#" class="add-sub-item">(add item)</a>
+
+<li class="fixed add-item-node drop-on-grandparent"
+    draggable="false">
+  <a href="#" class="add-item-to-nested-menu fixed">Add Item</a>
+</li>
+
+<p id="add-menu-item-container"><a href="#" id="add-menu-item">Add Item</a></p>
+
+<p id="menu-instructional-paragraph">
+  Tip: elements can be repositioned by dragging and dropping them into
+  a new place.
+</p>
+
+<form name="add-menu-item-dialog-form" id="add-menu-item-dialog-form">
+  <p id="add-link-status" class="hide"></p>
+  <table id="add-menu-item-dialog">
+    <tbody>
+      <tr>
+        <td>Type:</td>
+        <td>
+          <input type="radio"
+                 name="link-type"
+                 value="internal"
+                 id="link-type-internal"
+                 checked="checked">
+          <label for="link-type-internal">Internal</label>
+          <input type="radio"
+                 name="link-type"
+                 value="external"
+                 id="link-type-external">
+          <label for="link-type-external">External</label>
+      </td>
+      </tr>
+      <tr>
+        <td>
+          <label for="link-label" id="link-label-label">Label:</label>
+        </td>
+        <td>
+          <input type="text" name="link-label" id="link-label">
+        </td>
+      </tr>
+      <tr id="internal-link-row">
+        <td>
+          <label for="internal-link">Link:</label>
+        </td>
+        <td>
+          <select name="internal-link-feed" id="internal-link-feed">
+          </select>
+          <select name="internal-link" id="internal-link">
+          </select>
+        </td>
+      </tr>
+      <tr id="external-link-row" class="hide">
+        <td>
+          <label for="external-link">URL:</label>
+        </td>
+        <td>
+          <input type="text" name="external-link" id="external-link">
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</form>

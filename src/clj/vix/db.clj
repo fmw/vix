@@ -1,5 +1,5 @@
 ;; src/vix/db.clj functionality that provides database interaction
-;; Copyright 2011-2012, Vixu.com, F.M. (Filip) de Waard <fmw@vixu.com>.
+;; Copyright 2011-2013, Vixu.com, F.M. (Filip) de Waard <fmw@vixu.com>.
 ;;
 ;; Licensed under the Apache License, Version 2.0 (the "License");
 ;; you may not use this file except in compliance with the License.
@@ -410,9 +410,7 @@
                 [(merge (dissoc document
                                 :_id
                                 :_rev
-                                :attachment
-                                :start-time
-                                :end-time)
+                                :attachment)
                         {:type "document"
                          :current-state true
                          :datestamp datestamp}

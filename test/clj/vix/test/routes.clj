@@ -973,13 +973,13 @@
         (is (= (clean-req (document-request :POST :json json-doc) :json)
                {:status 201
                 :headers {"Content-Type" "application/json; charset=UTF-8"}
-                :body [(dissoc json-doc :end-time :start-time)]}))
+                :body [json-doc]}))
 
         ;; test clojure request
         (is (= (clean-req (document-request :POST :clj clj-doc) :clj)
                {:status 201
                 :headers {"Content-Type" "text/plain; charset=UTF-8"}
-                :body [(dissoc clj-doc :end-time :start-time)]})))
+                :body [clj-doc]})))
 
       (testing "test if documents are updated correctly."
         ;; test json request
@@ -1075,7 +1075,9 @@
                     :draft false,
                     :related-pages [],
                     :description "A nice map."
-                    :end-time-rfc3339 nil}
+                    :end-time-rfc3339 nil
+                    :start-time ""
+                    :end-time ""}
                    {:subtitle "Here be dragons"
                     :slug "/en/blog/hsd"
                     :icon ""
@@ -1093,7 +1095,9 @@
                     :draft false,
                     :related-pages [],
                     :description "A nice map."
-                    :end-time-rfc3339 nil}
+                    :end-time-rfc3339 nil
+                    :start-time ""
+                    :end-time ""}
                    {:subtitle "Here be dragons"
                     :slug "/en/blog/hsd"
                     :icon ""
@@ -1111,7 +1115,9 @@
                     :draft false
                     :related-pages []
                     :description "A nice map."
-                    :end-time-rfc3339 nil}]})))
+                    :end-time-rfc3339 nil
+                    :start-time ""
+                    :end-time ""}]})))
 
         ;; test clojure request
         (let [existing-doc
@@ -1143,7 +1149,9 @@
                     :draft false
                     :related-pages []
                     :description "A nice map."
-                    :end-time-rfc3339 nil}
+                    :end-time-rfc3339 nil
+                    :start-time ""
+                    :end-time ""}
                    {:subtitle "Here be dragons"
                     :slug "/en/blog/hsd-clj"
                     :icon ""
@@ -1161,7 +1169,9 @@
                     :draft false
                     :related-pages []
                     :description "A nice map."
-                    :end-time-rfc3339 nil}
+                    :end-time-rfc3339 nil
+                    :start-time ""
+                    :end-time ""}
                    {:subtitle "Here be dragons"
                     :slug "/en/blog/hsd-clj"
                     :icon ""
@@ -1179,7 +1189,9 @@
                     :draft false
                     :related-pages []
                     :description "A nice map."
-                    :end-time-rfc3339 nil}]})))))))
+                    :end-time-rfc3339 nil
+                    :start-time ""
+                    :end-time ""}]})))))))
 
 (deftest ^{:integration true} test-routes
   (with-redefs [util/now-rfc3339 #(str "2012-09-22T04:07:05.756Z")]

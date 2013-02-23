@@ -1,5 +1,5 @@
 (ns vix.test.document
-  (:use [vix.document]))
+  (:use [vix.document :only [request]]))
 
 (defn run []
   (comment (assert (= (add-some-numbers 2 2) 4))

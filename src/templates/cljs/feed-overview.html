@@ -1,0 +1,334 @@
+<div class="feed-list-for-language-container">
+  <h4>Qanguage</h4>
+  <table class="feed-list">
+    <tbody></body>
+  </table>
+</div>
+
+<tr class="feed-list-row">
+  <td><a href="/admin/qq/my-feed/overview">My feed</td>
+  <td>(<a href="/admin/edit-feed/qq/my-feed">edit</a>)</td>
+  <td>(<a href="#" id="delete_feed_link:qq:my-feed"
+  class="delete-feed">delete</a>)</td>
+</tr>
+
+<ul id="document-list">
+</ul>
+
+<li class="document-list-row">
+  <a href="/admin/qq/my-feed/edit/my-slug"
+     class="edit-link">A title</a>
+  &nbsp;
+  (<a href="#"
+      id="delete_link:my_slug"
+      class="delete-document">delete</a>)
+</li>
+
+<button id="add-document-button">New</button>
+<button id="add-feed-button">New</button>
+<button id="save-feed">Save</button>
+
+<div id="feed-name-row" class="feed-fields-row">
+  <label for="name" id="name-label">Name:</label>
+  <input type="text" id="feed-name" name="feed-name" class="input-field"
+  value="" />
+</div>
+
+<div id="feed-title-row" class="feed-fields-row">
+  <label for="title" id="title-label">Title:</label>
+  <input type="text" id="title" name="title" class="input-field" value="" />
+</div>
+
+<div id="feed-subtitle-row" class="feed-fields-row">
+  <label for="subtitle" id="subtitle-label">Subtitle:</label>
+  <input type="text" id="subtitle" name="subtitle" class="input-field"
+         value="" />
+</div>
+
+<div id="feed-default-slug-format-row" class="feed-fields-row">
+  <label for="default-slug-format-select"
+         id="default-slug-format-select-label">Default slug format:</label>
+  <select id="default-slug-format-select" class="input-field">
+    <option value="/{language}/{feed-name}/{document-title}"
+            >/language/feed-name/document-title</option>
+    <option value="/{language}/{feed-name}/{document-title}.{ext}"
+            >/language/feed-name/document-title.ext</option>
+    <option value="/{language}/{document-title}"
+            >/language/document-title</option>
+    <option value="/{language}/{year}/{month}/{day}/{document-title}"
+            >/language/year/month/day/document-title</option>
+    <option value="custom">Custom</option>
+  </select>
+</div>
+
+<div id="feed-custom-slug-format-row" class="feed-fields-row">
+  <label for="default-slug-format">&nbsp;</label>
+  <input type="text" id="default-slug-format" name="default-slug-format"
+         class="input-field"
+         disabled="disabled"
+         value="/{language}/{feed-name}/{document-title}" />
+</div>
+
+<div id="feed-default-document-type-row" class="feed-fields-row">
+  <label for="default-document-type" id="default-document-type-label"
+         >Default document type:</label>
+  <select id="default-document-type"
+          name="default-document-type"
+          class="input-field">
+    <option value="standard" selected>Standard</option>
+    <option value="with-description">With description</option>
+    <option value="event">Event</option>
+    <option value="image">Image file</option>
+    <option value="video">Video file</option>
+    <option value="file">Downloadable file</option>
+    <option value="menu">Navigation menu</option>
+  </select>
+</div>
+
+<div id="feed-searchable-row" class="feed-fields-row">
+  <label for="searchable" id="searchable-label">Searchable?</label>
+  <input type="checkbox" checked id="searchable" name="searchable" />
+</div>
+
+<div id="feed-language-row" class="feed-fields-row">
+  <label for="language" id="language-label">Language:</label>
+  <select id="language" name="language">
+    <option value="['ab','Abkhazian']">Abkhazian</option>
+    <option value="['aa','Afar']">Afar</option>
+    <option value="['af','Afrikaans']">Afrikaans</option>
+    <option value="['ak','Akan']">Akan</option>
+    <option value="['sq','Albanian']">Albanian</option>
+    <option value="['als','Alemannic']">Alemannic</option>
+    <option value="['am','Amharic']">Amharic</option>
+    <option value="['ang','Anglo-Saxon / Old English']">Anglo-Saxon / Old English</option>
+    <option value="['ar','Arabic']">Arabic</option>
+    <option value="['an','Aragonese']">Aragonese</option>
+    <option value="['arc','Aramaic']">Aramaic</option>
+    <option value="['hy','Armenian']">Armenian</option>
+    <option value="['as','Assamese']">Assamese</option>
+    <option value="['ast','Asturian']">Asturian</option>
+    <option value="['av','Avar']">Avar</option>
+    <option value="['ay','Aymara']">Aymara</option>
+    <option value="['az','Azerbaijani']">Azerbaijani</option>
+    <option value="['bm','Bambara']">Bambara</option>
+    <option value="['ba','Bashkir']">Bashkir</option>
+    <option value="['eu','Basque']">Basque</option>
+    <option value="['bar','Bavarian']">Bavarian</option>
+    <option value="['be','Belarusian']">Belarusian</option>
+    <option value="['bn','Bengali']">Bengali</option>
+    <option value="['ber','Berber / Tamazight']">Berber / Tamazight</option>
+    <option value="['bh','Bihari']">Bihari</option>
+    <option value="['bcl','Bikol']">Bikol</option>
+    <option value="['bpy','Bishnupriya Manipuri']">Bishnupriya Manipuri</option>
+    <option value="['bi','Bislama']">Bislama</option>
+    <option value="['bs','Bosnian']">Bosnian</option>
+    <option value="['br','Breton']">Breton</option>
+    <option value="['bug','Buginese']">Buginese</option>
+    <option value="['bg','Bulgarian']">Bulgarian</option>
+    <option value="['my','Burmese']">Burmese</option>
+    <option value="['km','Cambodian']">Cambodian</option>
+    <option value="['ca','Catalan']">Catalan</option>
+    <option value="['ceb','Cebuano']">Cebuano</option>
+    <option value="['ch','Chamorro']">Chamorro</option>
+    <option value="['ce','Chechen']">Chechen</option>
+    <option value="['chr','Cherokee']">Cherokee</option>
+    <option value="['chy','Cheyenne']">Cheyenne</option>
+    <option value="['ny','Chichewa']">Chichewa</option>
+    <option value="['zh','Chinese']">Chinese</option>
+    <option value="['cho','Choctaw']">Choctaw</option>
+    <option value="['cv','Chuvash']">Chuvash</option>
+    <option value="['kw','Cornish']">Cornish</option>
+    <option value="['co','Corsican']">Corsican</option>
+    <option value="['cr','Cree']">Cree</option>
+    <option value="['mus','Creek / Muskogee']">Creek / Muskogee</option>
+    <option value="['hr','Croatian']">Croatian</option>
+    <option value="['cs','Czech']">Czech</option>
+    <option value="['da','Danish']">Danish</option>
+    <option value="['diq','Dimli']">Dimli</option>
+    <option value="['dv','Divehi']">Divehi</option>
+    <option value="['nl','Dutch']">Dutch</option>
+    <option value="['dz','Dzongkha']">Dzongkha</option>
+    <option value="['en','English']">English</option>
+    <option value="['eo','Esperanto']">Esperanto</option>
+    <option value="['et','Estonian']">Estonian</option>
+    <option value="['ee','Ewe']">Ewe</option>
+    <option value="['ext','Extremaduran']">Extremaduran</option>
+    <option value="['fo','Faroese']">Faroese</option>
+    <option value="['fj','Fijian']">Fijian</option>
+    <option value="['fi','Finnish']">Finnish</option>
+    <option value="['fr','French']">French</option>
+    <option value="['fur','Friulian']">Friulian</option>
+    <option value="['gl','Galician']">Galician</option>
+    <option value="['lg','Ganda']">Ganda</option>
+    <option value="['ka','Georgian']">Georgian</option>
+    <option value="['de','German']">German</option>
+    <option value="['gil','Gilbertese']">Gilbertese</option>
+    <option value="['got','Gothic']">Gothic</option>
+    <option value="['el','Greek']">Greek</option>
+    <option value="['kl','Greenlandic']">Greenlandic</option>
+    <option value="['gn','Guarani']">Guarani</option>
+    <option value="['gu','Gujarati']">Gujarati</option>
+    <option value="['ht','Haitian']">Haitian</option>
+    <option value="['ha','Hausa']">Hausa</option>
+    <option value="['haw','Hawaiian']">Hawaiian</option>
+    <option value="['he','Hebrew']">Hebrew</option>
+    <option value="['hz','Herero']">Herero</option>
+    <option value="['hi','Hindi']">Hindi</option>
+    <option value="['ho','Hiri Motu']">Hiri Motu</option>
+    <option value="['hu','Hungarian']">Hungarian</option>
+    <option value="['is','Icelandic']">Icelandic</option>
+    <option value="['io','Ido']">Ido</option>
+    <option value="['ig','Igbo']">Igbo</option>
+    <option value="['ilo','Ilokano']">Ilokano</option>
+    <option value="['id','Indonesian']">Indonesian</option>
+    <option value="['ia','Interlingua']">Interlingua</option>
+    <option value="['ie','Interlingue']">Interlingue</option>
+    <option value="['iu','Inuktitut']">Inuktitut</option>
+    <option value="['ik','Inupiak']">Inupiak</option>
+    <option value="['ga','Irish']">Irish</option>
+    <option value="['it','Italian']">Italian</option>
+    <option value="['ja','Japanese']">Japanese</option>
+    <option value="['jv','Javanese']">Javanese</option>
+    <option value="['xal','Kalmyk']">Kalmyk</option>
+    <option value="['kn','Kannada']">Kannada</option>
+    <option value="['kr','Kanuri']">Kanuri</option>
+    <option value="['pam','Kapampangan']">Kapampangan</option>
+    <option value="['ks','Kashmiri']">Kashmiri</option>
+    <option value="['csb','Kashubian']">Kashubian</option>
+    <option value="['kk','Kazakh']">Kazakh</option>
+    <option value="['ki','Kikuyu']">Kikuyu</option>
+    <option value="['ky','Kirghiz']">Kirghiz</option>
+    <option value="['rn','Kirundi']">Kirundi</option>
+    <option value="['tlh','Klingon']">Klingon</option>
+    <option value="['kv','Komi']">Komi</option>
+    <option value="['kg','Kongo']">Kongo</option>
+    <option value="['ko','Korean']">Korean</option>
+    <option value="['kj','Kuanyama']">Kuanyama</option>
+    <option value="['ku','Kurdish']">Kurdish</option>
+    <option value="['lad','Ladino / Judeo-Spanish']">Ladino / Judeo-Spanish</option>
+    <option value="['lan','Lango']">Lango</option>
+    <option value="['lo','Laotian']">Laotian</option>
+    <option value="['la','Latin']">Latin</option>
+    <option value="['lv','Latvian']">Latvian</option>
+    <option value="['lij','Ligurian']">Ligurian</option>
+    <option value="['li','Limburgian']">Limburgian</option>
+    <option value="['ln','Lingala']">Lingala</option>
+    <option value="['lt','Lithuanian']">Lithuanian</option>
+    <option value="['jbo','Lojban']">Lojban</option>
+    <option value="['lmo','Lombard']">Lombard</option>
+    <option value="['nds','Low German / Low Saxon']">Low German / Low Saxon</option>
+    <option value="['dsb','Lower Sorbian']">Lower Sorbian</option>
+    <option value="['lb','Luxembourgish']">Luxembourgish</option>
+    <option value="['mk','Macedonian']">Macedonian</option>
+    <option value="['mg','Malagasy']">Malagasy</option>
+    <option value="['ms','Malay']">Malay</option>
+    <option value="['ml','Malayalam']">Malayalam</option>
+    <option value="['mt','Maltese']">Maltese</option>
+    <option value="['gv','Manx']">Manx</option>
+    <option value="['mi','Maori']">Maori</option>
+    <option value="['mr','Marathi']">Marathi</option>
+    <option value="['mh','Marshallese']">Marshallese</option>
+    <option value="['mo','Moldovan']">Moldovan</option>
+    <option value="['mn','Mongolian']">Mongolian</option>
+    <option value="['nah','Nahuatl']">Nahuatl</option>
+    <option value="['na','Nauruan']">Nauruan</option>
+    <option value="['nv','Navajo']">Navajo</option>
+    <option value="['ng','Ndonga']">Ndonga</option>
+    <option value="['nap','Neapolitan']">Neapolitan</option>
+    <option value="['ne','Nepali']">Nepali</option>
+    <option value="['new','Newar']">Newar</option>
+    <option value="['pih','Norfolk']">Norfolk</option>
+    <option value="['nrm','Norman']">Norman</option>
+    <option value="['nd','North Ndebele']">North Ndebele</option>
+    <option value="['se','Northern Sami']">Northern Sami</option>
+    <option value="['nso','Northern Sotho']">Northern Sotho</option>
+    <option value="['no','Norwegian']">Norwegian</option>
+    <option value="['nn','Norwegian Nynorsk']">Norwegian Nynorsk</option>
+    <option value="['oc','Occitan']">Occitan</option>
+    <option value="['oj','Ojibwa']">Ojibwa</option>
+    <option value="['cu','Old Church Slavonic / Old Bulgarian']">Old Church Slavonic / Old Bulgarian</option>
+    <option value="['or','Oriya']">Oriya</option>
+    <option value="['om','Oromo']">Oromo</option>
+    <option value="['os','Ossetian / Ossetic']">Ossetian / Ossetic</option>
+    <option value="['pi','Pali']">Pali</option>
+    <option value="['pag','Pangasinan']">Pangasinan</option>
+    <option value="['pa','Panjabi / Punjabi']">Panjabi / Punjabi</option>
+    <option value="['pap','Papiamentu']">Papiamentu</option>
+    <option value="['ps','Pashto']">Pashto</option>
+    <option value="['pdc','Pennsylvania German']">Pennsylvania German</option>
+    <option value="['fa','Persian']">Persian</option>
+    <option value="['ff','Peul']">Peul</option>
+    <option value="['pms','Piedmontese']">Piedmontese</option>
+    <option value="['pl','Polish']">Polish</option>
+    <option value="['pt','Portuguese']">Portuguese</option>
+    <option value="['qu','Quechua']">Quechua</option>
+    <option value="['rm','Raeto Romance']">Raeto Romance</option>
+    <option value="['ksh','Ripuarian']">Ripuarian</option>
+    <option value="['rmy','Romani']">Romani</option>
+    <option value="['ro','Romanian']">Romanian</option>
+    <option value="['ru','Russian']">Russian</option>
+    <option value="['rw','Rwandi']">Rwandi</option>
+    <option value="['sm','Samoan']">Samoan</option>
+    <option value="['sg','Sango']">Sango</option>
+    <option value="['sa','Sanskrit']">Sanskrit</option>
+    <option value="['sc','Sardinian']">Sardinian</option>
+    <option value="['sco','Scots']">Scots</option>
+    <option value="['gd','Scottish Gaelic']">Scottish Gaelic</option>
+    <option value="['sr','Serbian']">Serbian</option>
+    <option value="['sh','Serbo-Croatian']">Serbo-Croatian</option>
+    <option value="['sn','Shona']">Shona</option>
+    <option value="['ii','Sichuan Yi']">Sichuan Yi</option>
+    <option value="['scn','Sicilian']">Sicilian</option>
+    <option value="['simple','Simple English']">Simple English</option>
+    <option value="['sd','Sindhi']">Sindhi</option>
+    <option value="['si','Sinhalese']">Sinhalese</option>
+    <option value="['sk','Slovak']">Slovak</option>
+    <option value="['sl','Slovenian']">Slovenian</option>
+    <option value="['so','Somalia']">Somalia</option>
+    <option value="['nr','South Ndebele']">South Ndebele</option>
+    <option value="['st','Southern Sotho']">Southern Sotho</option>
+    <option value="['es','Spanish']">Spanish</option>
+    <option value="['su','Sundanese']">Sundanese</option>
+    <option value="['sw','Swahili']">Swahili</option>
+    <option value="['ss','Swati']">Swati</option>
+    <option value="['sv','Swedish']">Swedish</option>
+    <option value="['tl','Tagalog / Filipino']">Tagalog / Filipino</option>
+    <option value="['ty','Tahitian']">Tahitian</option>
+    <option value="['tg','Tajik']">Tajik</option>
+    <option value="['ta','Tamil']">Tamil</option>
+    <option value="['tt','Tatar']">Tatar</option>
+    <option value="['te','Telugu']">Telugu</option>
+    <option value="['tet','Tetum']">Tetum</option>
+    <option value="['th','Thai']">Thai</option>
+    <option value="['bo','Tibetan']">Tibetan</option>
+    <option value="['ti','Tigrinya']">Tigrinya</option>
+    <option value="['tokipona','Tokipona']">Tokipona</option>
+    <option value="['tpi','Tok Pisin']">Tok Pisin</option>
+    <option value="['to','Tonga']">Tonga</option>
+    <option value="['ts','Tsonga']">Tsonga</option>
+    <option value="['tn','Tswana']">Tswana</option>
+    <option value="['tum','Tumbuka']">Tumbuka</option>
+    <option value="['tr','Turkish']">Turkish</option>
+    <option value="['tk','Turkmen']">Turkmen</option>
+    <option value="['tw','Twi']">Twi</option>
+    <option value="['udm','Udmurt']">Udmurt</option>
+    <option value="['uk','Ukrainian']">Ukrainian</option>
+    <option value="['ur','Urdu']">Urdu</option>
+    <option value="['ug','Uyghur']">Uyghur</option>
+    <option value="['uz','Uzbek']">Uzbek</option>
+    <option value="['ve','Venda']">Venda</option>
+    <option value="['vec','Venetian']">Venetian</option>
+    <option value="['vi','Vietnamese']">Vietnamese</option>
+    <option value="['wa','Walloon']">Walloon</option>
+    <option value="['war','Waray-Waray / Samar-Leyte Visayan']">Waray-Waray / Samar-Leyte Visayan</option>
+    <option value="['cy','Welsh']">Welsh</option>
+    <option value="['vls','West Flemish']">West Flemish</option>
+    <option value="['fy','West Frisian']">West Frisian</option>
+    <option value="['wo','Wolof']">Wolof</option>
+    <option value="['xh','Xhosa']">Xhosa</option>
+    <option value="['yi','Yiddish']">Yiddish</option>
+    <option value="['yo','Yoruba']">Yoruba</option>
+    <option value="['za','Zhuang']">Zhuang</option>
+    <option value="['zu','Zulu']">Zulu</option>
+    </select>
+  </div>

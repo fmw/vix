@@ -1,5 +1,5 @@
 ;; cljs/src/util.cljs: collection of client-side utility functions.
-;; Copyright 2011, Vixu.com, F.M. (Filip) de Waard <fmw@vixu.com>.
+;; Copyright 2011-2013, Vixu.com, F.M. (Filip) de Waard <fmw@vixu.com>.
 ;;
 ;; Licensed under the Apache License, Version 2.0 (the "License");
 ;; you may not use this file except in compliance with the License.
@@ -14,14 +14,15 @@
 ;; limitations under the License.
 
 (ns vix.util
-  (:require [goog.array :as goog.array]
+  (:require [clojure.string :as string]
+            [domina :as domina]
+            [goog.array :as goog.array]
             [goog.dom :as dom]
             [goog.date :as date]
             [goog.events :as events]
             [goog.history.EventType :as event-type]
             [goog.history.Html5History :as Html5History]
-            [goog.Uri :as Uri]
-            [clojure.string :as string]))
+            [goog.Uri :as Uri]))
 
 (defn convertable-to-array? [col]
   (or (vector? col) (seq? col) (set? col)))
@@ -74,10 +75,16 @@
 (defn has-consecutive-dashes-or-slashes? [slug]
   (if (re-find #"[\-/]{2,}" slug) true false))
 
-(defn get-element [el-id-or-obj]
-  (if (string? el-id-or-obj)
-    (dom/getElement el-id-or-obj)
-    el-id-or-obj))
+(defn get-element
+  "Accepts a string, Google Closure DOM node or a Domina node and
+   returns a DOM element."
+  [el-id-or-obj]
+  (when-not (nil? el-id-or-obj)
+    (if (string? el-id-or-obj)
+      (dom/getElement el-id-or-obj)
+      (if (not (nil? (.-DOCUMENT_NODE el-id-or-obj)))
+        el-id-or-obj
+        (domina/single-node el-id-or-obj)))))
 
 (defn get-elements-by-class [class-name]
   (goog.array/toArray (dom/getElementsByClass class-name)))
@@ -130,8 +137,8 @@
   (string/join "-" (filter #(not (string/blank? %))
                            (.split title #"[^a-zA-Z0-9]"))))
 
-(defn create-slug [raw-slug title feed date extension]
-  (loop [slug raw-slug
+(defn create-slug [slug-template title feed date extension]
+  (loop [slug slug-template
          substitutions [["{document-title}" (slugify-document-title title)]
                         ["{feed-name}" (:name feed)]
                         ["{language}" (:language feed)]
@@ -171,9 +178,9 @@
 (defn navigate-replace-state [token title]
   (. @*h* (replaceToken token title)))
 
-; FIXME: figure out while only nested calls (e.g. in
-; create-document-list-events and render-editor-template)
-; work and replace with a centralized call
+; FIXME: figure out why only nested calls (e.g. in
+; create-document-list-events and render-editor-template) work and
+; replace with a centralized call
 (defn xhrify-internal-links! [link-elements]
   (doseq [element link-elements]
     (events/listen element

@@ -918,6 +918,8 @@
                :published "2012-09-16T00:17:30.722Z"
                :datestamp "2012-09-16T00:17:30.722Z"
                :created "2012-09-16T00:17:30.722Z"
+               :start-time "2012-02-21 01:19"
+               :end-time "2012-02-21 10:00"
                :type "document"
                :feed "blog"
                :draft false
@@ -1113,6 +1115,8 @@
                :published "2012-09-16T02:51:47.588Z"
                :datestamp "2012-09-16T02:51:47.588Z"
                :created "2012-09-16T02:51:47.588Z"
+               :start-time "2012-02-21 01:19"
+               :end-time "2012-02-21 10:00"
                :type "document"
                :feed "blog"
                :draft true
@@ -1224,6 +1228,8 @@
                :datestamp "2012-09-16T02:51:47.588Z"
                :created "2012-09-16T02:51:47.588Z"
                :published "2012-09-16T02:51:47.588Z"
+               :start-time "2012-02-21 01:19"
+               :end-time "2012-02-21 10:00"
                :type "document"
                :feed "blog"
                :draft true
