@@ -87,14 +87,19 @@ Install Vix::
     lein deps
 
 If you chose a different database name earlier you should change the
-src/vix/config.clj script to reflect this.
+src/clj/vix/config.clj script to reflect this.
+
+Compile the client-side ClojureScript code using the `lein-cljsbuild`_
+plugin::
+
+    lein cljsbuild once
 
 Start the REPL::
 
     lein repl
 
-Execute the (add-user) function in order to add a user with full
-access privileges::
+Execute the add-user function in order to add a user with full access
+privileges::
 
     REPL started; server listening on localhost:35140.
     user=> (load "vix/auth")
@@ -119,11 +124,6 @@ path by editing the lucene-index-path value in src/clj/vix/config.clj)::
     sudo mkdir /var/lucene
     sudo mkdir /var/lucene/vix
     sudo chown yourusername:yourusergroup /var/lucene/vix
-
-You can compile the client-side ClojureScript code using the
-`lein-cljsbuild`_ plugin::
-
-    lein cljsbuild once
 
 Start the server::
 
