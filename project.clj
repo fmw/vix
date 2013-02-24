@@ -4,9 +4,10 @@
                  [org.clojure/data.codec "0.1.0"]
                  [org.clojure/data.json "0.1.2"]
                  [org.clojure/algo.generic "0.1.0"]
-                 [org.clojure/clojurescript "0.0-1535"]
-                 [org.clojure/google-closure-library "0.0-2029"]
-                 [org.clojure/google-closure-library-third-party "0.0-2029"]
+                 [org.clojure/clojurescript "0.0-1586"]
+                 [org.clojure/google-closure-library "0.0-2029-2"]
+                 [org.clojure/google-closure-library-third-party
+                  "0.0-2029-2"]
                  [domina "1.0.1"]
                  [slingshot "0.10.3"]
                  [org.mindrot/jbcrypt "0.3m"]
